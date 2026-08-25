@@ -1,8 +1,10 @@
 (ns logseq.db-worker.daemon
   "Shared db-worker-node lifecycle helpers for CLI and Electron."
   (:require ["child_process" :as child-process]
+            ["crypto" :as crypto]
             ["fs" :as fs]
             ["http" :as http]
+            ["path" :as node-path]
             [clojure.string :as string]
             [lambdaisland.glogi :as log]
             [logseq.db-worker.log :as db-worker-log]
@@ -102,6 +104,55 @@
                                               :timeout-ms 1000})]
         (contains? #{200 503} status))
       (p/catch (fn [_] false))))
+
+(defn- local-credential-path
+  [root-dir]
+  (node-path/join root-dir "db-worker-local-credential.json"))
+
+(defn ensure-local-credential!
+  "A local automated device credential for the CLI/Electron process that
+  spawns and talks to its own db-worker-node daemon (see spawn-server!,
+  which bootstraps the daemon's stored credential from this same
+  username/password). Generated once and reused across restarts so the
+  spawning process can log in without interactive input.
+
+  Lives in root-dir alongside the daemon's other discovery/lock files:
+  anyone with filesystem access to root-dir already has full read/write
+  access to the graph's SQLite files, so a plaintext bootstrap password
+  here doesn't widen the local trust boundary. It only bootstraps HTTP
+  session auth, which exists to stop *network* clients, not local ones."
+  [root-dir]
+  (let [path (local-credential-path root-dir)]
+    (if (fs/existsSync path)
+      (js->clj (js/JSON.parse (.toString (fs/readFileSync path) "utf8")) :keywordize-keys true)
+      (let [credential {:username "local"
+                        :password (.toString (crypto/randomBytes 24) "base64url")}]
+        (when-not (fs/existsSync root-dir)
+          (fs/mkdirSync root-dir #js {:recursive true}))
+        (fs/writeFileSync path (js/JSON.stringify (clj->js credential)))
+        (try (fs/chmodSync path 384) (catch :default _ nil)) ;; 384 = 0o600, owner read/write only
+        credential))))
+
+(defn login!
+  "Logs into a db-worker-node daemon's HTTP auth using the local device
+  credential for root-dir, returning a bearer token. Always succeeds
+  against a daemon this process itself spawned, since spawn-server! seeds
+  that daemon's stored credential from the same local file on first run."
+  [{:keys [host port root-dir device-label]}]
+  (p/let [{:keys [username password]} (ensure-local-credential! root-dir)
+          request-body (js/JSON.stringify (clj->js {:username username
+                                                     :password password
+                                                     :deviceLabel (or device-label "local")}))
+          {:keys [status body]} (http-request {:method "POST"
+                                               :host host
+                                               :port port
+                                               :path "/v1/auth/login"
+                                               :headers {"Content-Type" "application/json"}
+                                               :body request-body
+                                               :timeout-ms 5000})]
+    (if (= 200 status)
+      (:token (js->clj (js/JSON.parse body) :keywordize-keys true))
+      (throw (ex-info "db-worker-node login failed" {:code :login-failed :status status})))))
 
 (defn valid-lock?
   [lock]
@@ -227,11 +278,15 @@
   [{:keys [script repo root-dir owner-source create-empty-db? embedding-endpoint embedding-model-id]}]
   (let [owner-source (normalize-owner-source owner-source)
         detached? (not= owner-source :electron)
+        {:keys [username password]} (ensure-local-credential! root-dir)
         args (clj->js (cond-> [script "--repo" repo "--root-dir" root-dir "--owner-source" (name owner-source)]
                         create-empty-db? (conj "--create-empty-db")
                         (seq embedding-endpoint) (conj "--embedding-endpoint" embedding-endpoint)
                         (seq embedding-model-id) (conj "--embedding-model-id" embedding-model-id)))
-        env (js/Object.assign #js {} (.-env js/process) #js {:ELECTRON_RUN_AS_NODE "1"})]
+        env (js/Object.assign #js {} (.-env js/process)
+                              #js {:ELECTRON_RUN_AS_NODE "1"
+                                   :LOGSEQ_DAEMON_USERNAME username
+                                   :LOGSEQ_DAEMON_PASSWORD password})]
     (when (and (= :electron owner-source)
                (not (seq embedding-endpoint)))
       (js-delete env embedding-url-env))

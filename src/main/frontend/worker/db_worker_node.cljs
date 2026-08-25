@@ -3,6 +3,7 @@
   (:require ["http" :as http]
             [clojure.string :as string]
             [frontend.worker.db-core :as db-core]
+            [frontend.worker.db-worker-node-auth :as auth]
             [frontend.worker.db-worker-node-lock :as db-lock]
             [frontend.worker.platform.node :as platform-node]
             [frontend.worker.state :as worker-state]
@@ -44,28 +45,44 @@
   [root-dir]
   (server-list/path root-dir))
 
-(def ^:private cors-headers
-  #js {"Access-Control-Allow-Origin" "lsp://logseq.com"
-       "Access-Control-Allow-Methods" "GET,POST,OPTIONS"
-       "Access-Control-Allow-Headers" "Content-Type,Authorization"})
+(def ^:private default-allowed-origins #{"lsp://logseq.com"})
+
+(defn- cors-headers-for-request
+  "CORS is a browser-only safety layer, not access control (that's the
+  bearer-token + Host checks below) -- it only decides whether a browser is
+  allowed to read the response. Reflects the request Origin when allowed,
+  per the standard multi-origin CORS pattern (a static header can't list
+  more than one origin)."
+  [^js req allowed-origins]
+  (let [origin (some-> req .-headers .-origin)
+        base #js {"Access-Control-Allow-Methods" "GET,POST,DELETE,OPTIONS"
+                  "Access-Control-Allow-Headers" "Content-Type,Authorization"
+                  "Vary" "Origin"}]
+    (if (and origin (contains? allowed-origins origin))
+      (doto base (aset "Access-Control-Allow-Origin" origin))
+      base)))
+
+(defn- set-cors-headers!
+  [^js res headers]
+  (set! (.-corsHeaders res) headers))
 
 (defn- response-headers
-  [headers]
-  (js/Object.assign #js {} cors-headers headers))
+  [^js res headers]
+  (js/Object.assign #js {} (or (.-corsHeaders res) #js {}) headers))
 
 (defn- send-no-content!
   [^js res]
-  (.writeHead res 204 cors-headers)
+  (.writeHead res 204 (or (.-corsHeaders res) #js {}))
   (.end res))
 
 (defn- send-json!
   [^js res status payload]
-  (.writeHead res status (response-headers #js {"Content-Type" "application/json"}))
+  (.writeHead res status (response-headers res #js {"Content-Type" "application/json"}))
   (.end res (js/JSON.stringify (clj->js payload))))
 
 (defn- send-text!
   [^js res status text]
-  (.writeHead res status (response-headers #js {"Content-Type" "text/plain"}))
+  (.writeHead res status (response-headers res #js {"Content-Type" "text/plain"}))
   (.end res text))
 
 (defn- <read-body-buffer
@@ -98,6 +115,10 @@
           "--log-level" (recur (subvec args 2) (assoc opts :log-level (second args)))
           "--embedding-endpoint" (recur (subvec args 2) (assoc opts :embedding-endpoint (second args)))
           "--embedding-model-id" (recur (subvec args 2) (assoc opts :embedding-model-id (second args)))
+          "--host" (recur (subvec args 2) (assoc opts :host (second args)))
+          "--port" (recur (subvec args 2) (assoc opts :port (js/parseInt (second args) 10)))
+          "--allowed-origin" (recur (subvec args 2) (update opts :allowed-origins (fnil conj #{}) (second args)))
+          "--allowed-host" (recur (subvec args 2) (update opts :allowed-hosts (fnil conj #{}) (second args)))
           "--create-empty-db" (recur (subvec args 1) (assoc opts :create-empty-db? true))
           "--version" (recur (subvec args 1) (assoc opts :version? true))
           "--help" (recur (subvec args 1) (assoc opts :help? true))
@@ -150,9 +171,9 @@
 
 (defn- sse-handler
   [^js req ^js res]
-  (.writeHead res 200 (response-headers #js {"Content-Type" "text/event-stream"
-                                              "Cache-Control" "no-cache"
-                                              "Connection" "keep-alive"}))
+  (.writeHead res 200 (response-headers res #js {"Content-Type" "text/event-stream"
+                                                  "Cache-Control" "no-cache"
+                                                  "Connection" "keep-alive"}))
   (.write res "\n")
   (swap! *sse-clients conj res)
   (.on req "close" (fn []
@@ -299,14 +320,16 @@
       (str error)))
 
 (defn- health-payload
-  [{:keys [bound-repo host port owner-source root-dir]}]
+  "Unauthenticated by design (see request-authorized?), so this intentionally
+  omits :pid and :root-dir -- filesystem/process details that shouldn't be
+  handed to anything reachable on the allowed network segment without a
+  bearer token."
+  [{:keys [bound-repo host port owner-source]}]
   {:repo bound-repo
    :status (if @*ready? "ready" "starting")
    :host host
    :port (if (satisfies? IDeref port) @port port)
-   :pid (.-pid js/process)
    :owner-source (name (normalize-owner-source owner-source))
-   :root-dir root-dir
    :revision (build-version/revision)})
 
 (defn- log-invoke-error!
@@ -326,25 +349,101 @@
                 :method method-kw})
     (send-json! res status payload)))
 
+(defn- effective-port
+  [port]
+  (if (satisfies? IDeref port) @port port))
+
+(defn- allowed-hosts-for
+  "Host header allowlist, guarding against DNS rebinding: without this, any
+  web page the operator visits could script a request to the daemon on
+  loopback. Always includes loopback for the bound port; a non-default
+  --host (e.g. 0.0.0.0 behind Tailscale) needs its reachable name/IP added
+  explicitly via --allowed-host."
+  [{:keys [port extra-allowed-hosts]}]
+  (let [p (effective-port port)]
+    (into #{(str "localhost:" p) (str "127.0.0.1:" p) (str "[::1]:" p)}
+          extra-allowed-hosts)))
+
+(defn- host-allowed?
+  [^js req allowed-hosts]
+  (contains? allowed-hosts (some-> req .-headers .-host)))
+
+(defn- request-authorized?
+  "/v1/events (SSE) can't carry an Authorization header -- EventSource has no
+  header API -- so it accepts the bearer token as a query param instead.
+  This is interim: the WebSocket migration (see docs/agent-guide) replaces
+  it with Sec-WebSocket-Protocol, which doesn't leak into proxy/access logs
+  the way a query string does."
+  [^js req parsed-url request-path]
+  (if (= request-path "/v1/events")
+    (auth/authorized? (some->> (.get (.-searchParams parsed-url) "token")
+                                (str "Bearer ")))
+    (auth/authorized? (.. req -headers -authorization))))
+
 (defn- make-server
-  [proxy {:keys [bound-repo stop-fn host port owner-source root-dir]}]
+  [proxy {:keys [bound-repo stop-fn host port owner-source root-dir
+                 allowed-origins extra-allowed-hosts]}]
   (http/createServer
    (fn [^js req ^js res]
      (let [url (.-url req)
            parsed-url (js/URL. url "http://127.0.0.1")
            request-path (.-pathname parsed-url)
-           method (.-method req)]
+           method (.-method req)
+           ;; Computed per-request (not once at server start) because `port`
+           ;; is an atom that only resolves to the real OS-assigned port
+           ;; after `.listen` calls back -- see `start-http-server!`.
+           allowed-hosts (allowed-hosts-for {:port port :extra-allowed-hosts extra-allowed-hosts})]
+       (set-cors-headers! res (cors-headers-for-request req allowed-origins))
        (cond
          (= method "OPTIONS")
          (send-no-content! res)
 
+         (not (host-allowed? req allowed-hosts))
+         (send-json! res 403 {:ok false :error {:code :host-not-allowed
+                                                 :message "Host header not allowed"}})
+
+         ;; Unauthenticated on purpose: readiness polling (daemon lifecycle,
+         ;; CLI/Electron discovery) happens before any session exists, so
+         ;; this can't require a token without a chicken-and-egg startup
+         ;; deadlock. Still behind the Host allowlist above. health-payload
+         ;; omits root-dir/pid so it doesn't leak filesystem/process details
+         ;; to anything reachable on the allowed network segment.
          (= request-path "/healthz")
          (send-json! res (if @*ready? 200 503)
                      (health-payload {:bound-repo bound-repo
                                       :host host
                                       :port port
-                                      :owner-source owner-source
-                                      :root-dir root-dir}))
+                                      :owner-source owner-source}))
+
+         (and (= request-path "/v1/auth/login") (= method "POST"))
+         (-> (p/let [body (<read-body req)
+                     {:keys [username password deviceLabel]}
+                     (js->clj (js/JSON.parse body) :keywordize-keys true)
+                     {:keys [session error]} (auth/login! root-dir
+                                                          {:username username
+                                                           :password password
+                                                           :device-label deviceLabel})]
+               (if session
+                 (send-json! res 200 {:ok true
+                                      :token (:token session)
+                                      :sessionId (:id session)
+                                      :deviceLabel (:device-label session)})
+                 (send-json! res 401 {:ok false :error {:code error :message "invalid credentials"}})))
+             (p/catch (fn [_error]
+                        (send-json! res 400 {:ok false :error {:code :invalid-request
+                                                                :message "invalid login request body"}}))))
+
+         (not (request-authorized? req parsed-url request-path))
+         (send-json! res 401 {:ok false :error {:code :unauthorized
+                                                 :message "missing or invalid credentials"}})
+
+         (and (= request-path "/v1/auth/sessions") (= method "GET"))
+         (send-json! res 200 {:ok true :sessions (auth/list-sessions)})
+
+         (and (string/starts-with? request-path "/v1/auth/sessions/") (= method "DELETE"))
+         (send-json! res 200 {:ok true
+                              :revoked (auth/revoke-session!
+                                        (subs request-path (count "/v1/auth/sessions/")))})
 
          (= request-path "/v1/events")
          (sse-handler req res)
@@ -427,7 +526,13 @@
   (println (str "  " (style/bold "--embedding-endpoint") " <url>"))
   (println (str "  " (style/bold "--embedding-model-id") " <id>"))
   (println (str "  " (style/bold "--log-level") " <level>  (default info)"))
+  (println (str "  " (style/bold "--host") " <host>         (default 127.0.0.1; use an explicit --allowed-host too when binding beyond loopback)"))
+  (println (str "  " (style/bold "--port") " <port>         (default OS-assigned)"))
+  (println (str "  " (style/bold "--allowed-origin") " <origin>  (repeatable; browser CORS allowlist, not access control)"))
+  (println (str "  " (style/bold "--allowed-host") " <host:port>  (repeatable; Host header allowlist beyond loopback)"))
   (println (str "  " (style/bold "--version") "            (print build metadata and exit)"))
+  (println "  Requires a credential: set LOGSEQ_DAEMON_USERNAME and LOGSEQ_DAEMON_PASSWORD")
+  (println "  on first run to bootstrap <root-dir>/db-worker-auth.json, or restore that file.")
   (println "  logs: <root-dir>/graphs/<graph-dir>/db-worker-node-YYYYMMDD.log (retains 7)"))
 
 (defn- startup-db-opts
@@ -521,7 +626,8 @@
               :stop! stop!})))
 
 (defn- start-http-server!
-  [{:keys [proxy repo host port owner-source root-dir on-stopped!]}]
+  [{:keys [proxy repo host port owner-source root-dir on-stopped!
+           allowed-origins extra-allowed-hosts]}]
   (let [stop!* (atom nil)
         stopped? (atom false)
         port* (atom nil)
@@ -530,6 +636,8 @@
                                    :port port*
                                    :owner-source owner-source
                                    :root-dir root-dir
+                                   :allowed-origins allowed-origins
+                                   :extra-allowed-hosts extra-allowed-hosts
                                    :stop-fn (fn []
                                               (when-let [stop! @stop!*]
                                                 (stop!)))})]
@@ -554,9 +662,11 @@
                               (reject error)))))))
 
 (defn start-daemon!
-  [{:keys [root-dir repo log-level owner-source on-stopped!] :as opts}]
-  (let [host "127.0.0.1"
-        port 0
+  [{:keys [root-dir repo log-level owner-source on-stopped!
+           host port allowed-origins allowed-hosts] :as opts}]
+  (let [host (or host "127.0.0.1")
+        port (or port 0)
+        allowed-origins (into default-allowed-origins allowed-origins)
         owner-source (normalize-owner-source owner-source)]
     (cond
       (not (seq root-dir))
@@ -568,6 +678,7 @@
       :else
       (try
         (let [root-dir (root-dir/ensure-root-dir! root-dir)
+              _ (auth/ensure-credential! root-dir)
               server-list-file (server-list-file-path root-dir)]
           (db-worker-log/install! {:root-dir root-dir
                                    :repo repo
@@ -600,6 +711,8 @@
                                      :port port
                                      :owner-source owner-source
                                      :root-dir root-dir
+                                     :allowed-origins allowed-origins
+                                     :extra-allowed-hosts allowed-hosts
                                      :on-stopped! on-stopped!}))
               (p/catch (fn [e]
                          (when-let [lock-path (:path @*lock-info)]
@@ -631,6 +744,10 @@
                                 :owner-source owner-source
                                 :embedding-endpoint (:embedding-endpoint opts)
                                 :embedding-model-id (:embedding-model-id opts)
+                                :host (:host opts)
+                                :port (:port opts)
+                                :allowed-origins (:allowed-origins opts)
+                                :allowed-hosts (:allowed-hosts opts)
                                 :on-stopped! (fn []
                                                (log/info :db-worker-node-stopped nil)
                                                (.exit js/process 0))

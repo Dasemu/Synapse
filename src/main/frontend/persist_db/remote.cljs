@@ -23,8 +23,14 @@
        (js/encodeURIComponent repo)))
 
 (defn- events-url
-  [base-url]
-  (str (normalize-base-url base-url) "/v1/events"))
+  "EventSource has no header API, so the bearer token travels as a query
+  param here instead of the `Authorization` header every other request
+  uses -- the server accepts it for this route only (see
+  request-authorized? in db_worker_node.cljs). Interim until the Fase 4
+  WebSocket migration, which carries it via Sec-WebSocket-Protocol instead."
+  [base-url auth-token]
+  (cond-> (str (normalize-base-url base-url) "/v1/events")
+    (seq auth-token) (str "?token=" (js/encodeURIComponent auth-token))))
 
 (defn- base-headers
   [auth-token]
@@ -175,7 +181,7 @@
               (when @connected?
                 (reset! subscription
                         (open-sse-fn
-                         {:url (events-url base-url)
+                         {:url (events-url base-url auth-token)
                           :headers (base-headers auth-token)
                           :on-message (fn [chunk]
                                         (when @connected?

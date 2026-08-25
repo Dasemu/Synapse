@@ -7,6 +7,7 @@
             [frontend.test.node-helper :as node-helper]
             [frontend.worker.db-core :as db-core]
             [frontend.worker.db-worker-node :as db-worker-node]
+            [frontend.worker.db-worker-node-auth :as db-worker-node-auth]
             [frontend.worker.db-worker-node-lock :as db-lock]
             [frontend.worker.platform.node :as platform-node]
             [goog.object :as gobj]
@@ -19,6 +20,17 @@
             [logseq.db :as ldb]
             [logseq.db-worker.log :as db-worker-log]
             [promesa.core :as p]))
+
+;; Fase 1 (server-client migration) made a credential mandatory for every
+;; db-worker-node daemon, bootstrapped from these env vars on first launch
+;; against each test's fresh root-dir (see db-worker-node-auth/ensure-credential!).
+;; Tests that hit the HTTP surface directly must log in with the same
+;; username/password to get a bearer token -- see `auth-headers!` below.
+(def ^:private test-daemon-username "db-worker-node-test-user")
+(def ^:private test-daemon-password "db-worker-node-test-password")
+
+(aset (.-env js/process) "LOGSEQ_DAEMON_USERNAME" test-daemon-username)
+(aset (.-env js/process) "LOGSEQ_DAEMON_PASSWORD" test-daemon-password)
 
 (defn- http-request
   [opts body]
@@ -56,17 +68,35 @@
                  :method "GET"}
                 nil))
 
+(defn- auth-headers!
+  [host port]
+  (p/let [payload (js/JSON.stringify
+                   (clj->js {:username test-daemon-username
+                             :password test-daemon-password
+                             :deviceLabel "test"}))
+          {:keys [status body]} (http-request {:hostname host
+                                               :port port
+                                               :path "/v1/auth/login"
+                                               :method "POST"
+                                               :headers {"Content-Type" "application/json"}}
+                                              payload)]
+    (when (not= 200 status)
+      (println "[db-worker-node-test] login failed" {:status status :body body}))
+    {"Content-Type" "application/json"
+     "Authorization" (str "Bearer " (:token (js->clj (js/JSON.parse body) :keywordize-keys true)))}))
+
 (defn- invoke
   [host port method args]
   (let [payload (js/JSON.stringify
                  (clj->js {:method method
                            :argsTransit (ldb/write-transit-str args)}))]
-    (p/let [{:keys [status body]}
+    (p/let [headers (auth-headers! host port)
+            {:keys [status body]}
             (http-request {:hostname host
                            :port port
                            :path "/v1/invoke"
                            :method "POST"
-                           :headers {"Content-Type" "application/json"}}
+                           :headers headers}
                           payload)
             parsed (js->clj (js/JSON.parse body) :keywordize-keys true)]
       (when (not= 200 status)
@@ -83,21 +113,23 @@
   (let [payload (js/JSON.stringify
                  (clj->js {:method method
                            :argsTransit (ldb/write-transit-str args)}))]
-    (http-request {:hostname host
-                   :port port
-                   :path "/v1/invoke"
-                   :method "POST"
-                   :headers {"Content-Type" "application/json"}}
-                  payload)))
+    (p/let [headers (auth-headers! host port)]
+      (http-request {:hostname host
+                     :port port
+                     :path "/v1/invoke"
+                     :method "POST"
+                     :headers headers}
+                    payload))))
 
 (defn- invoke-import-db-binary-raw
   [host port repo payload]
-  (http-request {:hostname host
-                 :port port
-                 :path (str "/v1/import-db-binary?repo=" (js/encodeURIComponent repo))
-                 :method "POST"
-                 :headers {"Content-Type" "application/octet-stream"}}
-                payload))
+  (p/let [headers (auth-headers! host port)]
+    (http-request {:hostname host
+                   :port port
+                   :path (str "/v1/import-db-binary?repo=" (js/encodeURIComponent repo))
+                   :method "POST"
+                   :headers (assoc headers "Content-Type" "application/octet-stream")}
+                  payload)))
 
 (defn- lock-path
   [root-dir repo]
@@ -385,17 +417,28 @@
               "db-worker-node-20240109.log"]
              remaining)))))
 
-(deftest db-worker-node-parse-args-ignores-host-and-port
+(deftest db-worker-node-parse-args-parses-host-and-port
   (let [parse-args #'db-worker-node/parse-args
         result (parse-args #js ["node" "dist/db-worker-node.js"
                                 "--host" "0.0.0.0"
                                 "--port" "1234"
                                 "--repo" "logseq_db_parse_args"
                                 "--root-dir" "/tmp/logseq-root"])]
-    (is (nil? (:host result)))
-    (is (nil? (:port result)))
+    (is (= "0.0.0.0" (:host result)))
+    (is (= 1234 (:port result)))
     (is (= "logseq_db_parse_args" (:repo result)))
     (is (= "/tmp/logseq-root" (:root-dir result)))))
+
+(deftest db-worker-node-parse-args-collects-allowed-origins-and-hosts
+  (let [parse-args #'db-worker-node/parse-args
+        result (parse-args #js ["node" "dist/db-worker-node.js"
+                                "--allowed-origin" "https://a.example"
+                                "--allowed-origin" "https://b.example"
+                                "--allowed-host" "example.local:1234"
+                                "--repo" "logseq_db_parse_args"
+                                "--root-dir" "/tmp/logseq-root"])]
+    (is (= #{"https://a.example" "https://b.example"} (:allowed-origins result)))
+    (is (= #{"example.local:1234"} (:allowed-hosts result)))))
 
 (deftest db-worker-node-parse-args-ignores-auth-token
   (let [parse-args #'db-worker-node/parse-args
@@ -907,19 +950,24 @@
                        (start-daemon!  {:root-dir data-dir
                                         :repo repo})
                        health (http-get host port "/healthz")
+                       ;; /healthz is unauthenticated by design (readiness polling
+                       ;; happens before any session exists), but every other route
+                       ;; -- including one that doesn't exist -- requires a bearer
+                       ;; token first: an unauthenticated caller shouldn't learn
+                       ;; whether a route exists.
                        missing-readyz (http-get host port "/readyz")
                        health-body (js->clj (js/JSON.parse (:body health)) :keywordize-keys true)
                        server-list-contents (.toString (fs/readFileSync server-list-file) "utf8")
                        _ (do
                            (reset! daemon {:host host :port port :stop! stop!})
                            (is (= 200 (:status health)))
-                           (is (= 404 (:status missing-readyz)))
+                           (is (= 401 (:status missing-readyz)))
                            (is (= repo (:repo health-body)))
                            (is (= "ready" (:status health-body)))
                            (is (= host (:host health-body)))
                            (is (= port (:port health-body)))
-                           (is (= (.-pid js/process) (:pid health-body)))
-                           (is (= (node-path/resolve data-dir) (:root-dir health-body)))
+                           (is (not (contains? health-body :pid)))
+                           (is (not (contains? health-body :root-dir)))
                            (is (contains? health-body :owner-source))
                            (is (contains? health-body :revision))
                            (is (string/includes? server-list-contents (str (.-pid js/process) " " port))))
@@ -1557,17 +1605,31 @@
 
 (deftest db-worker-node-desktop-and-cli-share-same-graph-daemon
   (async done
-         (let [daemon (atom nil)
+         (let [daemon-state (atom nil)
                data-dir (node-helper/create-tmp-dir "db-worker-desktop-cli")
                config-path (node-path/join data-dir "cli.edn")
                server-list-file (cli-config/server-list-path data-dir)
                repo (str "logseq_db_desktop_cli_" (subs (str (random-uuid)) 0 8))
                now (js/Date.now)
-               page-uuid (random-uuid)]
+               page-uuid (random-uuid)
+               ;; This test's own `invoke` calls authenticate via the shared
+               ;; test-daemon-username/password constants (see auth-headers!
+               ;; above); ensure-server! (used below to simulate the CLI
+               ;; discovering the desktop-started daemon) instead logs in via
+               ;; the root-dir-local device credential that spawn-server!
+               ;; seeds in production (daemon/ensure-local-credential!). Seed
+               ;; both directly with the same test constants -- rather than
+               ;; via daemon/ensure-local-credential!'s random password, or
+               ;; via the global LOGSEQ_DAEMON_USERNAME/PASSWORD env vars --
+               ;; so every path in this test agrees on one credential.
+               _ (db-worker-node-auth/set-credential! data-dir test-daemon-username test-daemon-password)
+               _ (fs/writeFileSync (node-path/join data-dir "db-worker-local-credential.json")
+                                   (js/JSON.stringify (clj->js {:username test-daemon-username
+                                                                :password test-daemon-password})))]
            (-> (p/let [{:keys [host port stop!]}
                        (start-daemon! {:root-dir data-dir
                                        :repo repo})
-                       _ (reset! daemon {:stop! stop!})
+                       _ (reset! daemon-state {:stop! stop!})
                        _ (invoke host port "thread-api/create-or-open-db" [repo {}])
                        _ (invoke host port "thread-api/transact"
                                  [repo
@@ -1601,7 +1663,7 @@
                (p/catch (fn [e]
                           (is false (str "unexpected error: " e))))
                (p/finally (fn []
-                            (if-let [stop! (:stop! @daemon)]
+                            (if-let [stop! (:stop! @daemon-state)]
                               (-> (stop!)
                                   (p/finally (fn [] (done))))
                               (done))))))))

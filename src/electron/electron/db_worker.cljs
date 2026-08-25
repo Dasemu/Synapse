@@ -246,7 +246,7 @@
                                             repo)]
       {:repo repo
        :base-url (:base-url config)
-       :auth-token nil
+       :auth-token (:auth-token config)
        :owned? (:owned? config)})))
 
 (defn- stop-managed-daemon!

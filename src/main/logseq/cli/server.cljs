@@ -329,11 +329,19 @@
                        (p/let [_ (profile/time! profile-session
                                                 "server.wait-ready"
                                                 (fn []
-                                                  (wait-for-ready repo-server')))]
+                                                  (wait-for-ready repo-server')))
+                               auth-token (profile/time! profile-session
+                                                         "server.login"
+                                                         (fn []
+                                                           (daemon/login! {:host (:host repo-server')
+                                                                          :port (:port repo-server')
+                                                                          :root-dir root-dir
+                                                                          :device-label (name requester-owner)})))]
                          (let [lock-owner (lock-owner-source lock)]
                            (assoc repo-server'
                                   :owner-source lock-owner
-                                  :owned? (owner-manageable? requester-owner lock-owner)))))))))
+                                  :owned? (owner-manageable? requester-owner lock-owner)
+                                  :auth-token auth-token))))))))
 
 (declare stop-version-mismatched-server!)
 
@@ -382,7 +390,8 @@
     (assoc config
            :base-url (base-url lock)
            :owner-source (:owner-source lock)
-           :owned? (:owned? lock))))
+           :owned? (:owned? lock)
+           :auth-token (:auth-token lock))))
 
 (defn- shutdown!
   [{:keys [host port]}]

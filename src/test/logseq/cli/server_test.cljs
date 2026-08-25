@@ -117,7 +117,8 @@
                                daemon/http-request (fn [_]
                                                      (swap! shutdown-calls inc)
                                                      (p/resolved {:status 200 :body ""}))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
                                              :expected-revision "expected-revision"}
@@ -152,7 +153,8 @@
                                                    (if matched?
                                                      true
                                                      (throw (ex-info "timed out" {:code :timeout})))))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
                                              :expected-revision "expected-revision"}
@@ -204,7 +206,8 @@
                                                                             2 []
                                                                             [new-server]))))
                                daemon/wait-for-lock (fn [_] (p/resolved true))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (log/add-handler log-handler)
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
@@ -265,7 +268,8 @@
                                                                             2 []
                                                                             [new-server]))))
                                daemon/wait-for-lock (fn [_] (p/resolved true))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
                                              :expected-revision "expected-revision"}
@@ -313,7 +317,8 @@
                                                                             2 []
                                                                             [new-server]))))
                                daemon/wait-for-lock (fn [_] (p/resolved true))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
                                              :expected-revision "expected-revision"}
@@ -361,7 +366,8 @@
                                                                             2 []
                                                                             [wrong-server]))))
                                daemon/wait-for-lock (fn [_] (p/resolved true))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :owner-source :cli
                                              :expected-revision "expected-revision"}
@@ -408,7 +414,8 @@
                                                                             2 []
                                                                             [wrong-server]))))
                                daemon/wait-for-lock (fn [_] (p/resolved true))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/start-server! {:root-dir root-dir
                                             :owner-source :cli
                                             :expected-revision "expected-revision"}
@@ -488,6 +495,8 @@
                                                                             :pid (.-pid js/process)
                                                                             :owner-source "cli"
                                                                             :revision "server-revision"})))
+                           "/v1/auth/login" (do (.writeHead res 200 #js {"Content-Type" "application/json"})
+                                                 (.end res (js/JSON.stringify #js {:ok true :token "test-token"})))
                            (do (.writeHead res 404 #js {"Content-Type" "text/plain"})
                                (.end res "not-found")))))]
            (.listen server 0 host
@@ -668,7 +677,8 @@
                                                                             :owner-source :cli
                                                                             :revision (version/revision)
                                                                             :status :ready}])))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :config-path config-path
                                              :create-empty-db? true}
@@ -712,7 +722,8 @@
                                                                             :owner-source :cli
                                                                             :revision (version/revision)
                                                                             :status :ready}])))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :profile-session session}
                                             repo))
@@ -757,7 +768,8 @@
                                                               (p/resolved (if (< call 3)
                                                                             []
                                                                             [server]))))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir} repo))
                (p/then (fn [config]
                          (is (= "http://127.0.0.1:9311" (:base-url config)))
@@ -808,7 +820,8 @@
                                                                                          :root-dir root-dir
                                                                                          :revision "server-revision"}))})))
                                                        (p/resolved {:status 200 :body ""})))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir
                                              :config-path config-path
                                              :expected-revision "server-revision"}
@@ -892,7 +905,8 @@
                                                             (p/resolved (if @spawned?
                                                                           [remote-server local-server]
                                                                           [remote-server])))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir root-dir-b
                                              :config-path config-path}
                                             repo))
@@ -932,7 +946,8 @@
                                                                           :revision (version/revision)
                                                                           :status :ready
                                                                           :root-dir symlink-root-dir}]))
-                               daemon/wait-for-ready (fn [_] (p/resolved true))]
+                               daemon/wait-for-ready (fn [_] (p/resolved true))
+                               daemon/login! (fn [_] (p/resolved "test-token"))]
                  (cli-server/ensure-server! {:root-dir real-root-dir}
                                             repo))
                (p/then (fn [config]

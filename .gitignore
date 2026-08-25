@@ -12,16 +12,14 @@ out/
 .lsp/.cache/
 
 # Build output
-static/js/
-static/out/
-static/mobile/js/
-static/db-worker-node.js
-static/db-worker-node-assets.json
-static/electron.js
+static/
 dist/
 cli/_build/
 cli/**/*.install
 resources/.cache/
+
+# Test run temp dirs (frontend.test.node-helper/create-tmp-dir)
+tmp/
 
 # OCaml/Dune
 cli/_opam/
