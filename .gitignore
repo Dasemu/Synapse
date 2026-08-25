@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Clojure/ClojureScript build
+.cpcache/
+.clj-kondo/.cache/
+.shadow-cljs/
+target/
+out/
+.nrepl-port
+.lsp/.cache/
+
+# Build output
+static/js/
+static/out/
+static/mobile/js/
+static/db-worker-node.js
+static/db-worker-node-assets.json
+static/electron.js
+dist/
+cli/_build/
+cli/**/*.install
+resources/.cache/
+
+# OCaml/Dune
+cli/_opam/
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Python sidecar
+sidecar/.venv/
+sidecar/__pycache__/
+**/__pycache__/
+
+# Mobile build artifacts
+android/app/build/
+android/.gradle/
+ios/App/Pods/
+ios/App/build/

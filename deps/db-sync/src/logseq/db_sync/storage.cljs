@@ -1,0 +1,218 @@
+(ns logseq.db-sync.storage
+  (:require
+   [cljs-bean.core :as bean]
+   [clojure.string :as string]
+   [datascript.core :as d]
+   [datascript.storage :refer [IStorage]]
+   [logseq.db-sync.checksum :as sync-checksum]
+   [logseq.db-sync.common :as common]
+   [logseq.db.common.normalize :as db-normalize]
+   [logseq.db.common.sqlite :as common-sqlite]
+   [logseq.db.frontend.schema :as db-schema]))
+
+(def ^:private tx-log-outliner-op-migration-sql
+  "alter table tx_log add column outliner_op TEXT")
+
+(defn- duplicate-column-error?
+  [error column-name]
+  (let [message (-> (or (ex-message error) (some-> error .-message) (str error))
+                    string/lower-case)]
+    (and (string/includes? message "duplicate column")
+         (string/includes? message (string/lower-case column-name)))))
+
+(defn- ensure-tx-log-outliner-op-column!
+  [sql]
+  (try
+    (common/sql-exec sql tx-log-outliner-op-migration-sql)
+    (catch :default error
+      (when-not (duplicate-column-error? error "outliner_op")
+        (throw error)))))
+
+;; TODO: GC kvs table
+
+(defn init-schema! [sql]
+  (common/sql-exec sql "create table if not exists kvs (addr INTEGER primary key, content TEXT, addresses JSON)")
+  (common/sql-exec sql
+                   (str "create table if not exists tx_log ("
+                        "t INTEGER primary key,"
+                        "tx TEXT not null,"
+                        "created_at INTEGER"
+                        ");"))
+  (ensure-tx-log-outliner-op-column! sql)
+  (common/sql-exec sql
+                   (str "create table if not exists sync_meta ("
+                        "key TEXT primary key,"
+                        "value TEXT"
+                        ");")))
+
+(defn- select-one [sql sql-str & args]
+  (first (common/get-sql-rows (apply common/sql-exec sql sql-str args))))
+
+(defn get-meta [sql k]
+  (when-let [row (select-one sql "select value from sync_meta where key = ?" (name k))]
+    (aget row "value")))
+
+(defn set-meta! [sql k v]
+  (common/sql-exec sql
+                   (str "insert into sync_meta (key, value) values (?, ?)"
+                        " on conflict(key) do update set value = excluded.value")
+                   (name k)
+                   (str v)))
+
+(defn get-checksum [sql]
+  (get-meta sql :checksum))
+
+(defn set-checksum! [sql checksum]
+  (set-meta! sql :checksum checksum))
+
+(defn get-t [sql]
+  (let [value (get-meta sql :t)]
+    (if (string? value)
+      (js/parseInt value 10)
+      0)))
+
+(defn set-t! [sql t]
+  (set-meta! sql :t t))
+
+(def ^:dynamic *in-sql-transaction?* false)
+
+(defn with-sql-transaction!
+  [sql f]
+  (if *in-sql-transaction?*
+    (f)
+    (let [f' (fn []
+               (binding [*in-sql-transaction?* true]
+                 (f)))]
+      (if-let [db (aget sql "_db")]
+        (let [transaction (.-transaction db)]
+          (if (fn? transaction)
+            (let [tx-fn (.call transaction db f')]
+              (tx-fn))
+            (f')))
+        (f')))))
+
+(defn set-initial-checksum! [sql checksum]
+  (with-sql-transaction!
+    sql
+    (fn []
+      (let [existing-checksum (get-checksum sql)
+            current-t (get-t sql)]
+        (cond
+          (and (some? existing-checksum)
+               (not= existing-checksum checksum))
+          (throw (ex-info "Cannot overwrite existing checksum with snapshot checksum"
+                          {:type :db-sync/stale-snapshot-checksum
+                           :existing-checksum existing-checksum
+                           :snapshot-checksum checksum}))
+
+          (and (nil? existing-checksum)
+               (pos? current-t))
+          (throw (ex-info "Cannot initialize checksum after tx history advanced"
+                          {:type :db-sync/snapshot-checksum-after-tx-log
+                           :t current-t
+                           :snapshot-checksum checksum}))
+
+          (nil? existing-checksum)
+          (set-checksum! sql checksum))))))
+
+(defn- outliner-op->sql [outliner-op]
+  (cond
+    (keyword? outliner-op) (name outliner-op)
+    (string? outliner-op) outliner-op
+    :else nil))
+
+(defn- sql->outliner-op [value]
+  (when (string? value)
+    (keyword value)))
+
+(defn append-tx! [sql t tx-str created-at outliner-op]
+  (common/sql-exec sql
+                   (str "insert into tx_log (t, tx, created_at, outliner_op) values (?, ?, ?, ?)"
+                        " on conflict(t) do update set tx = excluded.tx, created_at = excluded.created_at, outliner_op = excluded.outliner_op")
+                   t
+                   tx-str
+                   created-at
+                   (outliner-op->sql outliner-op)))
+
+(defn fetch-tx-since [sql since-t]
+  (let [rows (common/get-sql-rows
+              (common/sql-exec sql
+                               "select t, tx, outliner_op from tx_log where t > ? order by t asc"
+                               since-t))]
+    (mapv (fn [row]
+            {:t (aget row "t")
+             :tx (aget row "tx")
+             :outliner-op (sql->outliner-op (aget row "outliner_op"))})
+          rows)))
+
+(defn- upsert-addr-content! [sql data]
+  (doseq [item data]
+    (common/sql-exec sql
+                     (str "insert into kvs (addr, content, addresses) values (?, ?, ?)"
+                          " on conflict(addr) do update set content = excluded.content, addresses = excluded.addresses")
+                     (aget item "addr")
+                     (aget item "content")
+                     (aget item "addresses"))))
+
+(defn- restore-data-from-addr [sql addr]
+  (when-let [row (select-one sql "select content, addresses from kvs where addr = ?" addr)]
+    (let [{:keys [content addresses]} (bean/->clj row)
+          addresses (when addresses (js/JSON.parse addresses))
+          data (common/read-transit content)]
+      (if (and addresses (map? data))
+        (assoc data :addresses addresses)
+        data))))
+
+(defn new-sqlite-storage [sql]
+  (reify IStorage
+    (-store [_ addr+data-seq _delete-addrs]
+      (let [data (map
+                  (fn [[addr data]]
+                    (let [data' (if (map? data) (dissoc data :addresses) data)
+                          addresses (when (map? data)
+                                      (when-let [addresses (:addresses data)]
+                                        (js/JSON.stringify (bean/->js addresses))))]
+                      #js {"addr" addr
+                           "content" (common/write-transit data')
+                           "addresses" addresses}))
+                  addr+data-seq)]
+        (upsert-addr-content! sql data)))
+    (-restore [_ addr]
+      (restore-data-from-addr sql addr))))
+
+(defn- append-tx-for-tx-report
+  [sql {:keys [db-after db-before tx-data tx-meta] :as tx-report}]
+  (when-not (or (:db-sync/skip-tx-log? tx-meta)
+                (empty? tx-data))
+    (let [created-at (common/now-ms)
+          normalized-data (->> tx-data
+                               (db-normalize/normalize-tx-data db-after db-before)
+                               vec)
+          tx-str (common/write-transit normalized-data)]
+      (with-sql-transaction!
+        sql
+        (fn []
+          (let [new-t (inc (get-t sql))]
+            (append-tx! sql new-t tx-str created-at (:outliner-op tx-meta))
+            (set-t! sql new-t)
+            (when-not (:db-sync/skip-checksum-update? tx-meta)
+              (let [prev-checksum (get-checksum sql)
+                    checksum (sync-checksum/update-checksum
+                              prev-checksum
+                              (assoc tx-report :tx-data normalized-data))]
+                (set-checksum! sql checksum)))))))))
+
+(defn- listen-db-updates!
+  [sql conn]
+  (d/listen! conn ::listen-db-updates
+             (fn [tx-report]
+               (append-tx-for-tx-report sql tx-report))))
+
+(defn open-conn
+  [sql]
+  (init-schema! sql)
+  (let [storage (new-sqlite-storage sql)
+        schema db-schema/schema
+        conn (common-sqlite/get-storage-conn storage schema)]
+    (listen-db-updates! sql conn)
+    conn))
