@@ -25,7 +25,7 @@
 (defonce remote-repo (atom nil))
 (defonce remote-runtime-state (atom nil))
 
-(declare <ensure-remote!)
+(declare <ensure-remote! <release-remote-runtime-slot!)
 
 (defn- clear-remote-runtime!
   []
@@ -105,7 +105,7 @@
   (if (active-runtime-client? @remote-runtime-state repo session-id remote-client)
     (p/let [_ (do
                 (clear-remote-runtime!)
-                (ipc/ipc "releaseDbWorkerRuntime" repo))]
+                (<release-remote-runtime-slot! repo))]
       true)
     (do
       (log/info :event :db-worker-runtime-recovery-skipped
@@ -178,6 +178,48 @@
   (and (not (node-runtime?))
        (util/electron?)))
 
+(defn- web-remote-configured?
+  "True when running as a non-Electron, non-Node client (browser or
+   Capacitor) with a db-worker-node server configured -- the counterpart to
+   Electron's IPC-managed local runtime, driven by config/get-server-base-url
+   instead."
+  []
+  (and (not (node-runtime?))
+       (not (util/electron?))
+       (some? (config/get-server-base-url))))
+
+(defn- remote-runtime?
+  "True whenever this client talks to a remote db-worker-node daemon over
+   HTTP/SSE rather than an in-process worker (frontend.persist-db.browser).
+   Replaces the old electron-runtime? checks at every PersistentDB dispatch
+   site below, so the same remote path serves Electron and a configured web
+   or mobile client alike."
+  []
+  (or (electron-runtime?)
+      (web-remote-configured?)))
+
+(defn- <resolve-remote-runtime!
+  "Resolves {:base-url :auth-token} for the active remote transport.
+   Electron gets it from the main process, which owns spawning/reusing the
+   local daemon (see logseq.cli.server/ensure-server!); a web/mobile client
+   reads its own locally configured server instead -- there is no daemon to
+   spawn, only one to log into."
+  [repo]
+  (if (electron-runtime?)
+    (ipc/ipc "db-worker-runtime" repo)
+    (p/resolved {:base-url (config/get-server-base-url)
+                 :auth-token (config/get-server-token)})))
+
+(defn- <release-remote-runtime-slot!
+  "Releases the Electron-owned runtime slot for repo, if any. No-op for a
+   web/mobile client: there's no per-window runtime manager on the other
+   end to release, just the daemon's own session, which the client simply
+   stops using."
+  [repo]
+  (if (electron-runtime?)
+    (ipc/ipc "releaseDbWorkerRuntime" repo)
+    (p/resolved nil)))
+
 (defn- current-db-sync-config
   []
   {:enabled? true
@@ -243,7 +285,7 @@
                (log/warn :event :db-worker-ensure-remote-stale
                          :repo repo :phase :before-runtime)
                nil)
-             (p/let [runtime (ipc/ipc "db-worker-runtime" repo)
+             (p/let [runtime (<resolve-remote-runtime! repo)
                      client (remote/start! (assoc runtime
                                                   :repo repo
                                                   :event-handler worker-handler/handle
@@ -278,7 +320,7 @@
                                              (log/info :event :db-worker-stale-release-skipped
                                                        :repo repo
                                                        :reason :runtime-changed)
-                                             (ipc/ipc "releaseDbWorkerRuntime" repo))]
+                                             (<release-remote-runtime-slot! repo))]
                                    nil)))
                        (p/catch (fn [e]
                                   (log/warn :event :db-worker-stale-release-error
@@ -302,7 +344,7 @@
 (defn <start-runtime!
   []
   (cond
-    (electron-runtime?)
+    (remote-runtime?)
     (if-let [repo (state/get-current-repo)]
       (<ensure-remote! repo)
       (p/resolved nil))
@@ -316,7 +358,7 @@
   opfs-db)
 
 (defn <list-db []
-  (if (electron-runtime?)
+  (if (remote-runtime?)
     (if-let [repo (or @remote-repo (state/get-current-repo))]
       (p/let [client (<ensure-remote! repo)]
         (protocol/<list-db client))
@@ -325,14 +367,14 @@
 
 (defn <unsafe-delete [repo]
   (when repo
-    (if (electron-runtime?)
+    (if (remote-runtime?)
       (p/let [client (<ensure-remote! repo)]
         (protocol/<unsafe-delete client repo))
       (protocol/<unsafe-delete (get-impl) repo))))
 
 (defn <close-db [repo]
   (when repo
-    (if (electron-runtime?)
+    (if (remote-runtime?)
       (if (same-remote-repo? repo @remote-repo)
         (if-let [remote-client @remote-db]
           (p/let [_ (-> (remote/invoke! (:client remote-client) "thread-api/close-db" [repo])
@@ -346,12 +388,15 @@
 (defn <export-db
   [repo opts]
   (when repo
-    (protocol/<export-db (get-impl) repo opts)))
+    (if (remote-runtime?)
+      (p/let [client (<ensure-remote! repo)]
+        (protocol/<export-db client repo opts))
+      (protocol/<export-db (get-impl) repo opts))))
 
 (defn <import-db
   [repo data]
   (when repo
-    (if (electron-runtime?)
+    (if (remote-runtime?)
       (p/let [client (<ensure-remote! repo)]
         (protocol/<import-db client repo data))
       (protocol/<import-db (get-impl) repo data))))
@@ -361,7 +406,7 @@
    (<open-and-fetch-schema repo {}))
   ([repo opts]
    (when repo
-     (if (electron-runtime?)
+     (if (remote-runtime?)
        (p/let [client (<ensure-remote! repo)]
          (protocol/<open-and-fetch-schema client repo opts))
        (protocol/<open-and-fetch-schema (get-impl) repo opts)))))
@@ -370,7 +415,7 @@
 ;; @shuyu Do we still need this?
 (defn <new [repo opts]
   {:pre [(<= (count repo) 128)]}
-  (p/let [impl (if (electron-runtime?)
+  (p/let [impl (if (remote-runtime?)
                  (<ensure-remote! repo)
                  (p/resolved (get-impl)))
           _ (protocol/<new impl repo opts)]

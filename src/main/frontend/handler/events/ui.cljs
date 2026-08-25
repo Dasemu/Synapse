@@ -105,6 +105,11 @@
    (settings/sync-server-url-settings-container)
    {:id :sync-server-panel :center? true :class "lg:max-w-2xl"}))
 
+(defevent! :go/db-worker-server-settings [[_]]
+  (shui/dialog-open!
+   (settings/db-worker-server-settings-container)
+   {:id :db-worker-server-panel :center? true :class "lg:max-w-2xl"}))
+
 (defevent! :go/publish-server-settings [[_]]
   (shui/dialog-open!
    (settings/publish-server-url-settings-container)

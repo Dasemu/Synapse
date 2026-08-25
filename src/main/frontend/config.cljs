@@ -99,6 +99,53 @@
     (custom-url->http-base custom)
     default-db-sync-http-base))
 
+;; Web/mobile clients connect to a self-hosted db-worker-node daemon by
+;; base URL + bearer token, instead of Electron's IPC-managed local runtime
+;; (see frontend.persist-db/remote-runtime?). Stored client-side only; the
+;; daemon holds the authoritative credential (see
+;; frontend.worker.db-worker-node-auth).
+(defn get-server-base-url
+  "Read the configured db-worker-node server base URL from localStorage.
+   Returns nil when not set or empty."
+  []
+  (when-not util/node-test?
+    (let [v (.getItem js/localStorage "db-worker-server-url")]
+      (when (and (string? v) (not (string/blank? v)))
+        v))))
+
+(defn set-server-base-url!
+  "Persist the db-worker-node server base URL to localStorage. Pass nil or
+   empty string to clear."
+  [url]
+  (when-not util/node-test?
+    (if (or (nil? url) (string/blank? url))
+      (.removeItem js/localStorage "db-worker-server-url")
+      (.setItem js/localStorage "db-worker-server-url" (string/trim url)))))
+
+(defn get-server-token
+  "Read the current db-worker-node session bearer token from localStorage.
+   Returns nil when not set or empty."
+  []
+  (when-not util/node-test?
+    (let [v (.getItem js/localStorage "db-worker-server-token")]
+      (when (and (string? v) (not (string/blank? v)))
+        v))))
+
+(defn set-server-token!
+  "Persist the db-worker-node session bearer token to localStorage. Pass
+   nil or empty string to clear (e.g. on logout or a 401)."
+  [token]
+  (when-not util/node-test?
+    (if (or (nil? token) (string/blank? token))
+      (.removeItem js/localStorage "db-worker-server-token")
+      (.setItem js/localStorage "db-worker-server-token" (string/trim token)))))
+
+(defn clear-server-config!
+  "Clear both the configured server URL and session token, e.g. on logout."
+  []
+  (set-server-base-url! nil)
+  (set-server-token! nil))
+
 (defn get-custom-publish-server-url
   "Read the user-configured custom publish server URL from localStorage.
    Returns nil when not set or empty."

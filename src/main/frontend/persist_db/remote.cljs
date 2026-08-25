@@ -57,6 +57,44 @@
     (string? code) (keyword code)
     :else :invoke-failed))
 
+(defn- login-url
+  [base-url]
+  (str (normalize-base-url base-url) "/v1/auth/login"))
+
+(defn- default-fetch-json!
+  [{:keys [method url headers body]}]
+  (p/let [^js res (js/fetch url (clj->js (cond-> {:method method
+                                                  :headers (or headers {})}
+                                           body (assoc :body body))))
+          text (.text res)]
+    {:status (.-status res)
+     :body text}))
+
+(defn login!
+  "Logs into a db-worker-node daemon's HTTP auth (see
+  frontend.worker.db-worker-node-auth) and returns {:token :session-id} on
+  success. Used by the web/mobile server-connection settings UI; Electron
+  gets its token from the main process instead (see
+  frontend.persist-db/<resolve-remote-runtime!)."
+  [{:keys [base-url username password device-label fetch-fn]}]
+  (p/let [payload (js/JSON.stringify
+                   (clj->js {:username username
+                             :password password
+                             :deviceLabel device-label}))
+          {:keys [status body]} ((or fetch-fn default-fetch-json!)
+                                  {:method "POST"
+                                   :url (login-url base-url)
+                                   :headers {"Content-Type" "application/json"}
+                                   :body payload})
+          parsed (parse-response-body body)]
+    (if (<= 200 status 299)
+      {:token (:token parsed) :session-id (:sessionId parsed)}
+      (let [error (:error parsed)]
+        (throw (ex-info (or (:message error) "login failed")
+                        (cond-> {:status status
+                                 :code (normalize-code (:code error))}
+                          error (assoc :error error))))))))
+
 (defn- decode-event
   [{:keys [type payload]}]
   (let [decoded (when (some? payload)

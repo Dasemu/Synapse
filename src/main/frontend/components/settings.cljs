@@ -21,6 +21,7 @@
             [frontend.mobile.util :as mobile-util]
             [frontend.modules.instrumentation.core :as instrument]
             [frontend.modules.shortcut.data-helper :as shortcut-helper]
+            [frontend.persist-db.remote :as remote]
             [frontend.rfx :as rfx]
             [frontend.spec.storage :as storage-spec]
             [frontend.state :as state]
@@ -689,6 +690,104 @@
            :on-click (fn [] (reset-url!))}
           (t :settings.sync-server/reset)))]]]))
 
+(hsx/defc db-worker-server-settings-container
+  "Connects a web/mobile client to a self-hosted db-worker-node server (see
+   frontend.persist-db/remote-runtime?). Electron manages its own local
+   daemon instead and doesn't need this. Reconnecting or disconnecting
+   requires a reload since frontend.persist-db/<start-runtime! only decides
+   the transport once at boot."
+  []
+  (let [current-url (config/get-server-base-url)
+        connected? (and (seq current-url) (seq (config/get-server-token)))
+        [url set-url!] (hooks/use-state (or current-url ""))
+        [username set-username!] (hooks/use-state "")
+        [password set-password!] (hooks/use-state "")
+        [connecting? set-connecting!] (hooks/use-state false)
+        disconnect! (fn []
+                      (config/clear-server-config!)
+                      (notification/show! "Disconnected. Reloading..." :success)
+                      (js/setTimeout #(js/location.reload) 500))
+        connect! (fn []
+                   (let [trimmed-url (string/trim url)]
+                     (cond
+                       (string/blank? trimmed-url)
+                       (notification/show! "Server URL is required." :error)
+
+                       (not (config/valid-sync-server-url? trimmed-url))
+                       (notification/show! "Enter a valid http(s) URL." :error)
+
+                       (or (string/blank? username) (string/blank? password))
+                       (notification/show! "Username and password are required." :error)
+
+                       :else
+                       (do
+                         (set-connecting! true)
+                         (-> (remote/login! {:base-url trimmed-url
+                                             :username username
+                                             :password password
+                                             :device-label (str (.-platform js/navigator))})
+                             (p/then (fn [{:keys [token]}]
+                                       (config/set-server-base-url! trimmed-url)
+                                       (config/set-server-token! token)
+                                       (notification/show! "Connected. Reloading..." :success)
+                                       (js/setTimeout #(js/location.reload) 500)))
+                             (p/catch (fn [error]
+                                        (set-connecting! false)
+                                        (notification/show!
+                                         (str "Failed to connect: " (or (.-message error) error))
+                                         :error))))))))]
+    [:div.cp__settings-db-worker-server-cnt
+     [:h1.mb-2.text-2xl.font-bold "Server"]
+     [:div.p-2
+      [:p.text-sm.opacity-70.mb-4
+       "Connect this client to a self-hosted Logseq server (db-worker-node) instead of storing graphs locally in the browser."]
+      (if connected?
+        [:div
+         [:p [:strong "Connected to: "] current-url]
+         [:p.pt-2
+          (shui/button
+           {:size :sm :variant :outline :on-click disconnect!}
+           "Disconnect")]]
+        [:div
+         [:p
+          [:label [:strong "Server URL"]
+           [:input.form-input.is-small
+            {:value url
+             :placeholder "https://your-server.example:PORT"
+             :style {:width "100%"}
+             :on-change #(set-url! (util/evalue %))}]]]
+         [:p.pt-2
+          [:label [:strong "Username"]
+           [:input.form-input.is-small
+            {:value username
+             :style {:width "100%"}
+             :on-change #(set-username! (util/evalue %))}]]]
+         [:p.pt-2
+          [:label [:strong "Password"]
+           [:input.form-input.is-small
+            {:type "password"
+             :value password
+             :style {:width "100%"}
+             :on-change #(set-password! (util/evalue %))}]]]
+         [:p.pt-2
+          (shui/button
+           {:size :sm :disabled connecting? :on-click connect!}
+           (if connecting? "Connecting..." "Connect"))]])]]))
+
+(hsx/defc db-worker-server-button
+  []
+  (let [current-url (config/get-server-base-url)]
+    (ui/button [:span.flex.items-center
+                [:span.pr-1 (if (seq current-url) current-url "Connect to server")]
+                (ui/icon "edit")]
+               :class "text-sm"
+               :on-click #(state/pub-event! [:go/db-worker-server-settings]))))
+
+(defn db-worker-server-row []
+  (row-with-button-action
+   {:left-label "Server"
+    :action (db-worker-server-button)}))
+
 (hsx/defc sync-server-url-button
   []
   (let [current-url (config/get-custom-sync-server-url)]
@@ -924,6 +1023,7 @@
      (when (and (or util/mac? util/win32?) (util/electron?)) (app-auto-update-row t))
      (usage-diagnostics-row t instrument-disabled?)
      (when-not (mobile-util/native-platform?) (developer-mode-row t developer-mode?))
+     (when-not (util/electron?) (db-worker-server-row))
      (sync-server-url-row)
      (publish-server-url-row)
      (when (util/electron?) (https-user-agent-row https-agent-opts))
