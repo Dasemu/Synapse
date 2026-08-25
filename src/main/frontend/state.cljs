@@ -63,6 +63,28 @@
                  (reset! ready? (fn? worker))))
     ready?))
 
+(defonce ^:private *invoke-stats (atom {}))
+
+(defn get-invoke-stats
+  "Snapshot of db-worker invoke counters, keyed by thread-api method kw. Each
+  entry is {:count N :total-ms N :max-ms N}. Dev-only instrumentation for the
+  server-client migration latency baseline (see docs/agent-guide); does not
+  affect invocation behavior."
+  []
+  @*invoke-stats)
+
+(defn reset-invoke-stats!
+  []
+  (reset! *invoke-stats {}))
+
+(defn- record-invoke-stat!
+  [qkw elapsed-ms]
+  (swap! *invoke-stats update qkw
+         (fn [{:keys [count total-ms max-ms] :or {count 0 total-ms 0 max-ms 0}}]
+           {:count (inc count)
+            :total-ms (+ total-ms elapsed-ms)
+            :max-ms (max max-ms elapsed-ms)})))
+
 (defn <invoke-db-worker
   "invoke db-worker thread api"
   [qkw & args]
@@ -70,11 +92,13 @@
     (when (nil? worker)
       (prn :<invoke-db-worker-error qkw)
       (throw (ex-info "db-worker has not been initialized" {})))
-    (p/let [result (apply worker qkw args)]
-      (if (or (instance? ExceptionInfo result)
-              (instance? js/Error result))
-        (p/rejected result)
-        result))))
+    (let [started-at (js/performance.now)]
+      (-> (p/let [result (apply worker qkw args)]
+            (if (or (instance? ExceptionInfo result)
+                    (instance? js/Error result))
+              (p/rejected result)
+              result))
+          (p/finally (fn [] (record-invoke-stat! qkw (- (js/performance.now) started-at))))))))
 
 (def ^:private export-block-text-indent-styles #{"dashes" "spaces" "no-indent"})
 

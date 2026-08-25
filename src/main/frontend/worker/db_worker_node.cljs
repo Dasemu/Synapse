@@ -20,6 +20,25 @@
 (defonce ^:private *sse-clients (atom #{}))
 (defonce ^:private *lock-info (atom nil))
 (defonce ^:private *server-list-file (atom nil))
+(defonce ^:private *inflight-by-repo (atom {}))
+(defonce ^:private *max-inflight-by-repo (atom {}))
+
+(defn- invoke-started!
+  "Increments the /v1/invoke in-flight counter for repo and logs a new
+  concurrency high-water mark when observed. Dev-only instrumentation for the
+  server-client migration multi-client baseline (see docs/agent-guide); has no
+  effect on request handling."
+  [repo]
+  (let [n (get (swap! *inflight-by-repo update repo (fnil inc 0)) repo)
+        prev-max (get @*max-inflight-by-repo repo 0)]
+    (when (> n prev-max)
+      (swap! *max-inflight-by-repo assoc repo n)
+      (log/info :db-worker-node-invoke-concurrency-high-water-mark
+                {:repo repo :concurrent n}))))
+
+(defn- invoke-finished!
+  [repo]
+  (swap! *inflight-by-repo update repo (fnil dec 0)))
 
 (defn- server-list-file-path
   [root-dir]
@@ -376,7 +395,9 @@
                       (p/let [_ (when-not (contains? non-repo-methods method-kw)
                                   (let [{:keys [path lock]} @*lock-info]
                                     (db-lock/assert-lock-owner! path lock)))
-                              result (<invoke! proxy method-str method-kw args')]
+                              _ (invoke-started! bound-repo)
+                              result (-> (<invoke! proxy method-str method-kw args')
+                                         (p/finally (fn [] (invoke-finished! bound-repo))))]
                         (send-json! res 200 {:ok true :resultTransit result}))))
                   (p/catch (fn [error]
                              (log-invoke-error! res error method-kw)))))

@@ -8,6 +8,22 @@
 
 (defonce ^:private *batch (atom {}))
 
+(defonce ^:private *stats (atom {:dedup-hits 0 :new-entries 0 :flushes 0 :batch-sizes {}}))
+
+(defn get-stats
+  "Snapshot of subs-loader batching counters: :dedup-hits counts load! calls
+  that reused an already-pending slot request within the same unflushed
+  batch window (see `load!`); :batch-sizes tallies entries per slot kind
+  across flushes. Dev-only instrumentation for the server-client migration
+  latency baseline (see docs/agent-guide); does not affect batching or the
+  `limits` above."
+  []
+  @*stats)
+
+(defn reset-stats!
+  []
+  (reset! *stats {:dedup-hits 0 :new-entries 0 :flushes 0 :batch-sizes {}}))
+
 (defn- reject!
   [entries error]
   (doseq [{:keys [result]} entries]
@@ -45,6 +61,13 @@
   []
   (when @state/db-worker-ready?
     (let [batch (take-batch!)]
+      (swap! *stats
+             (fn [s]
+               (-> s
+                   (update :flushes inc)
+                   (update :batch-sizes
+                           #(merge-with + %
+                                        (frequencies (map (comp slot-kind first :slot-key) batch)))))))
       (doseq [[graph-id graph-entries] (group-by :graph-id batch)
               entries (request-groups graph-entries)]
         (-> (state/<invoke-db-worker :thread-api/get-render-snapshots
@@ -72,9 +95,11 @@
   [graph-id slot-key schedule!]
   (let [entry-key [graph-id slot-key]]
     (if-let [result (get-in @*batch [entry-key :result])]
-      result
+      (do (swap! *stats update :dedup-hits inc)
+          result)
       (let [result (p/deferred)
             schedule? (empty? @*batch)]
+        (swap! *stats update :new-entries inc)
         (swap! *batch assoc entry-key
                {:graph-id graph-id :slot-key slot-key :result result})
         (when schedule?
