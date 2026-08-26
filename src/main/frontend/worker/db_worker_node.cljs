@@ -9,6 +9,7 @@
             [frontend.worker.db-worker-node-lock :as db-lock]
             [frontend.worker.db-worker-node-ws :as db-ws]
             [frontend.worker.platform.node :as platform-node]
+            [frontend.worker.semantic-routes :as semantic-routes]
             [frontend.worker.state :as worker-state]
             [lambdaisland.glogi :as log]
             [logseq.common.graph-dir :as graph-dir]
@@ -432,6 +433,52 @@
   [^js buf]
   (str "\"" (-> (crypto/createHash "sha1") (.update buf) (.digest "hex")) "\""))
 
+(defn- query-params-map
+  "Ring/bidi-style :page-id params come from semantic-routes' reitit router
+  already keyword-keyed; the query string doesn't, so build it the same way
+  by hand from URLSearchParams -- there's no js->clj for it."
+  [^js parsed-url]
+  (into {}
+        (map (fn [pair] [(keyword (aget pair 0)) (aget pair 1)]))
+        (js/Array.from (.entries (.-searchParams parsed-url)))))
+
+(defn- <read-json-body-if-present
+  [req method]
+  (if (contains? #{"GET" "DELETE"} method)
+    (p/resolved nil)
+    (p/let [body (<read-body req)]
+      (when-not (string/blank? body)
+        (js->clj (js/JSON.parse body) :keywordize-keys true)))))
+
+(defn- semantic-request-handler
+  "/v1/semantic/* -- unlike /v1/invoke (an internal RPC transport that hands
+  transit-encoded results straight back to Logseq's own clients, which
+  already know how to decode them), this is the public HTTP API documented
+  by semantic-routes/openapi-document and consumed by arbitrary HTTP/MCP
+  clients, so results are decoded server-side into plain JSON matching the
+  OpenAPI schemas -- the same shape the /v1/assets/:repo/:name GET route
+  already produces for the one other route with external HTTP consumers."
+  [^js req ^js res bound-repo proxy parsed-url request-path method]
+  (if-let [{:keys [handler success-status path-params]} (semantic-routes/match method request-path)]
+    (let [query-params (query-params-map parsed-url)
+          method-kw :thread-api/semantic-request
+          method-str (normalize-method-str method-kw)]
+      (-> (p/let [body (if (= handler :semantic/assets-create)
+                         (<read-body-buffer req)
+                         (<read-json-body-if-present req method))
+                  args [bound-repo handler path-params query-params body]]
+            (if-let [{:keys [status error]} (repo-error method-kw args bound-repo)]
+              (send-json! res status {:ok false :error error})
+              (p/let [_ (let [{:keys [path lock]} @*lock-info]
+                          (db-lock/assert-lock-owner! path lock))
+                      result-transit (<invoke! proxy method-str method-kw args)
+                      result (ldb/read-transit-str result-transit)]
+                (if (nil? result)
+                  (send-no-content! res)
+                  (send-json! res success-status result)))))
+          (p/catch (fn [error] (log-invoke-error! res error handler)))))
+    (send-json! res 404 {:ok false :error {:code :not-found :message "not found"}})))
+
 (defn- <process-batch-invoke!
   "One entry of a /v1/invoke-batch request, run through the same
   repo-check/lock/invoke path as /v1/invoke but never rejecting -- a failed
@@ -622,6 +669,12 @@
                (p/catch (fn [error]
                           (log-invoke-error! res error :thread-api/asset-write-bytes))))
            (send-json! res 400 {:ok false :error {:code :invalid-request :message "invalid asset path"}}))
+
+         (= request-path "/v1/semantic/openapi.json")
+         (send-json! res 200 (semantic-routes/openapi-document {:repo bound-repo}))
+
+         (string/starts-with? request-path "/v1/semantic/")
+         (semantic-request-handler req res bound-repo proxy parsed-url request-path method)
 
          (= request-path "/v1/invoke-batch")
          (if (= method "POST")

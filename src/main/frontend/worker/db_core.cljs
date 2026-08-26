@@ -24,6 +24,7 @@
    [frontend.worker.handler.query]
    [frontend.worker.handler.render-resource.engine]
    [frontend.worker.handler.search :as search-handler]
+   [frontend.worker.handler.semantic]
    [frontend.worker.handler.transaction :as transaction-handler]
    [frontend.worker.handler.undo-redo]
    [frontend.worker.handler.view]
