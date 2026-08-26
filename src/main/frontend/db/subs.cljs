@@ -286,6 +286,14 @@
               :slot-keys (conj slot-keys slot-key)}))
     (request-reload! slot-key)))
 
+(defn current-rev
+  "The renderer revision the store has fully applied. -1 before any delta
+  has ever been applied for the current graph. Used by the remote transport
+  to resume the WebSocket event stream after a reconnect (see
+  frontend.persist-db.remote/connect-events!)."
+  []
+  (:rev @*store))
+
 (defn reset-graph!
   [graph-id]
   (let [generation (inc (:generation @*store))

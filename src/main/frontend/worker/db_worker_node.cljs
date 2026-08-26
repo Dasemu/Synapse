@@ -1,10 +1,12 @@
 (ns frontend.worker.db-worker-node
   "Node.js daemon entrypoint for db-worker."
   (:require ["http" :as http]
+            ["ws" :as ws]
             [clojure.string :as string]
             [frontend.worker.db-core :as db-core]
             [frontend.worker.db-worker-node-auth :as auth]
             [frontend.worker.db-worker-node-lock :as db-lock]
+            [frontend.worker.db-worker-node-ws :as db-ws]
             [frontend.worker.platform.node :as platform-node]
             [frontend.worker.state :as worker-state]
             [lambdaisland.glogi :as log]
@@ -158,6 +160,17 @@
     (nil? method) nil
     :else (str method)))
 
+(defn- sync-db-changes-rev
+  "Peeks the transit-encoded [:sync-db-changes {...:delta {:rev}}] tuple
+  shared-service/broadcast-to-clients! always sends for this event type (see
+  db_listener.cljs), so the WS resume buffer can index by renderer revision
+  without re-deriving it. Returns nil for any other event type."
+  [type payload]
+  (when (and (= type :sync-db-changes) (string? payload))
+    (try
+      (get-in (ldb/read-transit-str payload) [1 :delta :rev])
+      (catch :default _ nil))))
+
 (defn- handle-event!
   [type payload]
   (let [event (js/JSON.stringify (clj->js {:type (encode-event-type type)
@@ -167,7 +180,10 @@
       (try
         (.write res message)
         (catch :default e
-          (log/error :sse-write-failed e))))))
+          (log/error :sse-write-failed e))))
+    (when-let [rev (sync-db-changes-rev type payload)]
+      (db-ws/record-delta! rev event))
+    (db-ws/broadcast! event)))
 
 (defn- sse-handler
   [^js req ^js res]
@@ -380,11 +396,32 @@
                                 (str "Bearer ")))
     (auth/authorized? (.. req -headers -authorization))))
 
+(defn- ws-upgrade-handler
+  [^js wss bound-repo port extra-allowed-hosts]
+  (fn [^js req ^js socket head]
+    (let [allowed-hosts (allowed-hosts-for {:port port :extra-allowed-hosts extra-allowed-hosts})
+          request-path (.-pathname (js/URL. (.-url req) "http://127.0.0.1"))]
+      (cond
+        (not (host-allowed? req allowed-hosts))
+        (db-ws/reject-upgrade! socket 403 "Host header not allowed")
+
+        (not= request-path "/v1/events")
+        (db-ws/reject-upgrade! socket 404 "not found")
+
+        (not (auth/authorized-token? (db-ws/token-from-upgrade-req req)))
+        (db-ws/reject-upgrade! socket 401 "missing or invalid credentials")
+
+        :else
+        (.handleUpgrade wss req socket head
+                        (fn [ws-socket]
+                          (db-ws/handle-connection! ws-socket bound-repo)))))))
+
 (defn- make-server
   [proxy {:keys [bound-repo stop-fn host port owner-source root-dir
                  allowed-origins extra-allowed-hosts]}]
-  (http/createServer
-   (fn [^js req ^js res]
+  (let [server
+        (http/createServer
+         (fn [^js req ^js res]
      (let [url (.-url req)
            parsed-url (js/URL. url "http://127.0.0.1")
            request-path (.-pathname parsed-url)
@@ -515,7 +552,11 @@
            (send-text! res 405 "method-not-allowed"))
 
          :else
-         (send-text! res 404 "not-found"))))))
+         (send-text! res 404 "not-found")))))
+        WSS (or (.-WebSocketServer ws) (.-Server ws))
+        ^js wss (new WSS #js {:noServer true})]
+    (.on server "upgrade" (ws-upgrade-handler wss bound-repo port extra-allowed-hosts))
+    server))
 
 (defn- show-help!
   []
@@ -584,6 +625,8 @@
       (.end res)
       (catch :default _)))
   (reset! *sse-clients #{})
+  (db-ws/close-all!)
+  (db-ws/reset-buffer!)
   (when-let [lock-path (:path @*lock-info)]
     (db-lock/remove-lock! lock-path)))
 

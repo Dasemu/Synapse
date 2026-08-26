@@ -146,16 +146,26 @@
         (do (record-failed-attempt! username)
             {:error :invalid-credentials})))))
 
+(defn authorized-token?
+  "Given a bare session token (no `Bearer ` prefix), returns true and
+  refreshes :last-seen-at when it matches an active session. Shared by the
+  Authorization-header path (authorized?) and the WebSocket upgrade path,
+  which carries the token via Sec-WebSocket-Protocol instead -- see
+  db_worker_node_ws.cljs."
+  [token]
+  (when (string? token)
+    (when-let [session (some #(when (timing-safe-equal? token (:token %)) %)
+                             (vals @*sessions))]
+      (swap! *sessions assoc-in [(:id session) :last-seen-at] (now-iso))
+      true)))
+
 (defn authorized?
   "Given an `Authorization: Bearer <token>` header value (or nil), returns
   true and refreshes :last-seen-at when it matches an active session."
   [authorization-header]
   (when-let [token (some-> authorization-header
                            (as-> h (when (string/starts-with? h "Bearer ") (subs h 7))))]
-    (when-let [session (some #(when (timing-safe-equal? token (:token %)) %)
-                             (vals @*sessions))]
-      (swap! *sessions assoc-in [(:id session) :last-seen-at] (now-iso))
-      true)))
+    (authorized-token? token)))
 
 (defn list-sessions
   []

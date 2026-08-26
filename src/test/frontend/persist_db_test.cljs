@@ -137,6 +137,17 @@
                   (reset! (:on-error sse-state) on-error)
                   {:close! (fn []
                              (swap! (:close-count sse-state) inc))})
+   ;; connect-events-ws! (the transport start! actually uses since Fase 4)
+   ;; sets .-onopen/.-onmessage/.-onerror/.-onclose on whatever open-ws-fn
+   ;; returns, synchronously, right after calling it -- so capturing the
+   ;; bare socket here is enough for a test to later read e.g. .-onerror
+   ;; off it and trigger it directly.
+   :open-ws-fn (fn [_opts]
+                 (swap! (:open-count sse-state) inc)
+                 (let [socket #js {:send (fn [_text] nil)}]
+                   (set! (.-close socket) (fn [] (swap! (:close-count sse-state) inc)))
+                   (reset! (:socket sse-state) socket)
+                   socket))
    :schedule-fn (fn [f _delay-ms]
                   (swap! (:scheduled sse-state) conj f)
                   :scheduled)})
@@ -144,6 +155,7 @@
 (defn- sse-state
   []
   {:on-error (atom nil)
+   :socket (atom nil)
    :open-count (atom 0)
    :close-count (atom 0)
    :scheduled (atom [])})
@@ -988,7 +1000,7 @@
                       :sse sse
                       :ipc-calls ipc-calls})]
       (-> (p/let [_ (ensure-remote! "logseq_db_graph_a")
-                  on-error @(:on-error sse)
+                  on-error (.-onerror @(:socket sse))
                   _ (is (fn? on-error))
                   _ (on-error (js/Error. "connect ECONNREFUSED"))
                   _ (is (= [] @events))

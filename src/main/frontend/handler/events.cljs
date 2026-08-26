@@ -13,6 +13,7 @@
             [frontend.context.i18n :refer [t]]
             [frontend.date :as date]
             [frontend.db.async :as db-async]
+            [frontend.db.subs :as db-subs]
             [frontend.extensions.fsrs :as fsrs]
             [frontend.handler.assets :as assets-handler]
             [frontend.handler.code :as code-handler]
@@ -479,6 +480,15 @@
 ;; db-worker -> UI
 (defevent! :db/sync-changes [[_ data]]
   (pipeline/invoke-hooks data)
+  nil)
+
+;; The remote WS transport lost some deltas (buffer overflow on the daemon
+;; side, or a gap it can't otherwise explain) -- discard everything cached
+;; renderer-side and let every mounted slot reload from scratch. Safe to call
+;; even when nothing is actually stale, just wasteful.
+(defevent! :db/resync [[_ _data]]
+  (when-let [repo (state/get-current-repo)]
+    (db-subs/reset-graph! repo))
   nil)
 
 (defevent! :db/export-sqlite [_]

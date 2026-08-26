@@ -2,6 +2,7 @@
   (:require ["fs" :as fs]
             ["http" :as http]
             ["path" :as node-path]
+            ["ws" :as ws]
             [cljs.test :refer [async deftest is use-fixtures]]
             [clojure.string :as string]
             [frontend.test.node-helper :as node-helper]
@@ -130,6 +131,69 @@
                    :method "POST"
                    :headers (assoc headers "Content-Type" "application/octet-stream")}
                   payload)))
+
+(defn- <auth-token!
+  [host port]
+  (p/let [headers (auth-headers! host port)]
+    (subs (get headers "Authorization") (count "Bearer "))))
+
+(defn- <ws-connect
+  "Opens a raw `ws` client against /v1/events, carrying the bearer token via
+  Sec-WebSocket-Protocol the same way frontend.persist-db.remote does.
+  Resolves {:ok true :client} on a successful upgrade, or {:ok false
+  :status} when the server rejects the handshake (see reject-upgrade! in
+  db_worker_node_ws.cljs)."
+  [host port token]
+  (p/create
+   (fn [resolve _reject]
+     (let [url (str "ws://" host ":" port "/v1/events")
+           ^js client (ws. url (str "bearer." token))]
+       (.on client "open" (fn [] (resolve {:ok true :client client})))
+       (.on client "unexpected-response"
+            (fn [_req ^js res]
+              (resolve {:ok false :status (.-statusCode res)})))
+       (.on client "error" (fn [error] (resolve {:ok false :error error})))))))
+
+(defn- ws-message-queue
+  "A single long-lived \"message\" listener backing an async take! queue --
+  NOT a fresh .once per await. Two server messages sent back-to-back (e.g.
+  a replayed delta immediately followed by a \"subscribed\" ack) can both
+  reach the client and fire synchronously in the same tick; a fresh .once
+  registered only after awaiting the first would miss the second, since
+  Node's EventEmitter drops an emit with no listener attached rather than
+  queuing it. This buffers whatever arrives before anyone's waiting."
+  [^js client]
+  (let [queue (atom [])
+        waiters (atom [])]
+    (.on client "message"
+         (fn [data]
+           (let [parsed (js->clj (js/JSON.parse (.toString data)) :keywordize-keys true)]
+             (if-let [resolve! (first @waiters)]
+               (do (swap! waiters subvec 1)
+                   (resolve! parsed))
+               (swap! queue conj parsed)))))
+    (fn take!
+      []
+      (p/create
+       (fn [resolve! _reject]
+         (if (seq @queue)
+           (let [message (first @queue)]
+             (swap! queue subvec 1)
+             (resolve! message))
+           (swap! waiters conj resolve!)))))))
+
+(defn- <ws-take-sync-db-changes!
+  "Skips any non-:sync-db-changes noise (presence pings, unrelated
+  broadcasts) the daemon might emit around the moment being tested."
+  [take!]
+  (p/let [message (take!)]
+    (if (= "sync-db-changes" (:type message))
+      message
+      (<ws-take-sync-db-changes! take!))))
+
+(defn- ws-send!
+  [^js client payload]
+  (.send client (js/JSON.stringify (clj->js payload))))
 
 (defn- lock-path
   [root-dir repo]
@@ -1017,6 +1081,104 @@
                                                  (is (or (nil? contents)
                                                          (not (string/includes? contents (str (.-pid js/process) " ")))))
                                                  (done)))))
+                              (done))))))))
+
+(deftest db-worker-node-ws-upgrade-rejects-missing-or-invalid-token
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-ws-auth")
+               repo (str "logseq_db_ws_auth_" (subs (str (random-uuid)) 0 8))]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       no-token (<ws-connect host port "")
+                       bad-token (<ws-connect host port "not-a-real-session-token")]
+                 (is (false? (:ok no-token)))
+                 (is (= 401 (:status no-token)))
+                 (is (false? (:ok bad-token)))
+                 (is (= 401 (:status bad-token))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] e:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
+
+(deftest db-worker-node-ws-live-broadcast-and-resume-by-revision
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-ws-resume")
+               repo (str "logseq_db_ws_resume_" (subs (str (random-uuid)) 0 8))
+               page-uuid (random-uuid)
+               block-uuid-1 (random-uuid)
+               block-uuid-2 (random-uuid)
+               now (js/Date.now)]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       token (<auth-token! host port)
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       {:keys [ok client] :as connect-result} (<ws-connect host port token)
+                       _ (is (true? ok) (str "ws upgrade failed: " connect-result))
+                       ;; The queue's underlying listener is registered now, so it
+                       ;; buffers everything from this point on regardless of when
+                       ;; take! is actually called below.
+                       take! (ws-message-queue client)
+                       ;; Every connected socket receives live broadcasts
+                       ;; regardless of whether it has sent "subscribe" yet
+                       ;; -- see broadcast! in db_worker_node_ws.cljs.
+                       _ (invoke host port "thread-api/transact"
+                                 [repo
+                                  [{:block/uuid page-uuid
+                                    :block/title "WS Resume Page"
+                                    :block/name "ws-resume-page"
+                                    :block/tags #{:logseq.class/Page}
+                                    :block/created-at now
+                                    :block/updated-at now}
+                                   {:block/uuid block-uuid-1
+                                    :block/title "WS Resume Block 1"
+                                    :block/page [:block/uuid page-uuid]
+                                    :block/parent [:block/uuid page-uuid]
+                                    :block/order "a0"
+                                    :block/created-at now
+                                    :block/updated-at now}]
+                                  {}
+                                  nil])
+                       live-message (<ws-take-sync-db-changes! take!)
+                       [live-event-type live-payload] (ldb/read-transit-str (:payload live-message))
+                       _ (is (= :sync-db-changes live-event-type))
+                       first-rev (get-in live-payload [:delta :rev])
+                       _ (is (integer? first-rev))
+                       _ (.close client)
+                       ;; Second transact happens while nobody is connected --
+                       ;; this is exactly the gap resume-by-revision exists for.
+                       _ (invoke host port "thread-api/transact"
+                                 [repo
+                                  [{:block/uuid block-uuid-2
+                                    :block/title "WS Resume Block 2"
+                                    :block/page [:block/uuid page-uuid]
+                                    :block/parent [:block/uuid page-uuid]
+                                    :block/order "a1"
+                                    :block/created-at now
+                                    :block/updated-at now}]
+                                  {}
+                                  nil])
+                       {:keys [ok client] :as reconnect-result} (<ws-connect host port token)
+                       _ (is (true? ok) (str "ws reconnect failed: " reconnect-result))
+                       take! (ws-message-queue client)
+                       _ (ws-send! client {:type "subscribe" :graphId repo :sinceRev first-rev})
+                       replayed-message (<ws-take-sync-db-changes! take!)
+                       ack-message (take!)]
+                 (let [[replayed-event-type replayed-payload] (ldb/read-transit-str (:payload replayed-message))]
+                   (is (= :sync-db-changes replayed-event-type))
+                   (is (> (get-in replayed-payload [:delta :rev]) first-rev)))
+                 (is (= "subscribed" (:type ack-message)))
+                 (.close client))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] e:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
                               (done))))))))
 
 (deftest db-worker-node-vector-search-finds-outline-context-after-rebuild

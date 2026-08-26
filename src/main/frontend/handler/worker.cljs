@@ -64,6 +64,9 @@
 (defmethod handle :sync-db-changes [_ _worker data]
   (state/pub-event! [:db/sync-changes data]))
 
+(defmethod handle :resync [_ _worker data]
+  (state/pub-event! [:db/resync data]))
+
 (defmethod handle :sync-conflicts-updated [_ _worker {:keys [repo block-uuid conflicts]}]
   (when (and (seq repo) block-uuid)
     (state/set-sync-block-conflicts! repo block-uuid conflicts)))
