@@ -1516,7 +1516,6 @@
  :select/new-option "+ Yeni seçenek: {1}"
 
  :server/error-notification "[Sunucu] {1}"
- :server/mcp-url-copied "MCP URL'si kopyalandı"
  :server/start "Başlat"
  :server/stop "Durdur"
  :server/title "HTTP API sunucusu"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Hesap"
  :settings/advanced "Gelişmiş"
- :settings/ai "AI"
  :settings/collaboration "İş birliği"
  :settings/editor "Editör"
  :settings/encryption "Şifreleme"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Logseq asla yerel graf veritabanınızı toplamayacak veya verilerinizi satmayacaktır."
  :settings.advanced/network-proxy "Ağ ara sunucusu"
 
- :settings.ai/enable-mcp-server "MCP sunucusunu etkinleştir"
- :settings.ai/enable-mcp-server-desc "AI entegrasyonu için MCP sunucusunu etkinleştir"
 
  :settings.editor/auto-expand-block-refs "Blok referanslarını otomatik genişlet"
  :settings.editor/auto-expand-block-refs-tip "Tıklandığında blok referanslarını otomatik genişlet"

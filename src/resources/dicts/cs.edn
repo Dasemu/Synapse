@@ -1516,7 +1516,6 @@
  :select/new-option "+ Nová možnost: {1}"
 
  :server/error-notification "[Server] {1}"
- :server/mcp-url-copied "URL MCP zkopírováno"
  :server/start "Spustit"
  :server/stop "Zastavit"
  :server/title "HTTP API server"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Účet"
  :settings/advanced "Pokročilé"
- :settings/ai "AI"
  :settings/collaboration "Spolupráce"
  :settings/editor "Editor"
  :settings/encryption "Šifrování"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Společnost Logseq nikdy nebude shromažďovat vaši místní databázi grafů ani prodávat vaše data."
  :settings.advanced/network-proxy "Síťový proxy server"
 
- :settings.ai/enable-mcp-server "Zapnout server MCP"
- :settings.ai/enable-mcp-server-desc "Zapnout server MCP pro integraci s AI"
 
  :settings.editor/auto-expand-block-refs "Automaticky rozbalit odkazy na bloky"
  :settings.editor/auto-expand-block-refs-tip "Automaticky rozbalit odkazy na bloky při kliknutí"

@@ -1516,7 +1516,6 @@
  :select/new-option "+ گزینه جدید: {1}"
 
  :server/error-notification "[سرور] {1}"
- :server/mcp-url-copied "آدرس MCP کپی شد"
  :server/start "شروع"
  :server/stop "توقف"
  :server/title "سرور HTTP API"
@@ -1543,7 +1542,6 @@
 
  :settings/account "حساب"
  :settings/advanced "پیشرفته"
- :settings/ai "هوش مصنوعی"
  :settings/collaboration "همکاری"
  :settings/editor "ویرایشگر"
  :settings/encryption "رمزگذاری"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "غیرفعال‌سازی گزارش خرابی"
  :settings.advanced/network-proxy "پروکسی شبکه"
 
- :settings.ai/enable-mcp-server "فعال‌سازی سرور MCP"
- :settings.ai/enable-mcp-server-desc "فعال‌سازی سرور MCP برای ادغام هوش مصنوعی"
 
  :settings.editor/auto-expand-block-refs "باز کردن خودکار مراجع بلوک"
  :settings.editor/auto-expand-block-refs-tip "برای باز کردن خودکار مراجع بلوک کلیک کنید"

@@ -1658,7 +1658,6 @@
  :select/new-option "+ New option: {1}"
 
  :server/error-notification "[Server] {1}"
- :server/mcp-url-copied "MCP URL copied to clipboard!"
  :server/start "Start server"
  :server/stop "Stop server"
  :server/title "HTTP API server"
@@ -1685,7 +1684,6 @@
 
  :settings/account "Account"
  :settings/advanced "Advanced"
- :settings/ai "AI"
  :settings/collaboration "Collaboration"
  :settings/editor "Editor"
  :settings/encryption "Encryption"
@@ -1706,8 +1704,6 @@
  :settings.advanced/disable-sentry-desc "Logseq will never collect your local graph database or sell your data."
  :settings.advanced/network-proxy "Network proxy"
 
- :settings.ai/enable-mcp-server "MCP Server"
- :settings.ai/enable-mcp-server-desc "Enable MCP Server to allow commmunication with local AI applications. MCP Server depends on HTTP API server."
 
  :settings.editor/auto-expand-block-refs "Expand block references automatically when zoom-in"
  :settings.editor/auto-expand-block-refs-tip "This option controls whether to expand the block references automatically when zoom-in."

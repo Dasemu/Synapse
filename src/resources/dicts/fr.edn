@@ -1516,7 +1516,6 @@
  :select/new-option "+ Nouvelle option : {1}"
 
  :server/error-notification "[Serveur] {1}"
- :server/mcp-url-copied "URL MCP copiée"
  :server/start "Démarrer"
  :server/stop "Arrêter"
  :server/title "Serveur API HTTP"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Compte"
  :settings/advanced "Avancé"
- :settings/ai "IA"
  :settings/collaboration "Collaboration"
  :settings/editor "Éditeur"
  :settings/encryption "Chiffrement"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Logseq ne collectera jamais votre base de données de graphes locale ni ne vendra vos données."
  :settings.advanced/network-proxy "Proxy réseau"
 
- :settings.ai/enable-mcp-server "Activer le serveur MCP"
- :settings.ai/enable-mcp-server-desc "Activer le serveur MCP pour l'intégration IA"
 
  :settings.editor/auto-expand-block-refs "Étendre automatiquement les références de bloc lors du zoom"
  :settings.editor/auto-expand-block-refs-tip "Cette option contrôle si les références de bloc sont développées automatiquement lors du zoom."

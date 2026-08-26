@@ -1516,7 +1516,6 @@
  :select/new-option "+ Nuwe opsie: {1}"
 
  :server/error-notification "[Server] {1}"
- :server/mcp-url-copied "MCP-URL gekopieerd"
  :server/start "Begin"
  :server/stop "Stop"
  :server/title "HTTP API-server"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Rekening"
  :settings/advanced "Gevorderd"
- :settings/ai "KI"
  :settings/collaboration "Samewerking"
  :settings/editor "Redigeerder"
  :settings/encryption "Enkripsie"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Deaktiveer ongelukrapportering"
  :settings.advanced/network-proxy "Netwerkvolmag"
 
- :settings.ai/enable-mcp-server "Aktiveer MCP-bediener"
- :settings.ai/enable-mcp-server-desc "MCP-server aktiveer vir AI-integratie"
 
  :settings.editor/auto-expand-block-refs "Blokreferenties outomaties uitklappen"
  :settings.editor/auto-expand-block-refs-tip "Klik om blokreferenties outomaties uit te klappen"

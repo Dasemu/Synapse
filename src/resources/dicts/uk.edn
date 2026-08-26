@@ -1516,7 +1516,6 @@
  :select/new-option "+ Нова опція: {1}"
 
  :server/error-notification "[Сервер] {1}"
- :server/mcp-url-copied "URL MCP скопирован"
  :server/start "Запустити"
  :server/stop "Зупинити"
  :server/title "HTTP API сервер"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Обліковий запис"
  :settings/advanced "Розширення"
- :settings/ai "ШІ"
  :settings/collaboration "Спільна робота"
  :settings/editor "Редактор"
  :settings/encryption "Шифрування"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Logseq ніколи не збиратиме вашу локальну базу даних графів і не відправлятиме ваші дані."
  :settings.advanced/network-proxy "Мережевий проксі"
 
- :settings.ai/enable-mcp-server "Увімкнути сервер MCP"
- :settings.ai/enable-mcp-server-desc "Увімкнути сервер MCP для интеграции с ИИ"
 
  :settings.editor/auto-expand-block-refs "Автораскрытие ссылок на блоки"
  :settings.editor/auto-expand-block-refs-tip "Автоматически раскрывать ссылки на блоки при нажатии"

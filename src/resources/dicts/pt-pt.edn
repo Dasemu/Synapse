@@ -1516,7 +1516,6 @@
  :select/new-option "+ Nova opção: {1}"
 
  :server/error-notification "[Servidor] {1}"
- :server/mcp-url-copied "URL MCP copiada"
  :server/start "Iniciar"
  :server/stop "Parar"
  :server/title "Servidor de API HTTP"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Conta"
  :settings/advanced "Avançado"
- :settings/ai "IA"
  :settings/collaboration "Colaboração"
  :settings/editor "Editor"
  :settings/encryption "Encriptação"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "A Logseq nunca irá recolher informações sobre a sua base de dados de grafos local ou vender os seus dados."
  :settings.advanced/network-proxy "Proxy de rede"
 
- :settings.ai/enable-mcp-server "Ativar servidor MCP"
- :settings.ai/enable-mcp-server-desc "Ativar servidor MCP para integração com IA"
 
  :settings.editor/auto-expand-block-refs "Expandir referências de blocos automaticamente"
  :settings.editor/auto-expand-block-refs-tip "Expandir referências de blocos automaticamente ao clicar"

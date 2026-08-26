@@ -1222,42 +1222,6 @@
 
   [:<>])
 
-(hsx/defc mcp-server-row
-  [t]
-  (let [server-state (rfx/use-sub [:electron/server])
-        [checked set-checked!] (hooks/use-state false)]
-
-    (hooks/use-effect!
-     (fn []
-       (let [initial (:mcp-enabled? server-state)]
-         (set-checked! initial)))
-     [server-state])
-
-    (let [on-toggle (fn []
-                      (let [new-val (not checked)]
-                        (set-checked! new-val)
-                        ;; Enable HTTP server to simplify starting MCP
-                        (when (and new-val (not (storage/get ::storage-spec/http-server-enabled)))
-                          (storage/set ::storage-spec/http-server-enabled true))
-                        (-> (ipc/ipc :server/set-config {:mcp-enabled? new-val})
-                            ;; Don't start server if it's not running
-                            (p/then #(when (= "running" (state/get-state [:electron/server :status]))
-                                       (p/let [_ (p/delay 1000)]
-                                         (ipc/ipc :server/do :restart))))
-                            (p/catch #(notification/show! (str %) :error)))))]
-      (toggle "mcp-server"
-              (t :settings.ai/enable-mcp-server)
-              checked
-              on-toggle
-              [:span.text-sm.opacity-50
-               (t :settings.ai/enable-mcp-server-desc)]))))
-
-(hsx/defc settings-ai
-  []
-  [:div.panel-wrap
-   (when (util/electron?)
-     (mcp-server-row t))])
-
 (hsx/defc ^:large-vars/cleanup-todo settings
   [_active-tab]
   (let [current-repo (rfx/use-sub [:git/current-repo])
@@ -1270,11 +1234,8 @@
      (fn []
        (state/load-app-user-cfgs)
        (state/load-electron-app-base-info)
-       (let [active-tab (if (and (= _active-tab :ai) (not (util/electron?)))
-                          :advanced
-                          _active-tab)]
-         (when (keyword? active-tab)
-           (reset! *active [active-tab nil])))
+       (when (keyword? _active-tab)
+         (reset! *active [_active-tab nil]))
        #(state/close-settings!))
      [])
 
@@ -1291,9 +1252,6 @@
                [:general (t :settings/general) (ui/icon "adjustments")]
                [:editor (t :settings/editor) (ui/icon "writing")]
                [:keymap (t :settings/keymap) (ui/icon "keyboard")]
-               (when (util/electron?)
-                 [:ai (t :settings/ai) (ui/icon "wand")])
-
                [:advanced (t :settings/advanced) (ui/icon "bulb")]
                [:features (t :settings/features) (ui/icon "app-feature")]
 
@@ -1347,10 +1305,5 @@
 
         :features
         (settings-features)
-
-         :ai
-         (if (util/electron?)
-           (settings-ai)
-           (settings-advanced))
 
         nil)]]]))

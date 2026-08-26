@@ -144,7 +144,7 @@
          #(js/clearTimeout t))))
    [])
 
-  (let [{:keys [status error mcp-enabled?]} server-state
+  (let [{:keys [status error]} server-state
         status (keyword (util/safe-lower-case status))
         running? (= :running status)
         href (and running? (str "http://" (:host server-state) ":" (:port server-state)))]
@@ -192,14 +192,7 @@
                                                     (server-status-label status)
                                                     [:span.flex.flex-col.gap-1.text-xs.font-mono
                                                      [:a.hover:underline.flex.items-center {:href href}
-                                                      href (shui/tabler-icon "external-link" {:size 12 :class "inline-block ml-1 pt-[1px]"})]
-                                                     (when mcp-enabled?
-                                                       [:a.hover:underline.flex.items-center
-                                                        {:on-click (fn []
-                                                                     (util/copy-to-clipboard! (str href "/mcp"))
-                                                                     (notification/show! (t :server/mcp-url-copied) :success))}
-                                                        (str href "/mcp")
-                                                        (shui/tabler-icon "copy" {:size 12 :class "inline-block ml-1 mt-[1px]"})])])]]
+                                                      href (shui/tabler-icon "external-link" {:size 12 :class "inline-block ml-1 pt-[1px]"})]])]]
                                                 (for [{:keys [hr? title options icon]} items]
                                                   (cond
                                                     hr?

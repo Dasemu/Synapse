@@ -9,7 +9,6 @@
             [clojure.string :as string]
             [electron.configs :as cfgs]
             [electron.logger :as logger]
-            [electron.mcp-server :as desktop-mcp-server]
             [electron.utils :as utils]
             [electron.window :as window]
             [promesa.core :as p]))
@@ -36,8 +35,7 @@
                   :host      (get-host)
                   :port      (get-port)
                   :tokens    (normalize-tokens (cfgs/get-item :server/tokens))
-                  :autostart (cfgs/get-item :server/autostart)
-                  :mcp-enabled? (cfgs/get-item :server/mcp-enabled?)}))
+                  :autostart (cfgs/get-item :server/autostart)}))
 
 (defn- set-status!
   ([status] (set-status! status nil))
@@ -141,18 +139,6 @@
         (p/catch (fn [^js e]
                    (set-status! :running e))))))
 
-(defn- initialize-mcp-routes [^js server]
-  (let [api-fn (fn api-fn [meth args]
-                 (if-let [meth' (resolve-real-api-method meth)]
-                   (invoke-logseq-api! meth' args)
-                   #js {:error (str "No method found for " (pr-str meth))}))]
-    (logger/debug "[server] MCP routes initialized")
-    (.post server "/mcp"
-           #(desktop-mcp-server/handle-post-request api-fn {:port (get-port)
-                                                            :host (get-host)} %1 %2))
-    (.get server "/mcp" desktop-mcp-server/handle-get-request)
-    (.delete server "/mcp" desktop-mcp-server/handle-delete-request)))
-
 (defn start!
   []
   (-> (p/let [_     (close!)
@@ -175,8 +161,6 @@
                                                  (string/replace-first "${PORT}" PORT))]
                                     (doto rep (.type "text/html")
                                           (.send html))))))
-              _ (when (:mcp-enabled? @*state)
-                  (initialize-mcp-routes s))
               ;; listen port
               _     (.listen s (bean/->js (select-keys @*state [:host :port])))]
         (reset! *server s)

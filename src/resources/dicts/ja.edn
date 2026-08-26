@@ -1529,7 +1529,6 @@
  :select/new-option "+ 新しいオプション: {1}"
 
  :server/error-notification "[サーバー] {1}"
- :server/mcp-url-copied "MCP URLをコピーしました"
  :server/start "開始"
  :server/stop "停止"
  :server/title "HTTP APIサーバー"
@@ -1556,7 +1555,6 @@
 
  :settings/account "アカウント"
  :settings/advanced "高度な設定"
- :settings/ai "AI"
  :settings/collaboration "コラボレーション"
  :settings/editor "エディタ"
  :settings/encryption "暗号化"
@@ -1577,8 +1575,6 @@
  :settings.advanced/disable-sentry-desc "Logseqはあなたのローカルなグラフを決して取得しませんし、あなたのデータを売ることも決してありません。 "
  :settings.advanced/network-proxy "ネットワークプロキシ"
 
- :settings.ai/enable-mcp-server "MCPサーバーを有効化"
- :settings.ai/enable-mcp-server-desc "MCPサーバーを有効にしてAI連携を可能にします"
 
  :settings.editor/auto-expand-block-refs "ブロック参照を自動展開"
  :settings.editor/auto-expand-block-refs-tip "このオプションは、ズームインしたときにブロック参照を展開するかどうかを指定します。"

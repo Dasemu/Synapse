@@ -1516,7 +1516,6 @@
  :select/new-option "+ Opsi baru: {1}"
 
  :server/error-notification "[Server] {1}"
- :server/mcp-url-copied "URL MCP disalin"
  :server/start "Mulai"
  :server/stop "Berhenti"
  :server/title "Server HTTP API"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Akun"
  :settings/advanced "Lanjutan"
- :settings/ai "AI"
  :settings/collaboration "Kolaborasi"
  :settings/editor "Editor"
  :settings/encryption "Enkripsi"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Logseq tidak akan pernah mengumpulkan database grafik lokal Anda atau menjual data Anda."
  :settings.advanced/network-proxy "Proxy jaringan"
 
- :settings.ai/enable-mcp-server "Aktifkan server MCP"
- :settings.ai/enable-mcp-server-desc "Aktifkan server MCP untuk integrasi AI"
 
  :settings.editor/auto-expand-block-refs "Perluas referensi blok secara otomatis saat zoom-in"
  :settings.editor/auto-expand-block-refs-tip "Opsi ini mengontrol apakah referensi blok akan diperluas secara otomatis saat zoom-in."

@@ -1516,7 +1516,6 @@
  :select/new-option "+ 새 옵션: {1}"
 
  :server/error-notification "[서버] {1}"
- :server/mcp-url-copied "MCP URL이 복사되었습니다"
  :server/start "시작"
  :server/stop "중지"
  :server/title "HTTP API 서버"
@@ -1543,7 +1542,6 @@
 
  :settings/account "계정"
  :settings/advanced "고급"
- :settings/ai "AI"
  :settings/collaboration "협업"
  :settings/editor "편집기"
  :settings/encryption "암호화"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Logseq는 사용자의 로컬 그래프 데이터베이스 정보를 수집하지 않습니다."
  :settings.advanced/network-proxy "네트워크 프록시"
 
- :settings.ai/enable-mcp-server "MCP 서버 활성화"
- :settings.ai/enable-mcp-server-desc "MCP 서버를 활성화하여 AI 연동을 가능하게 합니다"
 
  :settings.editor/auto-expand-block-refs "블록 참조 자동 확장"
  :settings.editor/auto-expand-block-refs-tip "이 설정은 블록을 확대할 때 블록 참조를 자동으로 펼칠지를 결정합니다."

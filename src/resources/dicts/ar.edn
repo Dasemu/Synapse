@@ -1516,7 +1516,6 @@
  :select/new-option "+ خيار جديد: {1}"
 
  :server/error-notification "[الخادم] {1}"
- :server/mcp-url-copied "تم نسخ رابط MCP"
  :server/start "بدء"
  :server/stop "إيقاف"
  :server/title "خادم HTTP API"
@@ -1543,7 +1542,6 @@
 
  :settings/account "الحساب"
  :settings/advanced "متقدم"
- :settings/ai "الذكاء الاصطناعي"
  :settings/collaboration "التعاون"
  :settings/editor "المحرر"
  :settings/encryption "التشفير"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "تعطيل تقارير الأعطال"
  :settings.advanced/network-proxy "وكيل الشبكة"
 
- :settings.ai/enable-mcp-server "تفعيل خادم MCP"
- :settings.ai/enable-mcp-server-desc "تفعيل خادم MCP لتكامل الذكاء الاصطناعي"
 
  :settings.editor/auto-expand-block-refs "توسيع مراجع الكتل تلقائياً"
  :settings.editor/auto-expand-block-refs-tip "انقر لتوسيع مراجع الكتل تلقائياً"

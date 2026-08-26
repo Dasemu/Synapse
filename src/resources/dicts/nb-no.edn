@@ -1516,7 +1516,6 @@
  :select/new-option "+ Nytt alternativ: {1}"
 
  :server/error-notification "[Server] {1}"
- :server/mcp-url-copied "MCP-URL kopiert"
  :server/start "Start"
  :server/stop "Stopp"
  :server/title "HTTP API-server"
@@ -1543,7 +1542,6 @@
 
  :settings/account "Konto"
  :settings/advanced "Avansert"
- :settings/ai "AI"
  :settings/collaboration "Samarbeid"
  :settings/editor "Redigering"
  :settings/encryption "Kryptering"
@@ -1564,8 +1562,6 @@
  :settings.advanced/disable-sentry-desc "Deaktiver krasjrapportering"
  :settings.advanced/network-proxy "Nettverksproxy"
 
- :settings.ai/enable-mcp-server "Aktiver MCP-server"
- :settings.ai/enable-mcp-server-desc "Aktiver MCP-server for AI-integrasjon"
 
  :settings.editor/auto-expand-block-refs "Utvid blokkreferanser automatisk"
  :settings.editor/auto-expand-block-refs-tip "Klikk for å utvide blokkreferanser automatisk"

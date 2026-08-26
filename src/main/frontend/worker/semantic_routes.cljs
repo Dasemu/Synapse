@@ -83,7 +83,10 @@
    {:method "GET" :path "/v1/semantic/search"
     :handler :semantic/search :operation-id "searchGraph" :success-status 200}])
 
-(def ^:private operation-docs
+(def operation-docs
+  "Public so worker.mcp-server can source MCP tool titles/descriptions from
+  the same place the OpenAPI document does, instead of a second copy that
+  could drift."
   {"listPages" ["List pages" "Returns a cursor-paginated list of page blocks in the graph."]
    "createPage" ["Create a page" "Creates a page block with the supplied title."]
    "listPageBlocks" ["List a page's blocks" "Returns a cursor-paginated list of the page's top-level blocks, including each selected block's descendant tree."]

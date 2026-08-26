@@ -1529,7 +1529,6 @@
  :select/new-option "+ 新選項: {1}"
 
  :server/error-notification "[伺服器] {1}"
- :server/mcp-url-copied "MCP URL 已複製到剪貼簿！"
  :server/start "啟動伺服器"
  :server/stop "停止伺服器"
  :server/title "HTTP API 伺服器"
@@ -1556,7 +1555,6 @@
 
  :settings/account "帳戶"
  :settings/advanced "進階功能"
- :settings/ai "AI"
  :settings/collaboration "協作"
  :settings/editor "編輯器"
  :settings/encryption "加密"
@@ -1577,8 +1575,6 @@
  :settings.advanced/disable-sentry-desc "Logseq 永遠不會收集你的圖譜資料或出售你的數據。"
  :settings.advanced/network-proxy "網路代理"
 
- :settings.ai/enable-mcp-server "MCP 伺服器"
- :settings.ai/enable-mcp-server-desc "啟用 MCP 伺服器，允許與本地 AI 應用程式通訊"
 
  :settings.editor/auto-expand-block-refs "自動展開聚焦 block 的引用"
  :settings.editor/auto-expand-block-refs-tip "此選項控制是否在頁面載入時展開區塊引用"

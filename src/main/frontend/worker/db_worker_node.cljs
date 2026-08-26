@@ -8,6 +8,7 @@
             [frontend.worker.db-worker-node-auth :as auth]
             [frontend.worker.db-worker-node-lock :as db-lock]
             [frontend.worker.db-worker-node-ws :as db-ws]
+            [frontend.worker.mcp-server :as mcp-server]
             [frontend.worker.platform.node :as platform-node]
             [frontend.worker.semantic-routes :as semantic-routes]
             [frontend.worker.state :as worker-state]
@@ -675,6 +676,15 @@
 
          (string/starts-with? request-path "/v1/semantic/")
          (semantic-request-handler req res bound-repo proxy parsed-url request-path method)
+
+         (and (= request-path "/mcp") (= method "POST"))
+         (mcp-server/handle-post-request {:host host :port (effective-port port)} req res)
+
+         (and (= request-path "/mcp") (= method "GET"))
+         (mcp-server/handle-get-request req res)
+
+         (and (= request-path "/mcp") (= method "DELETE"))
+         (mcp-server/handle-delete-request req res)
 
          (= request-path "/v1/invoke-batch")
          (if (= method "POST")
