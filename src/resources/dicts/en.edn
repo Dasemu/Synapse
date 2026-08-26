@@ -750,6 +750,7 @@
  :graph/layout-force "Force graph"
  :graph/layout-grid-layout "Grid layout"
  :graph/layout-link-distance "Link distance"
+ :graph/layout-temporal "Timeline"
  :graph/layout-show-journals "Show journals"
  :graph/leave-action "Leave this graph"
  :graph/leave-confirm-desc "Are you sure you want to leave this graph?"
@@ -787,6 +788,7 @@
  :graph/view-mode "View mode"
  :graph/view-mode-all-pages "All pages"
  :graph/view-mode-tags "Tags"
+ :graph/view-mode-temporal "Timeline"
 
  :graph.diagnostics/checksum-failed-error "Failed to compute graph checksum diagnostics."
  :graph.diagnostics/checksum-recomputed-success "Checksum recomputed. Recomputed: {1}, local: {2}, remote: {3}. Downloaded {4}.edn with {5} blocks and checksum attributes {6}."

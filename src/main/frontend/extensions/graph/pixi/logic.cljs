@@ -483,6 +483,7 @@
   (case view-mode
     :all-pages :all-pages
     :page :page
+    :temporal :temporal
     :tags-and-objects))
 
 (defn labels-visible-by-default?
@@ -1000,6 +1001,26 @@
     (vec (concat linked-nodes
                  (place-isolated-ring-nodes isolated degree dark? isolated-start-radius)))))
 
+(def ^:private temporal-lane-count 6)
+(def ^:private temporal-node-gap 46)
+(def ^:private temporal-lane-gap 30)
+
+(defn- temporal-layout-nodes
+  "Lays out nodes along a fixed, linear timeline ordered by :block/created-at
+   (oldest first), instead of running the force simulation. Nodes without a
+   timestamp sort first. Staggered across a few lanes on the y-axis so nodes
+   created close together don't fully overlap."
+  [nodes degree dark?]
+  (->> nodes
+       (sort-by (fn [node] [(or (:block/created-at node) 0) (str (:id node))]))
+       (map-indexed
+        (fn [idx node]
+          (let [lane (mod idx temporal-lane-count)
+                x (* idx temporal-node-gap)
+                y (* lane temporal-lane-gap)]
+            (decorate-node node degree dark? x y))))
+       vec))
+
 (defn- all-pages-fast-layout-nodes
   [nodes degree dark?]
   (let [node-count (count nodes)
@@ -1383,8 +1404,17 @@
          mode (layout-mode (count nodes) view-mode)
          fast-all-pages? (and (= :fast mode)
                               (= view-mode :all-pages))]
-     (if fast-all-pages?
+     (cond
+       (= view-mode :temporal)
+       (let [node-id-set (set (map :id nodes))
+             filtered-links (keep-links-with-nodes links node-id-set)
+             degree (build-degree-map filtered-links)]
+         (temporal-layout-nodes nodes degree dark?))
+
+       fast-all-pages?
        (all-pages-fast-layout-nodes nodes (build-fast-degree-map nodes links) dark?)
+
+       :else
        (let [node-id-set (set (map :id nodes))
              filtered-links (keep-links-with-nodes links node-id-set)
              degree (build-degree-map filtered-links)

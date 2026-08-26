@@ -48,8 +48,9 @@
 
 (defn- normalize-view-mode
   [view-mode]
-  (if (= view-mode :all-pages)
-    :all-pages
+  (case view-mode
+    :all-pages :all-pages
+    :temporal :temporal
     :tags-and-objects))
 
 (def ^:private large-all-pages-fast-threshold 10000)
@@ -923,7 +924,11 @@
         result (case view-mode
                  :tags-and-objects
                  (build-tags-and-objects-graph db)
-                 :all-pages
+                 (:all-pages :temporal)
+                 ;; :temporal reuses the same node/link shape as :all-pages
+                 ;; (every node already carries :block/created-at); only the
+                 ;; client-side layout differs, arranging nodes on a fixed
+                 ;; timeline instead of running the force simulation.
                  (build-all-pages-graph db opts))]
     (assoc result :meta {:view-mode view-mode})))
 

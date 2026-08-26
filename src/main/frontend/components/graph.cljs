@@ -35,8 +35,9 @@
 
 (defn- valid-view-mode
   [view-mode]
-  (if (= view-mode :all-pages)
-    :all-pages
+  (case view-mode
+    :all-pages :all-pages
+    :temporal :temporal
     :tags-and-objects))
 
 (defn- clamp-number
@@ -335,7 +336,13 @@
         :class "graph-mode-tab"}
        (view-mode-tab-label
         (t :graph/view-mode-all-pages)
-        (and loading? (= view-mode :all-pages))))))}))
+        (and loading? (= view-mode :all-pages))))
+      (shui/tabs-trigger
+       {:value "temporal"
+        :class "graph-mode-tab"}
+       (view-mode-tab-label
+        (t :graph/view-mode-temporal)
+        (and loading? (= view-mode :temporal))))))}))
 
 (defn- tags-group
   [settings set-settings! available-tags selected-tag-ids tag-query set-tag-query!]
@@ -430,34 +437,37 @@
         link-distance (valid-link-distance (:link-distance settings))
         grid-layout? (true? (:grid-layout? settings))
         show-journals? (not (false? (:show-journals? settings)))
-        depth-disabled? (depth-control-disabled? selected-nodes)]
+        depth-disabled? (depth-control-disabled? selected-nodes)
+        temporal? (= view-mode :temporal)]
     (settings-group
      {:settings settings
       :set-settings! set-settings!
       :id :layout
       :title (t :graph/layout)
-      :meta (t :graph/layout-force)
+      :meta (if temporal? (t :graph/layout-temporal) (t :graph/layout-force))
       :children [:div.graph-layout-controls
                  [:div.graph-layout-stats
                   [:span (t :graph/node-count (count (:nodes graph-data)))]
                   [:span (t :graph/link-count (count (:links graph-data)))]]
-                 (layout-slider
-                  {:label (t :graph/layout-depth)
-                   :value depth
-                   :min 1
-                   :max 5
-                   :step 1
-                   :disabled? depth-disabled?
-                   :on-change #(set-settings! (fn [settings]
-                                                 (assoc settings :depth (valid-depth %))))})
-                 (layout-slider
-                  {:label (t :graph/layout-link-distance)
-                   :value link-distance
-                   :min 36
-                   :max 180
-                   :step 6
-                   :on-change #(set-settings! (fn [settings]
-                                                 (assoc settings :link-distance (valid-link-distance %))))})
+                 (when-not temporal?
+                   [:<>
+                    (layout-slider
+                     {:label (t :graph/layout-depth)
+                      :value depth
+                      :min 1
+                      :max 5
+                      :step 1
+                      :disabled? depth-disabled?
+                      :on-change #(set-settings! (fn [settings]
+                                                    (assoc settings :depth (valid-depth %))))})
+                    (layout-slider
+                     {:label (t :graph/layout-link-distance)
+                      :value link-distance
+                      :min 36
+                      :max 180
+                      :step 6
+                      :on-change #(set-settings! (fn [settings]
+                                                    (assoc settings :link-distance (valid-link-distance %))))})])
                  (when (= view-mode :tags-and-objects)
                    [:<>
                     (layout-toggle
