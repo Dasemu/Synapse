@@ -673,9 +673,9 @@
                                     {:page {:block/title "Built In"
                                             :build/properties {:logseq.property/built-in? true}}
                                      :blocks [{:block/title "system"}]}
-                                    {:page {:block/title "Project"
+                                    {:page {:block/title "Custom Tag"
                                             :block/tags #{:logseq.class/Tag}
-                                            :db/ident :user.class/Project}
+                                            :db/ident :user.class/CustomTag}
                                      :blocks [{:block/title "class"}]}
                                     {:page {:block/title "rating"
                                             :block/tags #{:logseq.class/Property}
@@ -686,16 +686,16 @@
                     (is (not= ::missing-mirror-repo-fn result))
                     (let [page-a (db-test/find-page-by-title @conn "Page A")
                           journal (db-test/find-journal-by-journal-day @conn 20240508)
-                          project (db-test/find-page-by-title @conn "Project")]
+                          custom-tag (db-test/find-page-by-title @conn "Custom Tag")]
                       (is (= (str (page-marker (:block/uuid page-a)) "\n\n"
                                   "- alpha")
                              (get @files (page-path "pages/Page A.md"))))
                       (is (= (str (page-marker (:block/uuid journal)) "\n\n"
                                   "- journal")
                              (get @files (page-path "journals/2024_05_08.md"))))
-                      (is (= (str (page-marker (:block/uuid project)) "\n\n"
+                      (is (= (str (page-marker (:block/uuid custom-tag)) "\n\n"
                                   "- class")
-                             (get @files (page-path "pages/Project.md")))))
+                             (get @files (page-path "pages/Custom Tag.md")))))
                     (is (nil? (get @files (page-path "pages/Built In.md"))))
                     (is (nil? (get @files (page-path "pages/rating.md"))))))
           (p/catch (fn [e] (is false (str "unexpected error: " e))))

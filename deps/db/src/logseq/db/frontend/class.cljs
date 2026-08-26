@@ -51,6 +51,12 @@
      {:title "Comment"
       :properties {:logseq.property.class/hide-from-node true}}
 
+     :logseq.class/Citation
+     {:title "Citation"
+      :properties {:logseq.property/icon {:type :tabler-icon :id "quote"}}
+      :schema {:properties [:logseq.property.citation/target :logseq.property.citation/context]
+               :required-properties [:logseq.property.citation/target]}}
+
      :logseq.class/Query
      {:title "Query"
       :properties {:logseq.property/icon {:type :tabler-icon :id "search"}}
@@ -101,7 +107,15 @@
      {:title "Template"
       :schema {:properties [:logseq.property/template-applied-to]}}
 
-     ;; TODO: Add more classes such as :book, :paper, :movie, :music, :project)
+     :logseq.class/Project
+     {:title "Project"
+      :properties {:logseq.property.class/extends :logseq.class/Page}}
+
+     :logseq.class/Area
+     {:title "Area"
+      :properties {:logseq.property.class/extends :logseq.class/Page}}
+
+     ;; TODO: Add more classes such as :book, :paper, :movie, :music)
      )))
 
 (def page-children-classes

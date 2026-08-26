@@ -364,6 +364,21 @@
     (is (contains? (set (:links result))
                    {:source hub-id :target page-id}))))
 
+(deftest block-graph-follows-citation-target-ref
+  (let [conn (db-test/create-conn-with-blocks
+              {:pages-and-blocks
+               [{:page {:block/title "Citing page"}
+                 :blocks [{:block/title "a quote"
+                          :build/tags [:logseq.class/Citation]}]}
+                {:page {:block/title "Cited page"}}]})
+        citation-block (d/entity @conn (d/q '[:find ?b . :where [?b :block/title "a quote"]] @conn))
+        cited-page (d/entity @conn (d/q '[:find ?b . :where [?b :block/title "Cited page"]] @conn))
+        _ (d/transact! conn [[:db/add (:db/id citation-block) :logseq.property.citation/target (:db/id cited-page)]
+                             [:db/add (:db/id citation-block) :block/refs (:db/id cited-page)]])
+        result (graph-view/build-graph @conn {:type :block :block/uuid (:block/uuid citation-block)})]
+    (is (= #{"a quote" "Cited page"} (node-labels result))
+        "The citation graph follows the node-typed citation target ref, same as any other reference")))
+
 (deftest tags-and-objects-graph-skips-large-unrelated-page-set-quickly
   (let [conn (db-test/create-conn-with-blocks
               {:pages-and-blocks

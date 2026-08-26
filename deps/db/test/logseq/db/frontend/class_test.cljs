@@ -7,6 +7,15 @@
 (defn- parent-class-id [db]
   (:db/id (d/entity db :user.class/Parent)))
 
+(deftest project-and-area-are-built-in-page-classes
+  (testing "Project and Area are registered as built-in classes that behave like pages"
+    (is (contains? db-class/built-in-classes :logseq.class/Project))
+    (is (contains? db-class/built-in-classes :logseq.class/Area))
+    (is (contains? db-class/page-children-classes :logseq.class/Project))
+    (is (contains? db-class/page-children-classes :logseq.class/Area))
+    (is (not (contains? db-class/private-tags :logseq.class/Project)))
+    (is (not (contains? db-class/private-tags :logseq.class/Area)))))
+
 (deftest get-class-objects-dedupes-inherited-tags-test
   (let [conn (db-test/create-conn-with-blocks
               {:classes {:Parent {:block/title "Parent"}
