@@ -134,6 +134,13 @@
       :schema {:properties [:logseq.property.contact/email :logseq.property.contact/phone
                             :logseq.property.contact/organization]}}
 
+     :logseq.class/LiveNote
+     {:title "Live Note"
+      :properties {:logseq.property.class/extends :logseq.class/Page
+                   :logseq.property/icon {:type :tabler-icon :id "refresh"}}
+      :schema {:properties [:logseq.property.livenote/url :logseq.property.livenote/refresh-minutes]
+               :required-properties [:logseq.property.livenote/url]}}
+
      ;; TODO: Add more classes such as :book, :paper, :movie, :music)
      )))
 

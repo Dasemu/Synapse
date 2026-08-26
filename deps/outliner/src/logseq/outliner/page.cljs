@@ -154,10 +154,33 @@
               (ldb/transact! conn tx-data tx-meta'))
             true))))))
 
+(defn- tag-ident
+  [tag]
+  (cond (de/entity? tag) (:db/ident tag)
+        (keyword? tag) tag
+        (map? tag) (:db/ident tag)))
+
 (defn- build-page-tx [db properties page {:keys [class? tags class-ident-namespace]}]
   (when (:block/uuid page)
     (let [type-tag (if class? :logseq.class/Tag :logseq.class/Page)
-          tags' (if (:block/journal-day page) tags (conj tags type-tag))
+          ;; A page already tagged with a built-in class that extends #Page
+          ;; (Journal, Whiteboard, Event, Contact, Project, Area, ...) must
+          ;; not also carry the generic #Page tag -- malli-schema rejects
+          ;; that combination as conflicting built-in page tags.
+          already-page-tagged? (and (= type-tag :logseq.class/Page)
+                                    (some (fn [tag]
+                                            (let [ident (tag-ident tag)]
+                                              (and ident
+                                                   (or (= ident :logseq.class/Page)
+                                                       (contains? db-class/page-children-classes ident)))))
+                                          tags))
+          tags' (if (or (:block/journal-day page) already-page-tagged?) tags (conj tags type-tag))
+          ;; page-name->map may have already seeded :block/tags with the
+          ;; generic #Page tag -- strip it back out here too, or it survives
+          ;; the merge below even though tags' no longer re-adds it.
+          page (cond-> page
+                 already-page-tagged?
+                 (update :block/tags (fn [existing] (remove #{:logseq.class/Page} existing))))
           page' (update page :block/tags
                         (fnil into [])
                         (mapv (fn [tag]
@@ -181,10 +204,10 @@
            page'
            (->> properties
                 (keep (fn [[k v]]
-                        ;; TODO: Pass in property type in order to support property
-                        ;; types other than :default
                         (when (db-property/built-in-has-ref-value? k)
-                          [k v])))
+                          [{:db/ident k
+                            :logseq.property/type (get-in db-property/built-in-properties [k :schema :type])}
+                           v])))
                 (into {})))]
       (cond-> (if class?
                 [(merge (db-class/build-new-class db page' {:ident-namespace class-ident-namespace})

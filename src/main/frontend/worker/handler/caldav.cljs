@@ -371,7 +371,7 @@
         (when (seq tx) (ldb/transact! conn tx))
         (:block/uuid existing))
       (let [[_title page-uuid] (page-handler/create! conn title
-                                                      {:tags [tag-ident]
+                                                      {:tags [(d/entity db [:db/ident tag-ident])]
                                                        :properties (clean-properties properties)})]
         page-uuid))))
 
@@ -521,7 +521,7 @@
              (p/catch (fn [error]
                         (swap! *sync-status assoc repo {:last-sync-at (js/Date.now())
                                                         :last-sync-error (str error)})
-                        (log/error :caldav/sync-failed {:repo repo :error error})
+                        (log/error :caldav/sync-failed {:repo repo :error (str error)})
                         {:status :error :error (str error)}))))))))
 
 (defn- node-runtime?
@@ -548,7 +548,7 @@
                     (swap! *sync-intervals assoc repo
                            (js/setInterval #(<sync! repo) sync-interval-ms)))))
         (p/catch (fn [error]
-                   (log/error :caldav/maybe-start-sync-failed {:repo repo :error error}))))))
+                   (log/error :caldav/maybe-start-sync-failed {:repo repo :error (str error)}))))))
 
 (def-thread-api :thread-api/caldav-connect!
   [repo config]

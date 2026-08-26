@@ -151,6 +151,16 @@
                                           :hide? true
                                           :view-context :block}
                                  :queryable? true}
+     :logseq.property.code/result {:title "Code result"
+                                   :schema {:type :string
+                                            :public? false
+                                            :hide? true
+                                            :view-context :block}}
+     :logseq.property.code/executed-at {:title "Code executed at"
+                                        :schema {:type :datetime
+                                                 :public? false
+                                                 :hide? true
+                                                 :view-context :block}}
      :logseq.property/default-value {:title "Default value"
                                      :schema {:type :entity
                                               :public? false
@@ -451,6 +461,27 @@
                                    :schema {:type :string
                                             :hide? true
                                             :public? false}}
+
+     :logseq.property.livenote/url {:title "Source URL"
+                                    :schema {:type :url
+                                             :public? true}}
+     :logseq.property.livenote/refresh-minutes {:title "Refresh every (minutes)"
+                                                :schema {:type :number
+                                                         :public? true}
+                                                :properties {:logseq.property/default-value 60}}
+     ;; Live note bookkeeping, not user-facing
+     :logseq.property.livenote/content {:title "Live note content"
+                                        :schema {:type :string
+                                                 :hide? true
+                                                 :public? false}}
+     :logseq.property.livenote/last-fetched-at {:title "Live note last fetched at"
+                                                :schema {:type :datetime
+                                                         :hide? true
+                                                         :public? false}}
+     :logseq.property.livenote/last-error {:title "Live note last error"
+                                           :schema {:type :string
+                                                    :hide? true
+                                                    :public? false}}
 
      :logseq.property/icon {:title "Icon"
                             :schema {:type :map}}
@@ -804,7 +835,9 @@
     "logseq.property.journal" "logseq.property.class" "logseq.property.view"
     "logseq.property.user" "logseq.property.history"
     "logseq.property.reaction" "logseq.property.sync" "logseq.property.publish"
-    "logseq.property.recycle" "logseq.property.comments" "logseq.property.agent"})
+    "logseq.property.recycle" "logseq.property.comments" "logseq.property.agent"
+    "logseq.property.citation" "logseq.property.event" "logseq.property.contact"
+    "logseq.property.caldav" "logseq.property.livenote"})
 
 (defn logseq-property?
   "Determines if keyword is a logseq property"

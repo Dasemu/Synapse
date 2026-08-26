@@ -4,6 +4,7 @@
             [frontend.worker.handler.block :as block-handler]
             [frontend.worker.handler.render-resource.basic :as basic]
             [frontend.worker.handler.render-resource.common :as common]
+            [frontend.worker.handler.render-resource.live-note :as live-note]
             [frontend.worker.handler.render-resource.property :as property]
             [frontend.worker.handler.render-resource.query :as query]
             [frontend.worker.handler.render-resource.similar :as similar]
@@ -16,6 +17,7 @@
          view/resource-renderers
          query/resource-renderers
          similar/resource-renderers
+         live-note/resource-renderers
          {:block-sync-conflicts
           (common/renderer nil
                            (fn [_db resource-key _runtime]

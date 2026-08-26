@@ -4714,6 +4714,34 @@
                             (on-select! lang e)))
                         (shui/popup-hide!))}))))
 
+(hsx/defc kernel-run-button
+  [block]
+  (let [[running? set-running!] (hooks/use-state false)]
+    (shui/button
+     {:variant :text
+      :size :sm
+      :disabled running?
+      :on-click
+      (fn [^js e]
+        (util/stop-propagation e)
+        (let [repo (state/get-current-repo)
+              page-uuid (or (:block/uuid (:block/page block)) (:block/uuid block))
+              ^js cm (util/get-cm-instance (util/rec-get-node (.-target e) "ls-block"))]
+          (when (and repo page-uuid cm)
+            (set-running! true)
+            (-> (state/<invoke-db-worker :thread-api/kernel-eval!
+                                        repo page-uuid (:block/uuid block) (.getValue cm))
+                (p/finally #(set-running! false))))))}
+     (ui/icon (if running? "loader-2" "player-play") {:class (when running? "animate-spin")})
+     (t (if running? :editor/running-code :editor/run-code)))))
+
+(hsx/defc kernel-result
+  [block]
+  (when-let [result (:logseq.property.code/result block)]
+    [:div.kernel-results.mt-1
+     [:code (t :editor/kernel-results)]
+     [:pre.code (str result)]]))
+
 (hsx/defc src-cp
   [config options]
   (let [block (or (:code-block config) (:block config))
@@ -4779,11 +4807,15 @@
                                (util/copy-to-clipboard! (.getValue cm))
                                (notification/show! (t :notification/copied) :success)))}
                 (ui/icon "copy")
-                (t :ui/copy))]
+                (t :ui/copy))
+               (when (= language "clojure")
+                 (kernel-run-button block))]
               (lazy-editor/editor config editor-id attr code options)
               (let [options (:options options) block (:block config)]
                 (when (and (= language "clojure") (contains? (set options) ":results"))
-                  (sci/eval-result code block)))]]))))))
+                  (sci/eval-result code block)))
+              (when (= language "clojure")
+                (kernel-result block))]]))))))
 
 (defn ^:large-vars/cleanup-todo markup-element-cp
   [{:keys [html-export?] :as config} item]

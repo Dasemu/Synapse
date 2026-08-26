@@ -205,7 +205,14 @@
                           :logseq.property.caldav/uid
                           :logseq.property.caldav/href
                           :logseq.property.caldav/etag]
-             :fix add-calendar-view-type-closed-value}]])
+             :fix add-calendar-view-type-closed-value}]
+   ["65.38" {:properties [:logseq.property.code/result :logseq.property.code/executed-at]}]
+   ["65.39" {:classes [:logseq.class/LiveNote]
+             :properties [:logseq.property.livenote/url
+                          :logseq.property.livenote/refresh-minutes
+                          :logseq.property.livenote/content
+                          :logseq.property.livenote/last-fetched-at
+                          :logseq.property.livenote/last-error]}]])
 
 (let [[major minor] (last (sort (map (comp (juxt :major :minor) db-schema/parse-schema-version first)
                                      schema-version->updates)))]

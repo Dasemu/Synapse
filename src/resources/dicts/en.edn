@@ -497,6 +497,7 @@
  :editor/display-tag-inline-hint "to display this tag inline instead of at the end of this node."
  :editor/expand-block-children "Expand all"
  :editor/heading "Heading {1}"
+ :editor/kernel-results "Kernel results"
  :editor/moving-blocks-count (fn [n] (str "Moving " n (if (> n 1) " blocks" " block")))
  :editor/new-page "New page"
  :editor/new-tag "New tag"
@@ -504,6 +505,8 @@
  :editor/paste "Paste"
  :editor/reference-node-use-page-ref "To reference a node, please use `[[]]`."
  :editor/remove-heading "Remove heading"
+ :editor/run-code "Run"
+ :editor/running-code "Running..."
  :editor/search-for-node "Search for a node"
  :editor/search-for-tag "Search for a tag"
  :editor/search-template-placeholder "Search for a template"
@@ -1011,6 +1014,12 @@
  :library/add-existing-pages "Add existing pages to Library"
  :library/add-pages "Add pages"
  :library/title "Library"
+
+ :live-note/last-fetched "Last fetched:"
+ :live-note/not-fetched-yet "Not fetched yet"
+ :live-note/refresh-now "Refresh now"
+ :live-note/refreshing "Refreshing…"
+ :live-note/title "Live note"
 
  :mobile/camera-access-denied "Camera access is denied. Enable it in Settings > Logseq."
  :mobile/microphone-access-denied "Microphone access is denied. Enable it in Settings > Logseq."

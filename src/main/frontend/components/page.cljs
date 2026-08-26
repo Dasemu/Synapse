@@ -15,6 +15,7 @@
             [frontend.components.recycle :as recycle]
             [frontend.components.reference :as reference]
             [frontend.components.scheduled-deadlines :as scheduled]
+            [frontend.components.live-note :as live-note]
             [frontend.components.similar-pages :as similar-pages]
             [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
@@ -513,6 +514,9 @@
 
               (when (entity/class? page)
                 (class-component/class-children page))
+
+              (when (some #(= :logseq.class/LiveNote (:db/ident %)) (:block/tags page))
+                (live-note/live-note (:block/uuid page)))
 
               ;; referenced blocks
               (when (and (not tag-dialog?)

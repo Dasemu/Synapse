@@ -42,12 +42,27 @@
   [entity]
   (has-tag? entity :logseq.class/Journal))
 
+;; Built-in classes that extend :logseq.class/Page (logseq.db.frontend.class/
+;; page-children-classes) but, like Journal, are recognized as pages by their
+;; own specific tag alone -- they must not also carry the generic #Page tag
+;; (malli-schema's block-tags rule forbids combining #Page with another
+;; built-in page tag). Can't derive this set from class.cljs's
+;; page-children-classes here: class.cljs requires this namespace, so the
+;; reverse require would be circular.
+(def ^:private built-in-page-child-tags
+  #{:logseq.class/Event :logseq.class/Contact :logseq.class/LiveNote})
+
+(defn built-in-page-child?
+  [entity]
+  (some (fn [tag-ident] (has-tag? entity tag-ident)) built-in-page-child-tags))
+
 (defn page?
   [entity]
   (or (internal-page? entity)
       (journal? entity)
       (class? entity)
-      (property? entity)))
+      (property? entity)
+      (built-in-page-child? entity)))
 
 (defn asset?
   "Given an entity or map, check if it is an asset block"

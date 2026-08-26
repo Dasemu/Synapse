@@ -18,6 +18,8 @@
    [frontend.worker.handler.export]
    [frontend.worker.handler.flashcard]
    [frontend.worker.handler.graph]
+   [frontend.worker.handler.kernel :as kernel-handler]
+   [frontend.worker.handler.live-notes :as live-notes-handler]
    [frontend.worker.handler.markdown]
    [frontend.worker.handler.maintenance]
    [frontend.worker.handler.page]
@@ -366,6 +368,8 @@
     (js/clearInterval timer))
   (swap! *client-ops-cleanup-timers dissoc repo)
   (caldav-handler/stop-sync! repo)
+  (kernel-handler/clear-repo-sessions! repo)
+  (live-notes-handler/stop-refresh! repo)
   (swap! *sqlite-conns dissoc repo)
   (when-let [vector-index (worker-state/get-vector-index repo)]
     (when-let [close-fn (:close! vector-index)]
@@ -651,6 +655,7 @@
             (db-listener/listen-db-changes! repo conn)
 
             (caldav-handler/maybe-start-sync! repo)
+            (live-notes-handler/maybe-start-refresh! repo)
 
             nil))))))
 
