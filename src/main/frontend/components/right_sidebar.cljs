@@ -25,6 +25,7 @@
             [frontend.undo-redo.debug-ui :as undo-redo-debug-ui]
             [frontend.util :as util]
             [frontend.util.entity :as entity]
+            [logseq.common.config :as common-config]
             [logseq.shui.hooks :as hooks]
             [logseq.shui.ui :as shui]
             [medley.core :as medley]
@@ -170,7 +171,7 @@
                        (db-async/<get-block repo db-id {:children? false
                                                        :block-metadata? true}))
               contents-page (when (= :contents (keyword block-type))
-                              (db-async/<get-block repo "Contents" {:children? false}))]
+                              (db-async/<get-block repo common-config/contents-page-name {:children? false}))]
        (build-sidebar-item repo idx db-id block-type *db-id init-key entity contents-page))
       (p/catch (fn [error]
                  (js/console.error error)))))

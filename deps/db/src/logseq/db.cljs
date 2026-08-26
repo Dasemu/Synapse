@@ -577,6 +577,11 @@
   [db]
   (get-built-in-page db common-config/library-page-name))
 
+(def contents? db-db/contents?)
+(defn get-contents-page
+  [db]
+  (get-built-in-page db common-config/contents-page-name))
+
 (defn get-case-page
   "Case sensitive version of get-page. For use with DB graphs"
   [db page-name-or-uuid]

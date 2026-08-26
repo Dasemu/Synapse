@@ -139,3 +139,11 @@
   [page]
   (and (entity-util/built-in? page)
        (= common-config/library-page-name (:block/title page))))
+
+(defn contents?
+  "Whether `page` is the built-in Contents page, the other hierarchical
+   root pages can be explicitly organized under (coexists with Library,
+   which remains the default root for namespaced pages)."
+  [page]
+  (and (entity-util/built-in? page)
+       (= common-config/contents-page-name (:block/title page))))

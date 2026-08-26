@@ -130,7 +130,7 @@
 (def built-in-pages-names
   #{common-config/library-page-name
     common-config/quick-add-page-name
-    "Contents"})
+    common-config/contents-page-name})
 
 (defn- validate-tx-for-duplicate-idents [tx]
   (when-let [conflicting-idents

@@ -59,6 +59,7 @@
 (defonce favorites-page-name "$$$favorites")
 (defonce views-page-name "$$$views")
 (defonce library-page-name "Library")
+(defonce contents-page-name "Contents")
 (defonce quick-add-page-name "Quick add")
 (defonce recycle-page-name "Recycle")
 
