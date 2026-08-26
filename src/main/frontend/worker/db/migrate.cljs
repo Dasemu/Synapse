@@ -7,10 +7,12 @@
             [frontend.worker-common.util :as worker-util]
             [logseq.common.config :as common-config]
             [logseq.common.util :as common-util]
+            [logseq.common.uuid :as common-uuid]
             [logseq.db :as ldb]
             [logseq.db.common.delete-blocks :as delete-blocks]
             [logseq.db.frontend.class :as db-class]
             [logseq.db.frontend.property :as db-property]
+            [logseq.db.frontend.property.build :as db-property-build]
             [logseq.db.frontend.schema :as db-schema]
             [logseq.db.sqlite.create-graph :as sqlite-create-graph]
             [logseq.db.sqlite.util :as sqlite-util]
@@ -132,6 +134,21 @@
                    [[:db/add (:db/id a) :logseq.property.journal/next (:db/id b)]
                     [:db/add (:db/id b) :logseq.property.journal/previous (:db/id a)]])))))
 
+(defn- add-calendar-view-type-closed-value
+  "Backfill the new `calendar` closed value onto the existing
+   :logseq.property.view/type property (its own migration ran in an earlier
+   version, so it won't pick up newly-added closed values on its own)."
+  [db]
+  (when (and (d/entity db :logseq.property.view/type)
+             (not (d/entity db :logseq.property.view/type.calendar)))
+    [(db-property-build/build-closed-value-block
+      (common-uuid/gen-uuid :db-ident-block-uuid :logseq.property.view/type.calendar)
+      :default
+      "Calendar View"
+      {:db/ident :logseq.property.view/type}
+      {:db-ident :logseq.property.view/type.calendar
+       :icon {:type :tabler-icon :id "calendar"}})]))
+
 (def schema-version->updates
   "A vec of tuples defining datascript migrations. Each tuple consists of the
    schema version integer and a migration map. A migration map can have keys of :properties, :classes
@@ -179,7 +196,16 @@
              :fix link-existing-journals}]
    ["65.35" {:classes [:logseq.class/Project :logseq.class/Area]}]
    ["65.36" {:classes [:logseq.class/Citation]
-             :properties [:logseq.property.citation/target :logseq.property.citation/context]}]])
+             :properties [:logseq.property.citation/target :logseq.property.citation/context]}]
+   ["65.37" {:classes [:logseq.class/Event :logseq.class/Contact]
+             :properties [:logseq.property.event/location
+                          :logseq.property.contact/email
+                          :logseq.property.contact/phone
+                          :logseq.property.contact/organization
+                          :logseq.property.caldav/uid
+                          :logseq.property.caldav/href
+                          :logseq.property.caldav/etag]
+             :fix add-calendar-view-type-closed-value}]])
 
 (let [[major minor] (last (sort (map (comp (juxt :major :minor) db-schema/parse-schema-version first)
                                      schema-version->updates)))]

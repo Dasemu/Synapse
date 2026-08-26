@@ -2342,6 +2342,57 @@
           :outliner? false
           :view-parent (:logseq.property/view-for (:view-entity table))}))])))
 
+(defn- calendar-row-date-ms
+  "The date a row sits on in the calendar: whichever of scheduled/deadline is set."
+  [row]
+  (or (:logseq.property/scheduled row) (:logseq.property/deadline row)))
+
+(defn- calendar-month-bounds
+  [cursor]
+  (let [month-start (t/first-day-of-the-month cursor)
+        month-end (t/plus month-start (t/months 1))]
+    [(tc/to-long month-start) (tc/to-long month-end)]))
+
+(hsx/defc calendar-view
+  [_option _table _view-entity blocks]
+  (let [[cursor set-cursor!] (hooks/use-state #(t/today))
+        [start-ms end-ms] (calendar-month-bounds cursor)
+        days-in-month (t/number-of-days-in-the-month cursor)
+        page-cp (state/get-component :block/page-cp)
+        by-day (->> blocks
+                    (keep (fn [row]
+                            (when-let [ms (calendar-row-date-ms row)]
+                              (when (and (>= ms start-ms) (< ms end-ms))
+                                [(tf/unparse yyyy-MM-dd-formatter (tc/from-long ms)) row]))))
+                    (reduce (fn [m [k row]] (update m k (fnil conj []) row)) {}))]
+    [:div.ls-calendar-view
+     [:div.flex.items-center.justify-between.mb-2
+      [:div.font-medium (tf/unparse (tf/formatter "MMMM yyyy") cursor)]
+      [:div.flex.gap-1
+       (shui/button {:variant "ghost" :size :sm
+                     :on-click #(set-cursor! (t/minus cursor (t/months 1)))}
+                    (ui/icon "chevron-left"))
+       (shui/button {:variant "ghost" :size :sm :on-click #(set-cursor! (t/today))}
+                    (t :calendar/today))
+       (shui/button {:variant "ghost" :size :sm
+                     :on-click #(set-cursor! (t/plus cursor (t/months 1)))}
+                    (ui/icon "chevron-right"))]]
+     [:div.ls-calendar-grid
+      (for [day (range 1 (inc days-in-month))]
+        (let [d (t/date-time (t/year cursor) (t/month cursor) day)
+              k (tf/unparse yyyy-MM-dd-formatter d)
+              rows (get by-day k)]
+          ^{:key k}
+          [:div.ls-calendar-day
+           [:div.ls-calendar-day-number (str day)]
+           [:div.ls-calendar-day-items
+            (for [row rows]
+              ^{:key (str (:block/uuid row))}
+              [:div.ls-calendar-day-item
+               (if (fn? page-cp)
+                 (page-cp {:disable-preview? true} row)
+                 (:block/title row))])]]))]]))
+
 (hsx/defc gallery-view
   [{:keys [config view-parent view-feature-type] :as option} table view-entity blocks _row-selection *scroller-ref]
   (let [config' (assoc config :container-id (view-container-id config))
@@ -2570,6 +2621,9 @@
 
        :logseq.property.view/type.gallery
        (gallery-view option table view-entity (:rows table) row-selection *scroller-ref)
+
+       :logseq.property.view/type.calendar
+       (calendar-view option table view-entity (:rows table))
 
        (table-view table option row-selection *scroller-ref))]))
 

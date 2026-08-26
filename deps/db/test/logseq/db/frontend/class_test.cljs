@@ -16,6 +16,18 @@
     (is (not (contains? db-class/private-tags :logseq.class/Project)))
     (is (not (contains? db-class/private-tags :logseq.class/Area)))))
 
+(deftest event-and-contact-are-built-in-page-classes
+  (testing "Event and Contact are registered as built-in classes that behave like pages"
+    (is (contains? db-class/built-in-classes :logseq.class/Event))
+    (is (contains? db-class/built-in-classes :logseq.class/Contact))
+    (is (contains? db-class/page-children-classes :logseq.class/Event))
+    (is (contains? db-class/page-children-classes :logseq.class/Contact))
+    (is (not (contains? db-class/private-tags :logseq.class/Event)))
+    (is (not (contains? db-class/private-tags :logseq.class/Contact))))
+  (testing "Event's schema properties only reference properties migrated in the same step"
+    (is (= [:logseq.property.event/location]
+           (get-in db-class/built-in-classes [:logseq.class/Event :schema :properties])))))
+
 (deftest get-class-objects-dedupes-inherited-tags-test
   (let [conn (db-test/create-conn-with-blocks
               {:classes {:Parent {:block/title "Parent"}

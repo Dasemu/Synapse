@@ -422,6 +422,36 @@
 
      ;; TODO: Add more props :Estimate, :Cycle, :Project
 
+     :logseq.property.event/location {:title "Location"
+                                      :schema {:type :string
+                                               :public? true}
+                                      :queryable? true}
+     :logseq.property.contact/email {:title "Email"
+                                     :schema {:type :string
+                                              :public? true}
+                                     :queryable? true}
+     :logseq.property.contact/phone {:title "Phone"
+                                     :schema {:type :string
+                                              :public? true}
+                                     :queryable? true}
+     :logseq.property.contact/organization {:title "Organization"
+                                            :schema {:type :string
+                                                     :public? true}
+                                            :queryable? true}
+     ;; CalDAV/CardDAV sync bookkeeping, not user-facing
+     :logseq.property.caldav/uid {:title "CalDAV UID"
+                                  :schema {:type :string
+                                           :hide? true
+                                           :public? false}}
+     :logseq.property.caldav/href {:title "CalDAV Href"
+                                   :schema {:type :string
+                                            :hide? true
+                                            :public? false}}
+     :logseq.property.caldav/etag {:title "CalDAV ETag"
+                                   :schema {:type :string
+                                            :hide? true
+                                            :public? false}}
+
      :logseq.property/icon {:title "Icon"
                             :schema {:type :map}}
      :logseq.property/publishing-public? {:title "Publishing Public?"
@@ -455,7 +485,8 @@
                                           :icon {:type :tabler-icon :id icon}})
                                        [[:logseq.property.view/type.table "Table View" "table"]
                                         [:logseq.property.view/type.list "List View" "list"]
-                                        [:logseq.property.view/type.gallery "Gallery View" "layout-grid"]])
+                                        [:logseq.property.view/type.gallery "Gallery View" "layout-grid"]
+                                        [:logseq.property.view/type.calendar "Calendar View" "calendar"]])
                                  :properties {:logseq.property/default-value :logseq.property.view/type.table}
                                  :queryable? true}
 

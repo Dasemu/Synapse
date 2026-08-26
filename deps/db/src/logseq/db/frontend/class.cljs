@@ -115,6 +115,25 @@
      {:title "Area"
       :properties {:logseq.property.class/extends :logseq.class/Page}}
 
+     ;; :logseq.property/scheduled and :logseq.property/deadline (the actual
+     ;; event start/end) are pre-existing baseline properties, not declared
+     ;; here in :schema :properties -- a migrated-in class can only resolve
+     ;; :schema :properties against properties added in that SAME migration
+     ;; step (see `build-initial-classes*`), so a page can still be tagged
+     ;; Event and given scheduled/deadline like any other public property.
+     :logseq.class/Event
+     {:title "Event"
+      :properties {:logseq.property.class/extends :logseq.class/Page
+                   :logseq.property/icon {:type :tabler-icon :id "calendar-event"}}
+      :schema {:properties [:logseq.property.event/location]}}
+
+     :logseq.class/Contact
+     {:title "Contact"
+      :properties {:logseq.property.class/extends :logseq.class/Page
+                   :logseq.property/icon {:type :tabler-icon :id "user"}}
+      :schema {:properties [:logseq.property.contact/email :logseq.property.contact/phone
+                            :logseq.property.contact/organization]}}
+
      ;; TODO: Add more classes such as :book, :paper, :movie, :music)
      )))
 

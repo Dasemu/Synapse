@@ -241,3 +241,23 @@
     }
   }
 }
+
+.ls-calendar-grid {
+  @apply grid grid-cols-7 gap-px rounded-md border border-border bg-border overflow-hidden;
+}
+
+.ls-calendar-day {
+  @apply flex flex-col gap-1 bg-background p-1 min-h-[80px];
+}
+
+.ls-calendar-day-number {
+  @apply text-xs text-muted-foreground;
+}
+
+.ls-calendar-day-items {
+  @apply flex flex-col gap-0.5;
+}
+
+.ls-calendar-day-item {
+  @apply text-xs truncate rounded bg-secondary px-1 py-0.5;
+}

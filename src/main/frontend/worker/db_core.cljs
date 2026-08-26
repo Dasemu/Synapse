@@ -12,6 +12,7 @@
    [frontend.worker.db.fix :as db-fix]
    [frontend.worker.db.migrate :as db-migrate]
    [frontend.worker.db.validate :as worker-db-validate]
+   [frontend.worker.handler.caldav :as caldav-handler]
    [frontend.worker.handler.cli]
    [frontend.worker.handler.comments]
    [frontend.worker.handler.export]
@@ -364,6 +365,7 @@
   (when-let [timer (get @*client-ops-cleanup-timers repo)]
     (js/clearInterval timer))
   (swap! *client-ops-cleanup-timers dissoc repo)
+  (caldav-handler/stop-sync! repo)
   (swap! *sqlite-conns dissoc repo)
   (when-let [vector-index (worker-state/get-vector-index repo)]
     (when-let [close-fn (:close! vector-index)]
@@ -647,6 +649,8 @@
             (ensure-canonical-revisions! conn)
 
             (db-listener/listen-db-changes! repo conn)
+
+            (caldav-handler/maybe-start-sync! repo)
 
             nil))))))
 

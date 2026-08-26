@@ -1,6 +1,8 @@
 (ns frontend.components.views-test
   (:require ["react" :as react]
             ["react-dom/server" :as react-dom-server]
+            [cljs-time.coerce :as tc]
+            [cljs-time.core :as t]
             [cljs.test :refer [async deftest is use-fixtures]]
             [clojure.string :as string]
             [datascript.impl.entity :as de]
@@ -483,6 +485,16 @@
                   (is (= 1 (count (filter #{reaction-key} @calls)))
                       "An unmounted reaction resource starts no reload.")
                   (unmount! mounted-view))))))))
+
+(deftest calendar-row-date-prefers-scheduled-over-deadline
+  (is (= 100 (#'views/calendar-row-date-ms {:logseq.property/scheduled 100 :logseq.property/deadline 200})))
+  (is (= 200 (#'views/calendar-row-date-ms {:logseq.property/deadline 200})))
+  (is (nil? (#'views/calendar-row-date-ms {}))))
+
+(deftest calendar-month-bounds-spans-exactly-one-month
+  (let [[start end] (#'views/calendar-month-bounds (t/date-time 2026 2 15))]
+    (is (= (tc/to-long (t/date-time 2026 2 1)) start))
+    (is (= (tc/to-long (t/date-time 2026 3 1)) end))))
 
 (deftest group-by-column-should-exclude-name-and-include-many-properties
   (is (views/group-by-column? {:id :block/page}))
