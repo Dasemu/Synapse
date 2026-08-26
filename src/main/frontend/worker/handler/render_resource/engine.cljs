@@ -6,6 +6,7 @@
             [frontend.worker.handler.render-resource.common :as common]
             [frontend.worker.handler.render-resource.property :as property]
             [frontend.worker.handler.render-resource.query :as query]
+            [frontend.worker.handler.render-resource.similar :as similar]
             [frontend.worker.handler.render-resource.view :as view]
             [frontend.worker.state :as worker-state]))
 
@@ -14,6 +15,7 @@
          property/resource-renderers
          view/resource-renderers
          query/resource-renderers
+         similar/resource-renderers
          {:block-sync-conflicts
           (common/renderer nil
                            (fn [_db resource-key _runtime]

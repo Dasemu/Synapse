@@ -1245,6 +1245,92 @@
               score (search-benchmark/score-results result [keyword-id] 1)]
           (is (= 1 (:recall-at-1 score))))))))
 
+(deftest combine-results-applies-temporal-decay-to-recency
+  (testing "temporal decay favors the more recently updated block among otherwise-equal candidates"
+    (let [old-id (test-uuid-string 950)
+          fresh-id (test-uuid-string 951)
+          page-id (test-uuid-string 952)
+          now (js/Date.now)
+          one-year-ms (* 365 24 60 60 1000)
+          blocks {old-id {:db/id 950
+                          :block/uuid (uuid old-id)
+                          :block/title "old block"
+                          :block/updated-at (- now one-year-ms)
+                          :block/page {:block/uuid (uuid page-id)}}
+                  fresh-id {:db/id 951
+                           :block/uuid (uuid fresh-id)
+                           :block/title "fresh block"
+                           :block/updated-at now
+                           :block/page {:block/uuid (uuid page-id)}}}]
+      (with-redefs [d/pull-many (fn [_db _selector lookup-refs]
+                                  (mapv (fn [[_attr id]]
+                                          (get blocks (str id)))
+                                        lookup-refs))
+                    ldb/hidden? (constantly false)
+                    ldb/page? (constantly false)]
+        (let [result (search/combine-results
+                      :db
+                      [{:id old-id :keyword-score 1.0 :title "old block"}
+                       {:id fresh-id :keyword-score 1.0 :title "fresh block"}])]
+          (is (= "fresh block" (:title (first result))))
+          (is (< (:combined-score (second result)) (:combined-score (first result)))))))))
+
+(deftest combine-results-never-discounts-a-strong-hit-below-half
+  (testing "temporal decay is bounded so an ancient-but-exact match keeps most of its score"
+    (let [old-id (test-uuid-string 953)
+          blocks {old-id {:db/id 953
+                          :block/uuid (uuid old-id)
+                          :block/title "ancient but exact"
+                          :block/updated-at 0}}]
+      (with-redefs [d/pull-many (fn [_db _selector lookup-refs]
+                                  (mapv (fn [[_attr id]]
+                                          (get blocks (str id)))
+                                        lookup-refs))
+                    ldb/hidden? (constantly false)
+                    ldb/page? (constantly false)]
+        (let [result (search/combine-results
+                      :db
+                      [{:id old-id :keyword-score 4.0 :title "ancient but exact"}])]
+          (is (>= (:combined-score (first result)) 2.0)))))))
+
+(deftest similar-blocks-returns-nearest-neighbors-excluding-self
+  (testing "similar-blocks fetches the source embedding and re-queries the vector index, dropping the source itself"
+    (let [source-id (test-uuid-string 960)
+          neighbor-id (test-uuid-string 961)
+          page-id (test-uuid-string 962)
+          blocks {source-id {:db/id 960
+                             :block/uuid (uuid source-id)
+                             :block/title "source block"
+                             :block/page {:block/uuid (uuid page-id)}}
+                  neighbor-id {:db/id 961
+                              :block/uuid (uuid neighbor-id)
+                              :block/title "neighbor block"
+                              :block/page {:block/uuid (uuid page-id)}}}
+          fetch-calls (atom [])
+          query-calls (atom [])
+          vector-index {:fetch (fn [ids]
+                                 (swap! fetch-calls conj ids)
+                                 (when (= ids [source-id])
+                                   {source-id {:embedding [0.1 0.2 0.3]}}))
+                        :query (fn [embedding limit page]
+                                (swap! query-calls conj {:embedding embedding :limit limit :page page})
+                                [{:id source-id :page page-id :vector-score 1.0}
+                                 {:id neighbor-id :page page-id :vector-score 0.95}])}]
+      (with-redefs [d/entity (fn [_db [_attr id]] (get blocks (str id)))
+                    d/pull-many (fn [_db _selector lookup-refs]
+                                  (mapv (fn [[_attr id]] (get blocks (str id))) lookup-refs))
+                    ldb/hidden? (constantly false)
+                    ldb/page? (constantly false)
+                    ldb/built-in? (constantly false)]
+        (let [result (search/similar-blocks (atom :db) vector-index (uuid source-id) {})]
+          (is (= ["neighbor block"] (mapv :block/title result)))
+          (is (= 1 (count @fetch-calls)))
+          (is (= [0.1 0.2 0.3] (:embedding (first @query-calls)))))))))
+
+(deftest similar-blocks-returns-nil-without-a-fetch-capable-vector-index
+  (testing "gracefully no-ops when the vector index has no :fetch capability (e.g. no index configured)"
+    (is (nil? (search/similar-blocks (atom :db) {} (uuid (test-uuid-string 970)) {})))))
+
 (deftest search-result-keeps-page-title-when-alias-matches
   (testing "alias matches annotate the page result without replacing its title"
     (let [page-id #uuid "00000000-0000-0000-0000-000000000236"

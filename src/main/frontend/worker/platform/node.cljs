@@ -418,6 +418,19 @@
   (or (nil? page)
       (>= (count results) limit)))
 
+(defn- fetch-zvec-doc
+  [collection ids]
+  (let [result (.fetchSync ^js collection (clj->js (vec ids)))]
+    (into {}
+          (keep (fn [id]
+                  (when-let [doc (gobj/get result id)]
+                    (let [vectors (gobj/get doc "vectors")
+                          fields (gobj/get doc "fields")]
+                      [id {:embedding (js->clj (gobj/get vectors zvec-vector-field))
+                           :page (gobj/get fields zvec-page-field)
+                           :vector-title (gobj/get fields zvec-title-field)}]))))
+          ids)))
+
 (defn- open-vector-index
   [{:keys [path dimension]}]
   (p/let [_ (ensure-dir! (node-path/dirname path))]
@@ -449,6 +462,8 @@
        :delete! (fn [ids]
                   (.deleteSync ^js @collection* (clj->js (vec ids)))
                   nil)
+       :fetch (fn [ids]
+                (fetch-zvec-doc @collection* ids))
        :truncate! (fn []
                     (.destroySync ^js @collection*)
                     (reopen!)

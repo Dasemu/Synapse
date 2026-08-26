@@ -286,6 +286,11 @@
   [repo q option]
   (<search-blocks repo q option))
 
+(def-thread-api :thread-api/search-similar-blocks
+  [repo block-uuid option]
+  (when-let [conn (worker-state/get-datascript-conn repo)]
+    (search/similar-blocks conn (worker-state/get-vector-index repo) block-uuid option)))
+
 (def-thread-api :thread-api/search-upsert-blocks
   [repo blocks]
   (when-let [db (get-search-db repo)]

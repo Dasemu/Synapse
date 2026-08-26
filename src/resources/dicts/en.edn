@@ -1142,6 +1142,7 @@
  :page/scheduled-and-deadline "Scheduled and Deadline"
  :page/search-index "search index"
  :page/send-db-for-debugging "You can send it to help@logseq.com for debugging."
+ :page/similar-pages "Similar pages"
  :page/something-went-wrong "Something went wrong"
  :page/step "Step {1}"
  :page/the-app "the app"

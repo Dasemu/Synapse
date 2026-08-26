@@ -15,6 +15,7 @@
             [frontend.components.recycle :as recycle]
             [frontend.components.reference :as reference]
             [frontend.components.scheduled-deadlines :as scheduled]
+            [frontend.components.similar-pages :as similar-pages]
             [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
             [frontend.date :as date]
@@ -529,7 +530,15 @@
                             home?
                             class-page? property-page?)
                 [:div.fade-in.delay {:key "page-unlinked-references"}
-                 (reference/unlinked-references (:block/uuid page) {:sidebar? sidebar?})])])]))
+                 (reference/unlinked-references (:block/uuid page) {:sidebar? sidebar?})])
+
+              (when (and (entity/page? page)
+                         (not block?)
+                         (not sidebar?)
+                         (not tag-dialog?)
+                         (not home?)
+                         (not class-page?) (not property-page?))
+                (similar-pages/similar-pages (:block/uuid page)))])]))
       [:div.opacity-75 (t :page/not-found)])))
 
 (defn- page-resource-key

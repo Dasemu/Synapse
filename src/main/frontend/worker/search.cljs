@@ -158,6 +158,9 @@ DROP TRIGGER IF EXISTS blocks_au;
 (def ^:private title-term-match-boost 0.002)
 (def ^:private context-term-match-boost 0.0005)
 (def ^:private max-vector-term-match-boost 0.005)
+(def ^:private temporal-half-life-ms (* 60 24 60 60 1000)) ;; 60 days
+(def ^:private min-temporal-decay 0.5) ;; never discount a strong match by more than half
+(def ^:private max-similar-block-results 10)
 
 (defn- query->terms
   [q]
@@ -602,6 +605,7 @@ DROP TRIGGER IF EXISTS blocks_au;
   '[:db/id
     :block/uuid
     :block/title
+    :block/updated-at
     {:block/page [:block/uuid :block/name :block/title]}
     {:block/parent [:db/id :block/uuid :block/title :logseq.property/built-in?
                     :logseq.property/hide? :logseq.property/deleted-at]}
@@ -743,6 +747,16 @@ DROP TRIGGER IF EXISTS blocks_au;
       (min max-vector-term-match-boost score))
     0))
 
+(defn- temporal-decay
+  "Recently updated blocks are ranked slightly higher. Bounded at
+   `min-temporal-decay` so an old-but-strong match never gets crushed by a
+   recent-but-weak one, and unset `:block/updated-at` decays to no-op (1.0)."
+  [now updated-at]
+  (if (number? updated-at)
+    (let [age-ms (max 0 (- now updated-at))]
+      (max min-temporal-decay (js/Math.pow 0.5 (/ age-ms temporal-half-life-ms))))
+    1.0))
+
 ;; Combine and re-rank keyword and vector results
 (defn combine-results
   ([db keyword-results]
@@ -753,6 +767,7 @@ DROP TRIGGER IF EXISTS blocks_au;
    (let [keyword-results (vec (or keyword-results []))
          vector-results (vec (or vector-results []))
          use-rrf? (seq vector-results)
+         now (js/Date.now)
          fused-score-by-id (when use-rrf?
                              (rrf-score-by-id [keyword-results vector-results]
                                               [keyword-rrf-weight vector-rrf-weight]))
@@ -773,19 +788,20 @@ DROP TRIGGER IF EXISTS blocks_au;
                                     vector-match-score (if use-rrf?
                                                          (vector-term-match-score q result block)
                                                          0)
-                                    combined-score (+ base-score
-                                                      vector-match-score
-                                                      (* source-score-tie-break-weight
-                                                         (+ keyword-score vector-score))
-                                                      (if-not use-rrf?
-                                                        (cond
-                                                          page?
-                                                          0.02
-                                                          (:block/tags block)
-                                                          0.01
-                                                          :else
-                                                          0)
-                                                        0))]
+                                    combined-score (* (+ base-score
+                                                         vector-match-score
+                                                         (* source-score-tie-break-weight
+                                                            (+ keyword-score vector-score))
+                                                         (if-not use-rrf?
+                                                           (cond
+                                                             page?
+                                                             0.02
+                                                             (:block/tags block)
+                                                             0.01
+                                                             :else
+                                                             0)
+                                                           0))
+                                                      (temporal-decay now (:block/updated-at block)))]
                                 (conj acc
                                       (assoc result
                                              search-result-block-key block
@@ -1021,6 +1037,28 @@ DROP TRIGGER IF EXISTS blocks_au;
          {:items (take limit result)
           :matched-count matched-count}
          (take limit result))))))
+
+(defn similar-blocks
+  "Blocks/pages whose already-indexed embedding is closest to the given
+   block's own embedding, i.e. \"similar to this\" rather than a fresh query."
+  [conn vector-index block-uuid option]
+  (when-let [fetch-fn (:fetch vector-index)]
+    (let [id (str block-uuid)
+          source (get (fetch-fn [id]) id)]
+      (when (seq (:embedding source))
+        (let [limit (min max-similar-block-results (or (:limit option) max-similar-block-results))
+              raw-result (vector-search-blocks vector-index
+                                               {:limit (inc limit)
+                                                :page (:page option)
+                                                :query-embedding (:embedding source)})
+              candidates (remove #(= (:id %) id) raw-result)
+              combined-result (combine-results @conn nil candidates)]
+          (->> combined-result
+               (common-util/distinct-by :id)
+               (keep #(search-result->block-result conn nil nil option %))
+               (remove #(= (:block/uuid %) block-uuid))
+               (take limit)
+               vec))))))
 
 (defn upsert-vector-blocks!
   [vector-index blocks]
