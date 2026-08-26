@@ -120,6 +120,18 @@
              [[:db/retract (:db/id class) :block/order (:block/order class)]]))))
       [:logseq.class/Comments :logseq.class/Comment]))))
 
+(defn- link-existing-journals
+  "Backfill :logseq.property.journal/previous and /next across all existing
+   journal pages, ordered by :block/journal-day."
+  [db]
+  (let [journal-pages (->> (d/datoms db :avet :block/journal-day)
+                           (map (fn [datom] (d/entity db (:e datom))))
+                           (sort-by :block/journal-day))]
+    (->> (partition 2 1 journal-pages)
+         (mapcat (fn [[a b]]
+                   [[:db/add (:db/id a) :logseq.property.journal/next (:db/id b)]
+                    [:db/add (:db/id b) :logseq.property.journal/previous (:db/id a)]])))))
+
 (def schema-version->updates
   "A vec of tuples defining datascript migrations. Each tuple consists of the
    schema version integer and a migration map. A migration map can have keys of :properties, :classes
@@ -162,7 +174,12 @@
                           :logseq.property.view/gallery-display-properties
                           :logseq.property.view/gallery-card-size
                           :logseq.property.view/gallery-card-width
-                          :logseq.property.view/gallery-card-height]}]])
+                          :logseq.property.view/gallery-card-height]}]
+   ["65.34" {:properties [:logseq.property.journal/previous :logseq.property.journal/next]
+             :fix link-existing-journals}]
+   ["65.35" {:classes [:logseq.class/Project :logseq.class/Area]}]
+   ["65.36" {:classes [:logseq.class/Citation]
+             :properties [:logseq.property.citation/target :logseq.property.citation/context]}]])
 
 (let [[major minor] (last (sort (map (comp (juxt :major :minor) db-schema/parse-schema-version first)
                                      schema-version->updates)))]
@@ -185,7 +202,7 @@
                             (= "logseq.kv" (some-> (:db/ident data) namespace))
                             nil
 
-                            (= (:block/title data) "Contents")
+                            (= (:block/title data) common-config/contents-page-name)
                             nil
 
                             (:file/path data)

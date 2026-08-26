@@ -299,6 +299,40 @@
        [page])
      (remove nil?))))
 
+(defn- journal-neighbors
+  "Returns [prev-entity next-entity], the closest existing journal pages
+   immediately before/after journal-day (by day order, not necessarily
+   adjacent calendar days)."
+  [db journal-day]
+  (let [entries (->> (d/datoms db :avet :block/journal-day)
+                     (map (fn [datom] [(:v datom) (:e datom)]))
+                     (remove (fn [[day]] (= day journal-day))))
+        prev (->> entries (filter #(< (first %) journal-day)) (sort-by first) last)
+        next (->> entries (filter #(> (first %) journal-day)) (sort-by first) first)]
+    [(some->> prev second (d/entity db))
+     (some->> next second (d/entity db))]))
+
+(defn- journal-relink-tx
+  "Tx-data linking a newly created journal page (identified by its uuid) to
+   its nearest existing journal neighbors by day. Re-links around the new
+   page when it fills a gap between two already-linked journals."
+  [db page-uuid journal-day]
+  (let [[prev next] (journal-neighbors db journal-day)
+        page-ref [:block/uuid page-uuid]]
+    (concat
+     (when prev
+       (cond-> [[:db/add page-ref :logseq.property.journal/previous (:db/id prev)]
+                [:db/add (:db/id prev) :logseq.property.journal/next page-ref]]
+         (:logseq.property.journal/next prev)
+         (conj [:db/retract (:db/id prev) :logseq.property.journal/next
+                (:db/id (:logseq.property.journal/next prev))])))
+     (when next
+       (cond-> [[:db/add page-ref :logseq.property.journal/next (:db/id next)]
+                [:db/add (:db/id next) :logseq.property.journal/previous page-ref]]
+         (:logseq.property.journal/previous next)
+         (conj [:db/retract (:db/id next) :logseq.property.journal/previous
+                (:db/id (:logseq.property.journal/previous next))]))))))
+
 (defn ^:large-vars/cleanup-todo ^:api create
   "Pure function without side effects"
   [db title*
@@ -403,10 +437,13 @@
                             (:block/uuid page))
                 page (assoc page :block/uuid page-uuid)
                 page-txs (build-page-tx db properties page (select-keys options [:class? :tags :class-ident-namespace]))
+                journal-link-txs (when-let [journal-day (:block/journal-day page)]
+                                   (journal-relink-tx db page-uuid journal-day))
                 txs (concat
                      ;; transact doesn't support entities
                      (remove de/entity? parents')
-                     page-txs)
+                     page-txs
+                     journal-link-txs)
                 tx-meta (cond-> (outliner-tx-meta/ensure-outliner-ops
                                  {:persist-op? persist-op?
                                   :outliner-op :create-page}

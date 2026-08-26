@@ -265,10 +265,23 @@
                                                  :public? false
                                                  :hide? true}}
 
+     :logseq.property.citation/target {:title "Cited page or block"
+                                       :schema {:type :node}}
+     :logseq.property.citation/context {:title "Citation context"
+                                        :schema {:type :string}}
+
      ;; Journal props
      :logseq.property.journal/title-format {:title "Title Format"
                                             :schema
                                             {:type :string
+                                             :public? false}}
+     :logseq.property.journal/previous {:title "Previous journal"
+                                        :schema {:type :node
+                                                 :hide? true
+                                                 :public? false}}
+     :logseq.property.journal/next {:title "Next journal"
+                                    :schema {:type :node
+                                             :hide? true
                                              :public? false}}
 
      :logseq.property/choice-checkbox-state {:title "Choice checkbox state"

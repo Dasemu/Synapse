@@ -204,3 +204,48 @@
         "Journal title is not split into a month namespace page")
     (is (nil? (ldb/get-page @conn "18"))
         "Journal title is not split into a day namespace page")))
+
+(deftest create-journal-links-previous-and-next
+  (let [conn (db-test/create-conn)
+        [_ day1-uuid] (outliner-page/create! conn "Dec 16th, 2024" {})
+        [_ day2-uuid] (outliner-page/create! conn "Dec 17th, 2024" {})
+        day1 (d/entity @conn [:block/uuid day1-uuid])
+        day2 (d/entity @conn [:block/uuid day2-uuid])]
+    (is (nil? (:logseq.property.journal/previous day1))
+        "First journal has no previous")
+    (is (= day2-uuid (:block/uuid (:logseq.property.journal/next day1)))
+        "First journal links forward to the second")
+    (is (= day1-uuid (:block/uuid (:logseq.property.journal/previous day2)))
+        "Second journal links back to the first")
+    (is (nil? (:logseq.property.journal/next day2))
+        "Second journal has no next yet")))
+
+(deftest create-journal-fills-gap-relinks-neighbors
+  (let [conn (db-test/create-conn)
+        [_ day1-uuid] (outliner-page/create! conn "Dec 16th, 2024" {})
+        [_ day3-uuid] (outliner-page/create! conn "Dec 18th, 2024" {})
+        [_ day2-uuid] (outliner-page/create! conn "Dec 17th, 2024" {})
+        day1 (d/entity @conn [:block/uuid day1-uuid])
+        day2 (d/entity @conn [:block/uuid day2-uuid])
+        day3 (d/entity @conn [:block/uuid day3-uuid])]
+    (is (= day2-uuid (:block/uuid (:logseq.property.journal/next day1)))
+        "Day1 now points to the newly created day2, not day3")
+    (is (= day1-uuid (:block/uuid (:logseq.property.journal/previous day2)))
+        "Day2 points back to day1")
+    (is (= day3-uuid (:block/uuid (:logseq.property.journal/next day2)))
+        "Day2 points forward to day3")
+    (is (= day2-uuid (:block/uuid (:logseq.property.journal/previous day3)))
+        "Day3 now points back to day2, not day1")))
+
+(deftest create-namespace-page-under-contents
+  (let [conn (db-test/create-conn)
+        [_ child-uuid] (outliner-page/create! conn (str common-config/contents-page-name "/rama") {:split-namespace? true})
+        child-page (d/entity @conn [:block/uuid child-uuid])
+        contents (ldb/get-contents-page @conn)
+        library (ldb/get-built-in-page @conn common-config/library-page-name)]
+    (is (= "rama" (:block/title child-page)))
+    (is (= (:db/id contents) (:db/id (:block/parent child-page)))
+        "Contents can be used as an explicit parent root, alongside Library")
+    (is (empty? (:block/_parent library))
+        "Library is untouched when a page is nested under Contents instead")
+    (is (ldb/contents? contents))))
