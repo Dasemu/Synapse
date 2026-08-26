@@ -4,6 +4,7 @@
             ["@capacitor/keyboard" :refer [^js Keyboard]]
             ["@capacitor/network" :refer [^js Network]]
             [clojure.string :as string]
+            [frontend.config :as config]
             [frontend.handler.editor :as editor-handler]
             [frontend.mobile.flows :as mobile-flows]
             [frontend.mobile.intent :as intent]
@@ -106,6 +107,13 @@
   (.addListener Network "networkStatusChange" #(reset! mobile-flows/*mobile-network-status %)))
 
 (defn init! []
+  ;; Fire-and-forget, before anything checks whether this client is
+  ;; remote-configured -- restores a server URL/token from the OS
+  ;; keychain/keystore if the WebView's localStorage came back empty (Fase
+  ;; 7). Best-effort: if it loses the race with the first remote-configured?
+  ;; check, that check just sees "not configured" until the next one.
+  (config/<restore-server-config-from-secure-storage!)
+
   (.addEventListener js/window "sendIntentReceived" intent/handle-received)
 
   ;; handle share for code start

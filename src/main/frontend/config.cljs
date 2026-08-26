@@ -2,14 +2,18 @@
   "App config and fns built on top of configuration"
   (:require [clojure.set :as set]
             [clojure.string :as string]
+            [frontend.mobile.secure-storage :as secure-storage]
+            [frontend.mobile.util :as mobile-util]
             [frontend.state :as state]
             [frontend.util :as util]
             [goog.crypt.Md5]
+            [lambdaisland.glogi :as log]
             [logseq.common.cognito-config :as cognito-config]
             [logseq.common.config :as common-config]
             [logseq.common.graph-dir :as common-graph-dir]
             [logseq.common.path :as path]
             [logseq.db.sqlite.util :as sqlite-util]
+            [promesa.core :as p]
             [shadow.resource :as rc]))
 
 (goog-define DEV-RELEASE false)
@@ -104,6 +108,63 @@
 ;; (see frontend.persist-db/remote-runtime?). Stored client-side only; the
 ;; daemon holds the authoritative credential (see
 ;; frontend.worker.db-worker-node-auth).
+;; On native mobile, WebView localStorage isn't durable the way it is on
+;; desktop -- iOS in particular can evict it under storage pressure, and it
+;; doesn't reliably survive an app reinstall/restore. localStorage stays the
+;; synchronous read path everywhere, including mobile (every getter below is
+;; called synchronously all over persist_db.cljs/handler.assets.cljs, and
+;; retrofitting those call sites to await an async native store is out of
+;; scope here); frontend.mobile.secure-storage (OS keychain/keystore) mirrors
+;; writes as a best-effort durability backstop and <restore-server-config!
+;; below copies a surviving value back into localStorage on next launch if
+;; it came back empty (Fase 7). Reuses the existing secure-storage wrapper
+;; (its key prefix says "e2ee" internally -- that's the plugin's storage
+;; namespace, not a claim about what's stored under it) rather than adding a
+;; second native-storage integration for one more kind of secret.
+(def ^:private secure-server-url-key "db-worker-server-url")
+(def ^:private secure-server-token-key "db-worker-server-token")
+
+(defn- native-mobile?
+  "mobile-util/native-platform? touches the Capacitor bridge, which doesn't
+   exist under Node (tests, the daemon) or a plain browser tab -- treat any
+   throw there the same as \"not native\" rather than letting it take down
+   every config.cljs caller, most of which run in those environments."
+  []
+  (try
+    (boolean (mobile-util/native-platform?))
+    (catch :default _ false)))
+
+(defn- <mirror-server-config-to-secure-storage!
+  [key value]
+  (if (native-mobile?)
+    (-> (if (string/blank? value)
+          (secure-storage/<remove-item! key)
+          (secure-storage/<set-item! key value))
+        (p/catch (fn [e]
+                   (log/warn :config/secure-storage-mirror-failed {:key key :error e}))))
+    (p/resolved nil)))
+
+(defn <restore-server-config-from-secure-storage!
+  "Best-effort recovery for native mobile: if localStorage lost the
+   configured server URL/token but the OS keychain/keystore still has it,
+   copy it back into localStorage. Call once at mobile app startup, before
+   the client decides whether it's remote-configured; a no-op everywhere
+   else."
+  []
+  (if (native-mobile?)
+    (-> (p/let [need-url? (string/blank? (.getItem js/localStorage "db-worker-server-url"))
+                need-token? (string/blank? (.getItem js/localStorage "db-worker-server-token"))
+                stored-url (when need-url? (secure-storage/<get-item secure-server-url-key))
+                stored-token (when need-token? (secure-storage/<get-item secure-server-token-key))]
+          (when (seq stored-url)
+            (.setItem js/localStorage "db-worker-server-url" stored-url))
+          (when (seq stored-token)
+            (.setItem js/localStorage "db-worker-server-token" stored-token))
+          nil)
+        (p/catch (fn [e]
+                   (log/warn :config/secure-storage-restore-failed {:error e}))))
+    (p/resolved nil)))
+
 (defn get-server-base-url
   "Read the configured db-worker-node server base URL from localStorage.
    Returns nil when not set or empty."
@@ -118,9 +179,11 @@
    empty string to clear."
   [url]
   (when-not util/node-test?
-    (if (or (nil? url) (string/blank? url))
-      (.removeItem js/localStorage "db-worker-server-url")
-      (.setItem js/localStorage "db-worker-server-url" (string/trim url)))))
+    (let [trimmed (some-> url string/trim)]
+      (if (string/blank? trimmed)
+        (.removeItem js/localStorage "db-worker-server-url")
+        (.setItem js/localStorage "db-worker-server-url" trimmed))
+      (<mirror-server-config-to-secure-storage! secure-server-url-key trimmed))))
 
 (defn get-server-token
   "Read the current db-worker-node session bearer token from localStorage.
@@ -136,9 +199,11 @@
    nil or empty string to clear (e.g. on logout or a 401)."
   [token]
   (when-not util/node-test?
-    (if (or (nil? token) (string/blank? token))
-      (.removeItem js/localStorage "db-worker-server-token")
-      (.setItem js/localStorage "db-worker-server-token" (string/trim token)))))
+    (let [trimmed (some-> token string/trim)]
+      (if (string/blank? trimmed)
+        (.removeItem js/localStorage "db-worker-server-token")
+        (.setItem js/localStorage "db-worker-server-token" trimmed))
+      (<mirror-server-config-to-secure-storage! secure-server-token-key trimmed))))
 
 (defn clear-server-config!
   "Clear both the configured server URL and session token, e.g. on logout."

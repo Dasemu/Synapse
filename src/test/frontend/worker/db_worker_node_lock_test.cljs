@@ -89,6 +89,78 @@
     (fs/writeFileSync path (js/JSON.stringify (clj->js legacy-lock)))
     (is (= :unknown (:owner-source (db-lock/read-lock path))))))
 
+(defn- <poll-until
+  "Retries pred-fn (a 0-arg fn returning a promise of a boolean) until it
+  resolves truthy or max-attempts is exhausted, waiting delay-ms between
+  tries. Used below to wait out the fs.watch invalidation window instead of
+  asserting on an exact timing, since inotify delivery isn't instantaneous."
+  [pred-fn max-attempts delay-ms]
+  (p/loop [attempt 0]
+    (p/let [ok? (pred-fn)]
+      (cond
+        ok? true
+        (>= attempt max-attempts) false
+        :else (p/do! (p/delay delay-ms) (p/recur (inc attempt)))))))
+
+(deftest assert-lock-owner-serves-cached-content-without-rereading-on-every-call-test
+  (async done
+    (let [root-dir (node-helper/create-tmp-dir "db-worker-node-lock-cache-hot-path")
+          repo (str "logseq_db_lock_cache_" (subs (str (random-uuid)) 0 8))
+          path (db-lock/lock-path root-dir repo)]
+      (-> (p/let [lock (db-lock/create-lock! {:root-dir root-dir
+                                              :repo repo
+                                              :owner-source :cli})
+                  ;; assert-lock-owner! is the hot path invoked on every
+                  ;; write -- calling it repeatedly here must keep agreeing
+                  ;; with the on-disk lock without needing an external
+                  ;; change to have happened in between.
+                  first-check (db-lock/assert-lock-owner! path lock)
+                  second-check (db-lock/assert-lock-owner! path lock)
+                  third-check (db-lock/assert-lock-owner! path lock)]
+            (is (= lock first-check second-check third-check)))
+          (p/catch (fn [e]
+                     (is false (str "unexpected error: " e))))
+          (p/finally (fn []
+                       (db-lock/remove-lock! path)
+                       (done)))))))
+
+(deftest assert-lock-owner-picks-up-a-lock-file-rewritten-by-another-process-test
+  (async done
+    (let [root-dir (node-helper/create-tmp-dir "db-worker-node-lock-cache-external-change")
+          repo (str "logseq_db_lock_cache_ext_" (subs (str (random-uuid)) 0 8))
+          path (db-lock/lock-path root-dir repo)]
+      (-> (p/let [lock (db-lock/create-lock! {:root-dir root-dir
+                                              :repo repo
+                                              :owner-source :cli})
+                  ;; Populate the cache the same way the daemon's hot path
+                  ;; does, then simulate a *different* process replacing the
+                  ;; lock (e.g. after recovering it as stale) by writing the
+                  ;; file directly -- bypassing update-lock!'s own
+                  ;; synchronous cache invalidation. This is exactly the
+                  ;; scenario the fs.watch invalidation exists for.
+                  _ (db-lock/assert-lock-owner! path lock)
+                  usurping-lock (assoc lock :lock-id (str (random-uuid)))
+                  _ (do (fs/writeFileSync path (js/JSON.stringify (clj->js usurping-lock)))
+                        nil)
+                  picked-up? (<poll-until
+                              (fn []
+                                (p/resolved
+                                 (try
+                                   (db-lock/assert-lock-owner! path lock)
+                                   false
+                                   (catch :default e
+                                     (= :repo-locked (:code (ex-data e)))))))
+                              40 50)]
+            (is picked-up?
+                "assert-lock-owner! must eventually reject once the on-disk
+                lock no longer matches, not serve the pre-change lock-id
+                forever"))
+          (p/catch (fn [e]
+                     (is false (str "unexpected error: " e))))
+          (p/finally (fn []
+                       (db-lock/remove-lock! path)
+                       (done)))))))
+
 (deftest update-lock-preserves-existing-owner-source-and-does-not-add-discovery-fields
   (async done
     (let [root-dir (node-helper/create-tmp-dir "db-worker-node-lock-update-owner")

@@ -84,10 +84,66 @@
      (js->clj (js/JSON.parse (.toString (fs/readFileSync path) "utf8"))
               :keywordize-keys true))))
 
+;; assert-lock-owner! runs on every write invoke (db_worker_node.cljs), so a
+;; naive read-lock there means fs.existsSync + fs.readFileSync + JSON.parse
+;; as a synchronous syscall on the Node event loop per request. Cached here,
+;; invalidated by watching the lock file's *directory* (not the file itself
+;; -- fs.watch on a path can stop firing across an unlink+recreate on some
+;; platforms, watching the containing directory and filtering by filename
+;; survives it) so an external change to the lock is picked up on the next
+;; read instead of the cache going permanently stale (Fase 7).
+;;
+;; Writes this process makes itself (create-lock!/update-lock!/remove-lock!)
+;; invalidate synchronously in the same call, before the fs.watch callback
+;; would even fire -- the only staleness window is for a lock file changed
+;; by some *other* process, on the order of a few ms until the watch
+;; callback runs. That's the same window any lock-based coordination has
+;; between the change happening and a reader noticing it; it does not weaken
+;; the guarantee two daemons can't both hold a live lock on the same repo.
+(defonce ^:private *lock-cache (atom {}))
+(def ^:private absent ::absent)
+
+(defn- invalidate-cached-lock!
+  [path]
+  (swap! *lock-cache update path dissoc :lock))
+
+(defn- close-watcher!
+  [path]
+  (when-let [watcher (get-in @*lock-cache [path :watcher])]
+    (try (.close watcher) (catch :default _ nil)))
+  (swap! *lock-cache dissoc path))
+
+(defn- ensure-watcher!
+  [path]
+  (when-not (get-in @*lock-cache [path :watcher])
+    (try
+      (let [dir (node-path/dirname path)
+            file-name (node-path/basename path)
+            watcher (fs/watch dir
+                              (fn [_event changed-name]
+                                (when (or (nil? changed-name) (= changed-name file-name))
+                                  (invalidate-cached-lock! path))))]
+        (swap! *lock-cache assoc-in [path :watcher] watcher))
+      (catch :default e
+        ;; Directory may not exist yet (lock not created yet) -- next call
+        ;; retries; falls back to always-fresh reads until it succeeds.
+        (log/warn :db-worker-node-lock-watch-failed {:path path :error (ex-message e)})))))
+
+(defn- cached-lock
+  [path]
+  (ensure-watcher! path)
+  (let [cached (get-in @*lock-cache [path :lock] absent)]
+    (if (= cached absent)
+      (let [lock (read-lock path)]
+        (swap! *lock-cache assoc-in [path :lock] lock)
+        lock)
+      cached)))
+
 (defn remove-lock!
   [path]
   (when (and (seq path) (fs/existsSync path))
-    (fs/unlinkSync path)))
+    (fs/unlinkSync path))
+  (close-watcher! path))
 
 (defn create-lock!
   [{:keys [root-dir repo owner-source]}]
@@ -111,6 +167,7 @@
              (fs/writeFileSync fd (js/JSON.stringify (clj->js lock)))
              (finally
                (fs/closeSync fd)))
+           (invalidate-cached-lock! path)
            (resolve lock)))
        (catch :default e
          (log/error :db-worker-node-lock-create-failed e)
@@ -133,14 +190,26 @@
                       :owner-source (normalize-owner-source (:owner-source lock))})]
          (fs/mkdirSync (node-path/dirname path) #js {:recursive true})
          (fs/writeFileSync path (js/JSON.stringify (clj->js lock')))
+         (invalidate-cached-lock! path)
          (resolve lock'))
        (catch :default e
          (log/error :db-worker-node-lock-update-failed e)
          (reject e))))))
 
+(defn- lock-owner-alive?
+  "The pid recorded in the lock file is, on the hot path, this very
+  process's own pid -- assert-lock-owner! is the *owner* checking its own
+  lock hasn't been usurped, not a stranger checking someone else's. A
+  process can always signal itself, so that case needs no
+  process.kill(pid, 0) syscall at all; only a genuinely foreign pid (a
+  stolen/stale lock, already on the throw path) pays for the real check."
+  [pid]
+  (or (= pid (.-pid js/process))
+      (= :alive (pid-status pid))))
+
 (defn assert-lock-owner!
   [path {:keys [repo pid lock-id] :as owner-lock}]
-  (let [lock (read-lock path)]
+  (let [lock (cached-lock path)]
     (cond
       (nil? owner-lock)
       (throw (ex-info "lock owner missing"
@@ -152,7 +221,7 @@
                       {:code :repo-locked
                        :path path}))
 
-      (not= :alive (pid-status (:pid lock)))
+      (not (lock-owner-alive? (:pid lock)))
       (throw (ex-info "graph lock is stale"
                       {:code :repo-locked
                        :path path
