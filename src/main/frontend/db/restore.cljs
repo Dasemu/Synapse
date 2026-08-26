@@ -16,12 +16,8 @@
            {:keys [schema]} (persist-db/<open-and-fetch-schema repo opts)
            _ (when (nil? schema)
                (throw (ex-info "No valid schema found when reloading db" {:repo repo})))
-           conflicts-by-block (state/<invoke-db-worker
-                               :thread-api/db-sync-get-all-block-conflicts
-                               repo)
            _ (state/set-current-repo! repo)
            _ (db-subs/reset-graph! repo)
-           _ (state/set-sync-block-conflicts! repo conflicts-by-block)
            end-time (t/now)]
      (log/info ::restore-graph!
                (str "opens worker graph in "

@@ -2,7 +2,6 @@
   (:require [cljs.test :refer [async deftest is]]
             [clojure.string :as string]
             [frontend.handler.common.developer :as dev-common-handler]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.notification :as notification]
             [frontend.state :as state]
             [promesa.core :as p]))
@@ -36,31 +35,3 @@
            (fn [error]
              (is false (str error))))
           (p/finally done)))))
-
-(deftest checksum-diagnostics-fetches-graph-id-through-worker-test
-  (async done
-    (let [repo "logseq_db_checksum_worker"
-          worker-calls (atom [])
-          fetch-calls (atom [])]
-      (p/with-redefs [state/<invoke-db-worker
-                      (fn [api repo']
-                        (swap! worker-calls conj [api repo'])
-                        (p/resolved #uuid "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
-                      rtc-handler/http-base
-                      (fn [] "https://sync.example.test")
-                      rtc-handler/fetch-json
-                      (fn [url request opts]
-                        (swap! fetch-calls conj [url request opts])
-                        (p/resolved {:checksum "server-checksum"}))]
-        (-> (p/let [result (#'dev-common-handler/<fetch-server-checksum-diagnostics repo)]
-              (is (= {:checksum "server-checksum"} result))
-              (is (= [[:thread-api/get-rtc-graph-uuid repo]]
-                     @worker-calls))
-              (is (= [["https://sync.example.test/sync/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/checksum/diagnostics"
-                       {:method "GET"}
-                       {:error-schema :error}]]
-                     @fetch-calls)))
-            (p/catch
-             (fn [error]
-               (is false (str error))))
-            (p/finally done))))))

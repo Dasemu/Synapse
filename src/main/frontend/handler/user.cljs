@@ -5,7 +5,6 @@
             [cljs-time.coerce :as tc]
             [cljs-time.core :as t]
             [cljs.core.async :as async :refer [<! go timeout]]
-            [clojure.set :as set]
             [clojure.string :as string]
             [electron.ipc :as ipc]
             [frontend.common.thread-api :refer [def-thread-api]]
@@ -271,14 +270,6 @@
   (auto-fill-refresh-token-from-cognito!)
   (state/pub-event! [:user/fetch-info-and-graphs]))
 
-(defn- clear-e2ee-password!
-  []
-  (when @state/*db-worker
-    (-> (state/<invoke-db-worker :thread-api/clear-e2ee-password)
-        (p/catch (fn [error]
-                   (js/console.warn :clear-e2ee-password-failed error)
-                   nil)))))
-
 (defn ^:export login-with-username-password-e2e
   [username' password client-id client-secret]
   (let [text-encoder (new js/TextEncoder)
@@ -306,7 +297,6 @@
           {:id-token id-token :access-token access-token :refresh-token refresh-token})))))
 
 (defn logout []
-  (clear-e2ee-password!)
   (clear-tokens)
   (.clear js/localStorage)
   (state/clear-user-info!)
@@ -354,13 +344,6 @@
 
 ;;; user groups
 
-(defn rtc-group?
-  []
-  (boolean (or
-            config/dev?
-            (some? (config/get-custom-sync-server-url))
-            (seq (set/intersection (state/user-groups) #{"team" "rtc_2025_07_10"})))))
-
 (defn alpha-user?
   []
   (or config/dev?
@@ -374,20 +357,6 @@
 (defn alpha-or-beta-user?
   []
   (or (alpha-user?) (beta-user?)))
-
-(defn get-user-type
-  [repo]
-  (-> (some #(when (= repo (:url %)) %) (:rtc/graphs (state/get-state)))
-      :graph<->user-user-type))
-
-(defn manager?
-  [repo]
-  (= (get-user-type repo) "manager"))
-
-;; TODO: Remove if still unused
-#_(defn member?
-    [repo]
-    (= (get-user-type repo) "member"))
 
 (defn <upload-user-avatar
   [avatar-str]

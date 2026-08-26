@@ -9,7 +9,6 @@
             [clojure.string :as string]
             [dommy.core :as dom]
             [electron.ipc :as ipc]
-            [frontend.components.avatar :as avatar]
             [frontend.components.block.breadcrumb-model :as breadcrumb-model]
             [frontend.components.block.asset :as block-asset]
             [frontend.components.block.comments :as block-comments]
@@ -1094,25 +1093,11 @@
        [:a.asset-ref {:target "_blank" :href real-path-url}
         title-or-path])]))
 
-(defn- maybe-request-asset-download!
-  [file-exists? requested? block]
-  (let [repo (state/get-current-repo)
-        asset-file-write-finish (state/get-state :assets/asset-file-write-finish)
-        asset-file-write-finished? (get-in asset-file-write-finish [repo (str (:block/uuid block))])
-        file-ready? (or file-exists? asset-file-write-finished?)]
-    (when (and (true? @requested?) file-ready?)
-      (reset! requested? false))
-    (when (and (not @requested?)
-               (assets-handler/maybe-request-remote-asset-download! repo block file-ready?))
-      (reset! requested? true))))
-
 (defn- retry-missing-asset-upload!
   [repo block file-exists?*]
   (let [asset-rpath (block-asset/asset-relative-path block)]
     (p/let [exists? (fs/file-exists? (config/get-repo-dir repo) asset-rpath)]
-      (reset! file-exists?* exists?)
-      (when exists?
-        (state/<invoke-db-worker :thread-api/db-sync-retry-asset-upload repo)))))
+      (reset! file-exists?* exists?))))
 
 (hsx/defc missing-asset-file
   [block on-reload]
@@ -1132,25 +1117,10 @@
   (let [asset-type (:logseq.property.asset/type block)
         file (block-asset/asset-file-name block)
         file-exists?* (hooks/use-memo #(atom nil) [(:block/uuid block) asset-type])
-        requested?* (hooks/use-memo #(atom false) [(:block/uuid block)])
         [file-exists?] (hooks/use-atom file-exists?*)
         repo (state/get-current-repo)
         asset-file-write-finished? (rfx/use-sub [:assets/asset-file-write-finish repo (str (:block/uuid block))])
         file-ready? (or file-exists? asset-file-write-finished?)
-        progress-entry (rfx/use-sub [:rtc/asset-upload-download-progress repo (str (:block/uuid block))])
-        {:keys [direction loaded total]} progress-entry
-        in-progress? (and (number? loaded) (number? total) (pos? total) (not= loaded total))
-        percent (when in-progress?
-                  (int (* 100 (/ loaded total))))
-        label (case direction
-                :upload (t :asset/uploading)
-                :download (t :asset/downloading)
-                (t :asset/syncing))
-        progress-view (when in-progress?
-                        [:div.asset-transfer-progress
-                         [:div.asset-transfer-progress-label (str label " " percent "%")]
-                         [:div.asset-transfer-progress-bar
-                          [:span {:style {:width (str percent "%")}}]]])
         image? (contains? (common-config/img-formats) (keyword asset-type))
         gallery-image? (and (:gallery-view? config) image?)
         width (get-in block [:logseq.property.asset/resize-metadata :width])
@@ -1184,8 +1154,6 @@
                                 (fs/file-exists? (config/get-repo-dir (state/get-current-repo)) path))]
                  (reset! file-exists?* result))))
            [file])
-        _ (hooks/use-effect!
-           #(maybe-request-asset-download! file-exists? requested?* block))
         content (cond
                   (or file-ready? gallery-image?)
                   (asset-link (cond-> (assoc config :asset-block block)
@@ -1202,12 +1170,7 @@
                    #(retry-missing-asset-upload! repo block file-exists?*))
                   (block-asset/show-image-placeholder? block file-ready? gallery-image?)
                   img-placeholder)]
-    (if progress-view
-      [:div.asset-transfer-shell
-       (or content
-           [:div.asset-transfer-placeholder (t :asset/transfer-placeholder label)])
-       progress-view]
-      content)))
+    content))
 
 (defn- img-audio-video?
   [block]
@@ -2227,24 +2190,11 @@
                        (open-comment-thread! block-uuid comment-thread))}
           (shui/tabler-icon "message-circle" {:size 15})))))))
 
-(defn- editing-user-avatar
-  [{:user/keys [name uuid]}]
-  (let [user-name (or name uuid)]
-    (when (avatar/initials user-name)
-      [:span.block-editing-avatar-wrap
-       (avatar/user-avatar
-        {:class "block-editing-avatar w-4 h-4 flex-none"
-         :title user-name
-         :name user-name
-         :uuid uuid
-         :fallback-props {:style {:font-size 9}}})])))
-
 (hsx/defc ^:large-vars/cleanup-todo block-control
   [config block {:keys [uuid block-id collapsed? has-children? *control-show? edit? selected? top? bottom?]}]
   (let [*bullet-dragging? (hooks/use-memo #(atom false) [])
         doc-mode? (rfx/use-sub [:document/mode?])
         [control-show?] (hooks/use-atom *control-show?)
-        editing-user (rfx/use-sub [:rtc/editing-users-by-block (str uuid)])
         ref? (:ref? config)
         container-id (:container-id config)
         empty-content? (block-content-empty? block)
@@ -2276,8 +2226,6 @@
                                 :is-with-icon with-icon?
                                 :bullet-closed collapsed?
                                 :bullet-hidden (:hide-bullet? config)}])}
-     (when (and (not page-title?) editing-user)
-       (editing-user-avatar editing-user))
      (when (and (or (not fold-button-right?) collapsable? collapsed?)
                 (not (:table? config)))
        [:a.block-control
@@ -3296,78 +3244,6 @@
                                        {:align :end}))}
         (clock/seconds->days:hours:minutes:seconds seconds))])))
 
-(defn- sync-conflict-attr-label
-  [attr]
-  (case attr
-    :block/title (t :property.built-in/title)
-    (name attr)))
-
-(defn- visible-sync-conflicts
-  [block conflicts]
-  (->> conflicts
-       (remove (fn [{:keys [attr value]}]
-                 (= value (get block attr))))
-       vec))
-
-(hsx/defc sync-conflict-item
-  [{:keys [id attr value created-at]}]
-  [:div.border.rounded.p-3 {:key id}
-   [:div.flex.flex-row.items-center.justify-between.gap-3.mb-2.text-xs.text-muted-foreground
-    [:span (sync-conflict-attr-label attr)]
-    [:span (date/int->local-time-2 created-at)]]
-   [:pre.whitespace-pre-wrap.text-sm.bg-muted.p-2.rounded.max-h-64.overflow-auto value]
-   [:div.flex.justify-end.mt-2
-    (shui/button
-     {:variant :secondary
-      :size :sm
-      :on-click (fn []
-                  (util/copy-to-clipboard! value)
-                  (notification/show! (t :notification/copied) :success))}
-     (t :ui/copy))]])
-
-(hsx/defc sync-conflicts-popup
-  [conflicts on-mark-resolved]
-  [:div.p-3.w-96
-   {:style {:max-width "90vw"}}
-   [:h2.text-lg.font-medium.mb-2 (t :sync/conflicts-title)]
-   [:p.text-sm.text-muted-foreground.mb-3
-    (t :sync/conflicts-description)]
-   [:div.flex.flex-col.gap-3
-    (for [conflict conflicts]
-      (sync-conflict-item conflict))]
-   [:div.flex.justify-end.mt-3
-    (ui/button (t :sync/mark-conflicts-resolved)
-               :on-click on-mark-resolved)]])
-
-(hsx/defc sync-conflicts-warning-button
-  [block]
-  (let [repo (state/get-current-repo)
-        block-id (:block/uuid block)
-        conflicts (rfx/use-sub [:sync/block-conflicts repo (str block-id)])
-        visible-conflicts (visible-sync-conflicts block conflicts)]
-    (when (seq visible-conflicts)
-      (ui/tooltip
-       (shui/button
-        {:variant :secondary
-         :size :sm
-         :title (t :sync/show-conflicts)
-         :class "ls-sync-conflict-warning ls-small-icon px-1 !py-0 h-5"
-         :on-click (fn [e]
-                     (util/stop e)
-                     (shui/popup-show! (.-target e)
-                                       (fn []
-                                         (sync-conflicts-popup
-                                          visible-conflicts
-                                          (fn []
-                                            (p/let [_ (state/<invoke-db-worker
-                                                       :thread-api/db-sync-clear-block-conflicts
-                                                       repo
-                                                       block-id)]
-                                              (shui/popup-hide!)))))
-                                       {:align :end}))}
-        (ui/icon "alert-triangle" {:size 14}))
-       [:div (t :sync/show-conflicts)]))))
-
 (hsx/defc ^:large-vars/cleanup-todo block-content
   [config {:block/keys [uuid] :as block} edit-input-id block-id *show-query?]
   (let [repo (state/get-current-repo)
@@ -3619,10 +3495,6 @@
 
        (when-not (:table-block-title? config)
          [:div.ls-block-right.flex.flex-row.items-center.self-start.gap-1
-          (when-not (or (:block-ref? config) (:table? config) (:gallery-view? config)
-                        (:property? config))
-            (sync-conflicts-warning-button block))
-
           (when-not table?
             [:div.opacity-70.hover:opacity-100
              (block-positioned-properties config block :block-right)])

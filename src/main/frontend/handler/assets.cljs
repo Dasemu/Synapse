@@ -336,32 +336,3 @@
   (p/let [[repo-dir assets-dir] (ensure-assets-dir! (state/get-current-repo))]
     (path/path-join repo-dir assets-dir filename)))
 
-(defn- asset-transfer-in-progress?
-  [progress-entry]
-  (let [{:keys [loaded total]} progress-entry]
-    (and (number? loaded) (number? total) (pos? total) (not= loaded total))))
-
-(defn should-request-remote-asset-download?
-  [repo asset-block file-ready? progress]
-  (let [asset-uuid (:block/uuid asset-block)
-        asset-type (:logseq.property.asset/type asset-block)
-        external-url (:logseq.property.asset/external-url asset-block)
-        remote-metadata (:logseq.property.asset/remote-metadata asset-block)
-        progress-entry (get progress (str asset-uuid))]
-    (and (seq repo)
-         remote-metadata
-         asset-uuid
-         (seq asset-type)
-         (string/blank? external-url)
-         (not file-ready?)
-         (not (asset-transfer-in-progress? progress-entry)))))
-
-(defn maybe-request-remote-asset-download!
-  [repo asset-block file-ready?]
-  (let [progress (get (or (state/get-state :rtc/asset-upload-download-progress) {}) repo)]
-    (when (should-request-remote-asset-download? repo asset-block file-ready? progress)
-      (state/<invoke-db-worker
-       :thread-api/db-sync-request-asset-download
-       repo
-       (:block/uuid asset-block))
-      true)))

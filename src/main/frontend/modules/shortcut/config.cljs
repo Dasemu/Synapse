@@ -523,22 +523,10 @@
                        :desc "(Dev) Validate current graph"
                        :inactive (not (state/developer-mode?))
                        :fn :frontend.handler.common.developer/validate-db}
-   :dev/recompute-checksum {:binding []
-                            :desc "(Dev) Recompute graph checksum"
-                            :inactive (not (state/developer-mode?))
-                            :fn :frontend.handler.common.developer/recompute-checksum-diagnostics}
    :dev/export-client-ops-sqlite {:binding []
                                   :desc "(Dev) Export client ops sqlite"
                                   :inactive (not (state/developer-mode?))
-                                  :fn :frontend.handler.common.developer/export-client-ops-sqlite}
-   :dev/rtc-stop {:binding []
-                  :desc "(Dev) RTC Stop"
-                  :inactive (not (state/developer-mode?))
-                  :fn :frontend.handler.common.developer/rtc-stop}
-   :dev/rtc-start {:binding []
-                   :desc "(Dev) RTC Start"
-                   :inactive (not (state/developer-mode?))
-                   :fn :frontend.handler.common.developer/rtc-start}})
+                                  :fn :frontend.handler.common.developer/export-client-ops-sqlite}})
 
 (let [keyboard-commands
       {::commands (->> (keys all-built-in-keyboard-shortcuts)
@@ -746,11 +734,8 @@
           :dev/show-page-data
           :dev/replace-graph-with-db-file
           :dev/validate-db
-          :dev/recompute-checksum
           :dev/export-client-ops-sqlite
           :dev/gc-graph
-          :dev/rtc-stop
-          :dev/rtc-start
           :ui/customize-appearance])
         (with-meta {:before m/enable-when-not-editing-mode!}))
 
@@ -912,11 +897,8 @@
      :dev/show-page-data
      :dev/replace-graph-with-db-file
      :dev/validate-db
-     :dev/recompute-checksum
      :dev/export-client-ops-sqlite
      :dev/gc-graph
-     :dev/rtc-stop
-     :dev/rtc-start
      :ui/clear-all-notifications]
 
     :shortcut.category/plugins

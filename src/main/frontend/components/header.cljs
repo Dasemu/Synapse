@@ -6,17 +6,13 @@
             [clojure.string :as string]
             [dommy.core :as d]
             [electron.ipc :as ipc]
-            [frontend.components.avatar :as avatar]
             [frontend.components.block :as component-block]
             [frontend.components.email :as email-component]
             [frontend.components.export :as export]
             [frontend.components.page-menu :as page-menu]
             [frontend.components.plugins :as plugins]
-            [frontend.components.repo :as repo]
             [frontend.components.right-sidebar :as sidebar]
-            [frontend.components.rtc.indicator :as rtc-indicator]
             [frontend.components.server :as server]
-            [frontend.components.settings :as settings]
             [frontend.components.svg :as svg]
             [frontend.config :as config]
             [frontend.context.i18n :as i18n :refer [t]]
@@ -32,7 +28,6 @@
             [frontend.state :as state]
             [frontend.ui :as ui]
             [frontend.util :as util]
-            [frontend.util.email :as email-util]
             [frontend.util.entity :as entity]
             [frontend.version :refer [version]]
             [logseq.common.config :as common-config]
@@ -54,86 +49,6 @@
                                          (route-handler/redirect-to-home!))})
    (t :nav/home)
    {:trigger-props {:as-child true}}))
-
-(defn current-local-uploadable-graph
-  [db-rtc-uuid]
-  (let [current-repo (state/get-current-repo)]
-    (some (fn [{:keys [url] :as graph}]
-            (when (and (= current-repo url)
-                       (repo/local-uploadable-graph?
-                        (assoc graph :rtc-graph?
-                               (boolean db-rtc-uuid))))
-              graph))
-          (state/get-repos))))
-
-(defn- use-db-rtc-uuid
-  [repo]
-  (let [[db-rtc-uuid set-db-rtc-uuid!] (hooks/use-state nil)]
-    (hooks/use-effect!
-     (fn []
-       (when repo
-         (p/let [graph-uuid (state/<invoke-db-worker :thread-api/get-rtc-graph-uuid repo)]
-           (set-db-rtc-uuid! graph-uuid)))
-       nil)
-     [repo])
-    db-rtc-uuid))
-
-(defn- current-remote-rtc-graph
-  [current-repo rtc-graphs]
-  (some #(when (= current-repo (:url %)) %) rtc-graphs))
-
-(defn- rtc-indicator-visible?
-  [{:keys [current-repo rtc-graphs db-rtc-uuid rtc-state logged-in? rtc-group?]}]
-  (let [remote-graph (current-remote-rtc-graph current-repo rtc-graphs)
-        remote-graph-uuid (some-> (:GraphUUID remote-graph) str)
-        state-graph-uuid (some-> (:graph-uuid rtc-state) str)]
-    (and current-repo
-         logged-in?
-         rtc-group?
-         remote-graph
-         (or db-rtc-uuid
-             (and (seq state-graph-uuid)
-                  (= state-graph-uuid remote-graph-uuid))))))
-
-(defn local-graph-sync-button
-  [graph]
-  (ui/tooltip
-   (shui/button-ghost-icon :cloud
-                           {:class "local-graph-sync-btn"
-                            :on-click #(repo/upload-local-graph-with-confirm! graph)})
-   (t :graph/use-sync-beta)
-   {:trigger-props {:as-child true}}))
-
-(hsx/defc rtc-collaborators
-  []
-  (let [rtc-graph-id (use-db-rtc-uuid (state/get-current-repo))
-        config (rfx/use-sub [:config])
-        online-users (rfx/use-sub [:rtc/state :online-users])]
-    (when rtc-graph-id
-      [:div.rtc-collaborators.flex.gap-1.text-sm.bg-gray-01.items-center
-       (shui/button-ghost-icon :user-plus
-                               {:on-click #(shui/dialog-open!
-                                            (fn []
-                                              [:div.p-2.-mb-8
-                                               [:h1.text-3xl.-mt-2.-ml-2 (t :collaboration/members)]
-                                               (settings/settings-collaboration)])
-                                            {:id :rtc-collaborators})})
-
-       (when (seq online-users)
-         (for [{user-email :user/email
-                user-name :user/name
-                user-uuid :user/uuid} online-users
-               :when user-name
-               :let [key (str "rtc-user-" (or user-uuid user-email user-name))]]
-           ^{:key key}
-           [:<>
-            (avatar/user-avatar
-             {:class "w-5 h-5"
-              :style {:app-region "no-drag"}
-              :title (email-util/display-email user-email config)
-              :name user-name
-              :uuid user-uuid
-              :fallback-props {:style {:font-size 11}}})]))])))
 
 (hsx/defc left-menu-button
   [{:keys [on-click]}]
@@ -502,9 +417,6 @@
 (hsx/defc ^:large-vars/cleanup-todo header-aux
   [{:keys [current-repo default-home new-block-mode]}]
   (let [electron-mac? (and util/mac? (util/electron?))
-        rtc-graphs (rfx/use-sub [:rtc/graphs])
-        rtc-state (rfx/use-sub [:rtc/state])
-        db-rtc-uuid (use-db-rtc-uuid current-repo)
         default-home-page (get-in (state/config-for-repo (rfx/use-sub [:config])
                                                          (state/get-current-repo))
                                   [:default-home :page] "")
@@ -554,27 +466,8 @@
       [:div.flex.flex-1
        (block-breadcrumb (state/get-current-page))]
       [:div.flex.items-center
-       (when (rtc-indicator-visible?
-              {:current-repo current-repo
-               :rtc-graphs rtc-graphs
-               :db-rtc-uuid db-rtc-uuid
-               :rtc-state rtc-state
-               :logged-in? (user-handler/logged-in?)
-               :rtc-group? (user-handler/rtc-group?)})
-         [:<>
-          (recent-slider)
-          ^{:key (str "collab-" current-repo)}
-          [rtc-collaborators]
-          (rtc-indicator/indicator)])
-
-       (when (user-handler/logged-in?)
-         (rtc-indicator/downloading-detail))
-       (when (user-handler/logged-in?)
-         (rtc-indicator/uploading-detail))
+       (recent-slider)
        (search-index-progress)
-
-       (when-let [graph (current-local-uploadable-graph db-rtc-uuid)]
-         (local-graph-sync-button graph))
 
        (when (and (not= (state/get-current-route) :home)
                   (not custom-home-page?))
@@ -608,6 +501,5 @@
 
 (hsx/defc header
   [opts]
-  (let [_user-groups (rfx/use-sub [:user/info :UserGroups])
-        _rtc-running? (rfx/use-sub [:rtc/state :rtc-lock])]
+  (let [_user-groups (rfx/use-sub [:user/info :UserGroups])]
     (header-aux opts)))

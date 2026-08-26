@@ -340,18 +340,6 @@
       :auth/oauth-client-id                  nil
       :auth/current-login-user               nil
 
-      ;; graph-uuid -> ...
-      :rtc/state                             {}
-      :rtc/editing-users-by-block            {}
-      :rtc/loading-graphs?                   nil
-      ;; only latest rtc-log stored here, derive a log stream from state when needed.
-      :rtc/log                               nil
-      :rtc/uploading?                        false
-      :rtc/downloading-graph-uuid            nil
-      :rtc/graphs                            []
-      :rtc/online-info                       {}
-      :rtc/asset-upload-download-progress    {}
-      :rtc/users-info                        {}
       :sync/block-conflicts                  {}
 
       :user/info                             {:UserGroups (storage/get :user-groups)}
@@ -360,7 +348,6 @@
       :ui/loading?                           {}
       :ui/container-id                       0
       :ui/cached-key->container-id           {}
-      :feature/enable-sync?                  (storage/get :logseq-sync-enabled)
 
       :ui/find-in-page                       nil
       :comments/inline-thread                nil
@@ -879,23 +866,6 @@ should be done through this fn in order to get global config and config defaults
   []
   (:git/current-repo (rfx/snapshot)))
 
-(defn get-rtc-graphs
-  []
-  (:rtc/graphs (rfx/snapshot)))
-
-;; TODO: rtc version
-(comment
-  (defn get-remote-graph-usage
-    [graphs]
-    (->> graphs
-         (map #(hash-map :uuid (:GraphUUID %)
-                         :name (:GraphName %)
-                         :used-gbs (/ (:GraphStorageUsage %) 1024 1024 1024)
-                         :limit-gbs (/ (:GraphStorageLimit %) 1024 1024 1024)
-                         :used-percent (/ (:GraphStorageUsage %) (:GraphStorageLimit %) 0.01)))
-         (map #(assoc % :free-gbs (- (:limit-gbs %) (:used-gbs %))))
-         (vec))))
-
 (defn get-repos
   []
   (get-in (rfx/snapshot) [:me :repos]))
@@ -1312,27 +1282,22 @@ should be done through this fn in order to get global config and config defaults
 (defn clear-edit!
   [& {:keys [clear-editing-block?]
       :or {clear-editing-block? true}}]
-  (let [online-users (some-> (get-state :rtc/state) :online-users)]
-    (swap-state!
-     (fn [db]
-       (cond-> (assoc db
-                      :editor/action nil
-                      :editor/args nil
-                      :editor/start-pos nil
-                      :editor/last-saved-cursor {}
-                      :editor/cursor-range nil
-                      :ui/select-query-cache {}
-                      :editor/block-refs #{}
-                      :editor/action-data nil
-                      :view/selected-blocks nil)
-         clear-editing-block?
-         (assoc :editor/editing? nil
-                :editor/block nil
-                :editor/content {}))))
-    (when (and clear-editing-block?
-               (coll? online-users)
-               (> (count online-users) 1))
-      (pub-event! [:rtc/presence-update {:editing-block-uuid nil}])))
+  (swap-state!
+   (fn [db]
+     (cond-> (assoc db
+                    :editor/action nil
+                    :editor/args nil
+                    :editor/start-pos nil
+                    :editor/last-saved-cursor {}
+                    :editor/cursor-range nil
+                    :ui/select-query-cache {}
+                    :editor/block-refs #{}
+                    :editor/action-data nil
+                    :view/selected-blocks nil)
+       clear-editing-block?
+       (assoc :editor/editing? nil
+              :editor/block nil
+              :editor/content {}))))
   nil)
 
 (defn set-editor-last-pos!
@@ -1876,9 +1841,6 @@ should be done through this fn in order to get global config and config defaults
                        (assoc-in [:editor/content block-id] content))
              native-platform?
              (assoc :mobile/show-action-bar? false))))
-        (let [online-users (some-> (get-state :rtc/state) :online-users)]
-          (when (and (coll? online-users) (> (count online-users) 1))
-            (pub-event! [:rtc/presence-update {:editing-block-uuid (str block-id)}])))
         (when (= :code (:logseq.property.node/display-type block))
           (pub-event! [:editor/focus-code-editor block block-element]))
         (when-let [input (gdom/getElement edit-input-id)]

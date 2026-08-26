@@ -149,23 +149,16 @@
 
 (defn popup-hide!
   [& args]
-  (cond
-    (= :download-rtc-graph (first args))
-    (do
-      (dismiss-native-sheet!)
-      (mobile-state/set-tab! "home"))
-
-    :else
-    (if (and @*last-popup? (not (= (first args) :editor.commands/commands)))
-      (if (some? @*pending-native-sheet-data)
-        (do
-          (reset! *pending-native-sheet-data nil)
-          (reset! *last-popup? false)
-          (reset! *last-popup-data nil)
-          (mobile-state/set-popup-presenting! false)
-          (mobile-state/set-popup! nil))
-        (dismiss-native-sheet!))
-      (apply shui-popup/hide! args))))
+  (if (and @*last-popup? (not (= (first args) :editor.commands/commands)))
+    (if (some? @*pending-native-sheet-data)
+      (do
+        (reset! *pending-native-sheet-data nil)
+        (reset! *last-popup? false)
+        (reset! *last-popup-data nil)
+        (mobile-state/set-popup-presenting! false)
+        (mobile-state/set-popup! nil))
+      (dismiss-native-sheet!))
+    (apply shui-popup/hide! args)))
 
 (set! shui/popup-show! popup-show!)
 (set! shui/popup-hide! popup-hide!)

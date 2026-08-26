@@ -2,7 +2,6 @@
   "UI events"
   (:require-macros [frontend.handler.events.macros :refer [defevent!]])
   (:require [clojure.core.async :as async]
-            [clojure.core.async.interop :refer [p->c]]
             [frontend.components.assets :as assets]
             [frontend.components.cmdk.core :as cmdk]
             [frontend.components.icon :as icon-component]
@@ -25,8 +24,6 @@
             [frontend.extensions.pdf.assets :as pdf-assets]
             [frontend.fs :as fs]
             [frontend.handler.assets :as assets-handler]
-            [frontend.handler.db-based.rtc-flows :as rtc-flows]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.events :as events]
             [frontend.handler.notification :as notification]
@@ -49,15 +46,6 @@
             [logseq.shui.ui :as shui]
             [promesa.core :as p]
             [logseq.shui.dialog.core :as shui-dialog]))
-
-(defn- <asset-file-ready?
-  [asset file-name]
-  (if (or config/publishing?
-          (seq (:logseq.property.asset/external-url asset)))
-    (p/resolved true)
-    (fs/file-exists?
-     (config/get-repo-dir (state/get-current-repo))
-     (path/path-join common-config/local-assets-dir file-name))))
 
 (defevent! :go/search [_]
   (when-not (editor-handler/dialog-exists? :ls-dialog-cmdk)
@@ -99,11 +87,6 @@
   (shui/dialog-open!
    (plugin/user-proxy-settings-container agent-opts)
    {:id :https-proxy-panel :center? true :class "lg:max-w-2xl"}))
-
-(defevent! :go/sync-server-settings [[_]]
-  (shui/dialog-open!
-   (settings/sync-server-url-settings-container)
-   {:id :sync-server-panel :center? true :class "lg:max-w-2xl"}))
 
 (defevent! :go/db-worker-server-settings [[_]]
   (shui/dialog-open!
@@ -456,28 +439,21 @@
                :h (or (:logseq.property.asset/height asset) 800)}])))
 
         video?
-        (p/let [file-ready? (<asset-file-ready? asset file-name)
-                requested? (assets-handler/maybe-request-remote-asset-download!
-                            (state/get-current-repo)
-                            asset
-                            file-ready?)]
-          (if requested?
-            (notification/show! (t :asset/downloading))
-            (p/let [url (assets-handler/<make-asset-url rel-path)]
-              (when url
-                (shui/dialog-open!
-                 (fn []
-                   [:div.flex.flex-col.gap-2.items-center
-                    [:div.font-medium.text-sm.self-start.truncate.max-w-full
-                     (:block/title asset)]
-                    [:video.rounded.max-w-full
-                     {:src url
-                      :controls true
-                      :autoPlay true
-                      :style {:max-height "80vh"}}]])
-                 {:id :asset-video-preview
-                  :auto-width? true
-                  :center? true})))))
+        (p/let [url (assets-handler/<make-asset-url rel-path)]
+          (when url
+            (shui/dialog-open!
+             (fn []
+               [:div.flex.flex-col.gap-2.items-center
+                [:div.font-medium.text-sm.self-start.truncate.max-w-full
+                 (:block/title asset)]
+                [:video.rounded.max-w-full
+                 {:src url
+                  :controls true
+                  :autoPlay true
+                  :style {:max-height "80vh"}}]])
+             {:id :asset-video-preview
+              :auto-width? true
+              :center? true})))
 
         pdf?
         (p/let [url (assets-handler/<make-asset-url rel-path)]
@@ -486,21 +462,6 @@
 
         :else
         (route-handler/redirect-to-page! (:block/uuid asset))))))
-
-(defn ensure-user-rsa-keys-if-possible!
-  []
-  (if @state/*db-worker
-    (-> (p/do!
-         (state/pub-event! [:rtc/sync-app-state])
-         (state/<invoke-db-worker :thread-api/set-db-sync-config
-                                  {:enabled? true
-                                   :ws-url (config/db-sync-ws-url)
-                                   :http-base (config/db-sync-http-base)})
-         (state/<invoke-db-worker :thread-api/db-sync-ensure-user-rsa-keys))
-        (p/catch (fn [error]
-                   (log/error :db-sync/ensure-user-rsa-keys-failed error)
-                   nil)))
-    (p/resolved nil)))
 
 (defevent! :user/fetch-info-and-graphs [[_]]
   (state/set-state! [:ui/loading? :login] false)
@@ -513,18 +474,8 @@
         (do
           (state/set-user-info! result)
           (when-let [uid (user-handler/user-uuid)]
-            (sentry-event/set-user! uid)
-            (ensure-user-rsa-keys-if-possible!))
-          (let [status (if (user-handler/alpha-or-beta-user?) :welcome :unavailable)
-                fetch-graphs? (and (user-handler/logged-in?)
-                                   (or (= status :welcome)
-                                       (user-handler/rtc-group?)))]
-            (when fetch-graphs?
-              (async/<! (p->c (rtc-handler/<get-remote-graphs)))
-              (repo-handler/refresh-repos!)
-              (when-let [current-repo (state/get-current-repo)]
-                (when (some #(= current-repo (:url %)) (state/get-rtc-graphs))
-                  (rtc-flows/trigger-rtc-start current-repo))))))))))
+            (sentry-event/set-user! uid))
+          (repo-handler/refresh-repos!))))))
 
 (defevent! :dialog/show-block [[_ block option]]
   (shui/dialog-open!

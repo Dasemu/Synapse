@@ -220,12 +220,6 @@
     (ipc/ipc "releaseDbWorkerRuntime" repo)
     (p/resolved nil)))
 
-(defn- current-db-sync-config
-  []
-  {:enabled? true
-   :ws-url (config/db-sync-ws-url)
-   :http-base (config/db-sync-http-base)})
-
 (defn- <sync-markdown-mirror-setting!
   [repo]
   (state/<invoke-db-worker :thread-api/markdown-mirror-set-enabled
@@ -327,9 +321,7 @@
                                             :repo repo :error e)))))
                  (do
                    (set-remote-runtime! repo client session-id)
-                   (p/let [_ (state/<invoke-db-worker :thread-api/set-db-sync-config
-                                                      (current-db-sync-config))
-                           _ (<sync-markdown-mirror-setting! repo)]
+                   (p/let [_ (<sync-markdown-mirror-setting! repo)]
                      (sync-markdown-mirror-setting-watch!)
                      nil)
                    (ldb/register-transact-fn!

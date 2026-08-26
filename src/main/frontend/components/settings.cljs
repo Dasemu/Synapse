@@ -11,7 +11,6 @@
             [frontend.date :as date]
             [frontend.dicts :as dicts]
             [frontend.handler.config :as config-handler]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.global-config :as global-config-handler]
             [frontend.handler.notification :as notification]
             [frontend.handler.plugin :as plugin-handler]
@@ -637,59 +636,6 @@
                  (config-handler/set-config! :feature/enable-flashcards? value)))
              true))
 
-(defn- push-sync-config-to-worker!
-  "Push the current sync URL config to the db worker so changes take effect
-   without restarting the app."
-  []
-  (state/<invoke-db-worker :thread-api/set-db-sync-config
-                           {:enabled? true
-                            :ws-url (config/db-sync-ws-url)
-                            :http-base (config/db-sync-http-base)}))
-
-(hsx/defc sync-server-url-settings-container
-  []
-  (let [current-url (config/get-custom-sync-server-url)
-        [url set-url!] (hooks/use-state (or current-url ""))
-        reset-url! (fn []
-                     (config/set-custom-sync-server-url! nil)
-                     (set-url! "")
-                     (-> (push-sync-config-to-worker!)
-                         (p/then #(notification/show! (t :settings.sync-server/clear-success) :success))
-                         (p/catch #(notification/show! (str "Failed to update worker: " %) :error))))]
-    [:div.cp__settings-sync-server-cnt
-     [:h1.mb-2.text-2xl.font-bold (t :settings.sync-server/url)]
-     [:div.p-2
-      [:p.text-sm.opacity-70.mb-4 (t :settings.sync-server/url-desc)]
-      [:p
-       [:label
-        [:strong "URL"]
-        [:input.form-input.is-small
-         {:value url
-          :placeholder config/default-db-sync-http-base
-          :style {:width "100%"}
-          :on-change #(set-url! (util/evalue %))}]]]
-      [:p.pt-2.flex.gap-2
-       (shui/button
-        {:size :sm
-         :on-click (fn []
-                     (let [trimmed (string/trim url)]
-                       (if (string/blank? trimmed)
-                         (reset-url!)
-                         (if-not (config/valid-sync-server-url? trimmed)
-                           (notification/show! (t :settings.sync-server/url-invalid-error) :error)
-                           (do
-                             (config/set-custom-sync-server-url! trimmed)
-                             (-> (push-sync-config-to-worker!)
-                                 (p/then #(notification/show! (t :settings.sync-server/save-success) :success))
-                                 (p/catch #(notification/show! (str "Failed to update worker: " %) :error))))))))}
-        (t :ui/save))
-       (when (seq url)
-         (shui/button
-          {:size :sm
-           :variant :outline
-           :on-click (fn [] (reset-url!))}
-          (t :settings.sync-server/reset)))]]]))
-
 (hsx/defc db-worker-server-settings-container
   "Connects a web/mobile client to a self-hosted db-worker-node server (see
    frontend.persist-db/remote-runtime?). Electron manages its own local
@@ -787,23 +733,6 @@
   (row-with-button-action
    {:left-label "Server"
     :action (db-worker-server-button)}))
-
-(hsx/defc sync-server-url-button
-  []
-  (let [current-url (config/get-custom-sync-server-url)]
-    (ui/button [:span.flex.items-center
-                [:span.pr-1
-                 (if (seq current-url)
-                   current-url
-                   "Logseq Sync")]
-                (ui/icon "edit")]
-               :class "text-sm"
-               :on-click #(state/pub-event! [:go/sync-server-settings]))))
-
-(defn sync-server-url-row []
-  (row-with-button-action
-   {:left-label (t :settings.sync-server/url)
-    :action (sync-server-url-button)}))
 
 (hsx/defc publish-server-url-settings-container
   []
@@ -1024,7 +953,6 @@
      (usage-diagnostics-row t instrument-disabled?)
      (when-not (mobile-util/native-platform?) (developer-mode-row t developer-mode?))
      (when-not (util/electron?) (db-worker-server-row))
-     (sync-server-url-row)
      (publish-server-url-row)
      (when (util/electron?) (https-user-agent-row https-agent-opts))
      (when (util/electron?) (auto-chmod-row t))
@@ -1294,221 +1222,6 @@
 
   [:<>])
 
-(hsx/defc settings-rtc-members
-  []
-  (let [[invite-email set-invite-email!] (hooks/use-state "")
-        [loading? set-loading!] (hooks/use-state true)
-        [graph-uuid set-graph-uuid!] (hooks/use-state nil)
-        current-repo (state/get-current-repo)
-        manager? (user-handler/manager? current-repo)
-        users-info (rfx/use-sub [:rtc/users-info])
-        users (get users-info current-repo)
-        invite-user! (fn []
-                       (when-not (string/blank? invite-email)
-                         (when graph-uuid
-                           (rtc-handler/<rtc-invite-email graph-uuid invite-email))))]
-    (hooks/use-effect!
-     #(do
-        (p/let [graph-uuid (state/<invoke-db-worker :thread-api/get-rtc-graph-uuid current-repo)
-                _ (rtc-handler/<rtc-get-users-info)]
-          (set-graph-uuid! graph-uuid)
-          (set-loading! false))
-        nil)
-     [])
-    [:div.flex.flex-col.gap-2.mt-4
-     {:on-key-press (fn [e]
-                      (when (= "Enter" (.-key e))
-                        (invite-user!)))}
-     [:div.users.flex.flex-col.gap-1
-      (if loading?
-        (for [i (range 2)]
-          [:div.flex.flex-row.items-center.gap-2.pr-4 {:key (str "skeleton-" i)}
-           (shui/skeleton {:class "h-4 w-32"})
-           (shui/skeleton {:class "h-4 w-full"})])
-        (for [{user-name :user/name
-               user-email :user/email
-               user-uuid :user/uuid
-               graph<->user-user-type :graph<->user/user-type} users]
-          (let [member? (= :member graph<->user-user-type)
-                can-remove? (and manager? member?)]
-            [:div.flex.flex-row.items-center.gap-2
-             {:key (str "user-" (or user-uuid user-name))}
-             [:div user-name]
-             (when user-email
-               (email-component/email-address {:email user-email
-                                               :class "opacity-50 text-sm"}))
-             (when graph<->user-user-type [:div.opacity-50.text-sm (name graph<->user-user-type)])
-             (when can-remove?
-               (shui/dropdown-menu
-                (shui/dropdown-menu-trigger
-                 {:asChild true}
-                 (shui/button
-                  {:variant "ghost"
-                   :size :sm
-                   :class "px-1 h-7"}
-                  (ui/icon "dots" {:size 14})))
-                (shui/dropdown-menu-content
-                 {:align "end"}
-                 (shui/dropdown-menu-item
-	                   {:class "remove-member-menu-item"
-	                    :on-click (fn []
-	                               (let [member-id user-uuid]
-	                                 (when (and graph-uuid member-id)
-                                   (-> (rtc-handler/<rtc-remove-member! graph-uuid member-id)
-                                       (p/then (fn []
-                                                 (rtc-handler/<rtc-get-users-info true)))
-                                       (p/catch (fn [e]
-                                                  (notification/show! (t :collaboration/remove-access-error) :error)
-                                                  (log/error :db-sync/remove-member-failed {:error e
-                                                                                            :graph-uuid graph-uuid
-                                                                                            :member-id member-id})))))))}
-                  (t :collaboration/remove-access)))))])))]
-     [:div.flex.flex-col.gap-4.mt-4
-      (shui/input
-       {:placeholder   (t :collaboration/email-address)
-        :on-change     #(set-invite-email!
-                         (string/trim (util/evalue %)))})
-      (shui/button
-       {:on-click invite-user!}
-       (t :collaboration/invite))]]))
-
-(hsx/defc settings-collaboration
-  []
-  [:div.panel-wrap.is-collaboration.mb-8
-   (settings-rtc-members)])
-
-(hsx/defc forgot-password
-  [token refresh-token user-uuid]
-  (let [[new-password set-new-password!] (hooks/use-state "")
-        [force-reset-status set-force-reset-status!] (hooks/use-state nil)
-        <force-reset-password-fn
-        (fn []
-          (-> (p/do!
-               (set-force-reset-status! (t :encryption/force-resetting-password))
-               (state/<invoke-db-worker :thread-api/reset-user-rsa-key-pair
-                                        token refresh-token user-uuid new-password)
-               (set-force-reset-status! (t :encryption/force-reset-password-successfully)))
-              (p/catch (fn [e]
-                         (log/error :forgot-password e)
-                         (set-force-reset-status! (t :encryption/failed-to-force-reset-password))))))]
-    [:div.flex.flex-col.gap-4
-     [:p
-      (t :encryption/forgot-password-warning)]
-     [:label.opacity-70 {:for "new-password"} (t :encryption/set-new-password)]
-     (shui/toggle-password
-      {:id "new-password"
-       :value new-password
-       :on-change #(set-new-password! (util/evalue %))})
-     (when force-reset-status [:p force-reset-status])
-     (shui/button
-      {:on-click <force-reset-password-fn
-       :disabled (string/blank? new-password)}
-      (t :encryption/force-reset-password))]))
-
-(hsx/defc reset-encryption-password
-  [current-password new-password {:keys [set-new-password!
-                                         set-current-password!
-                                         reset-password-status
-                                         on-click forgot? set-forgot!
-                                         token refresh-token user-uuid]}]
-  (let [[reset? set-reset!] (hooks/use-state false)]
-    (cond
-      forgot?
-      (forgot-password token refresh-token user-uuid)
-      reset?
-      [:div.flex.flex-col.gap-4
-       [:label.opacity-70 {:for "current-password"} (t :encryption/current-password)]
-       (shui/toggle-password
-        {:id "current-password"
-         :value current-password
-         :on-change #(set-current-password! (util/evalue %))})
-       [:label.opacity-70 {:for "new-password"} (t :encryption/set-new-password)]
-       (shui/toggle-password
-        {:id "new-password"
-         :value new-password
-         :on-change #(set-new-password! (util/evalue %))})
-       (when reset-password-status [:p reset-password-status])
-       (shui/button
-        {:on-click on-click
-         :disabled (string/blank? new-password)}
-        (t :encryption/reset-password))
-       [:a.opacity-70.hover:opacity-100 {:on-click #(set-forgot! true)}
-        (t :encryption/forgot-password-question)]]
-      :else
-      [:a.opacity-70.hover:opacity-100 {:on-click #(set-reset! true)}
-       (t :encryption/reset-password)])))
-
-(hsx/defc encryption
-  []
-  (let [user-uuid (user-handler/user-uuid)
-        token (state/get-auth-id-token)
-        refresh-token (str (state/get-auth-refresh-token))
-        [rsa-key-pair set-rsa-key-pair!] (hooks/use-state :not-inited)
-        [init-key-err set-init-key-err!] (hooks/use-state nil)
-        [get-key-err set-get-key-err!] (hooks/use-state nil)
-        [current-password set-current-password!] (hooks/use-state nil)
-        [new-password set-new-password!] (hooks/use-state nil)
-        [reset-password-status set-reset-password-status!] (hooks/use-state nil)
-        [forgot? set-forgot!] (hooks/use-state false)]
-    [:div.panel-wrap.is-encryption.mb-8
-     (hooks/use-effect!
-      (fn []
-        (when (and user-uuid token)
-          (-> (p/let [r (state/<invoke-db-worker :thread-api/get-user-rsa-key-pair token user-uuid)]
-                (set-rsa-key-pair! r))
-              (p/catch set-get-key-err!))
-          (-> (p/let [{:keys [password]} (state/<invoke-db-worker :thread-api/get-e2ee-password refresh-token)]
-                (set-current-password! password))
-              (p/catch (fn [_] (set-current-password! ""))))))
-      [user-uuid token])
-     [:div.flex.flex-col.gap-2.mt-4
-      (when (and user-uuid token)
-        (cond
-          get-key-err
-          [:p (t :encryption/fetch-key-pair-error get-key-err)]
-          (= rsa-key-pair :not-inited)
-          [:p (t :encryption/fetching-key-pair)]
-          (nil? rsa-key-pair)
-          [:div.flex.flex-col.gap-2
-           (when init-key-err [:p (t :encryption/init-key-pair-error init-key-err)])
-           (shui/button
-            {:on-click (fn []
-                         (-> (p/do!
-                              (state/<invoke-db-worker :thread-api/init-user-rsa-key-pair
-                                                       token
-                                                       refresh-token
-                                                       user-uuid)
-                              (p/let [r (state/<invoke-db-worker :thread-api/get-user-rsa-key-pair token user-uuid)]
-                                (set-rsa-key-pair! r)))
-                             (p/catch set-init-key-err!)))}
-            (t :encryption/init-key-pair))]
-          rsa-key-pair
-          (let [on-submit (fn []
-                            (-> (p/do!
-                                 (set-reset-password-status! (t :encryption/updating-password))
-                                 (state/<invoke-db-worker :thread-api/change-e2ee-password
-                                                          token refresh-token user-uuid current-password new-password)
-                                 (set-reset-password-status! (t :encryption/password-updated-successfully)))
-                                (p/catch (fn [e]
-                                           (log/error :reset-password-failed e)
-                                           (set-reset-password-status! (t :encryption/failed-to-update-password))))))]
-            [:div.flex.flex-col.gap-4
-             ;; [:p "E2EE key-pair already generated!"]
-             (when-not forgot?
-               [:div.flex.flex-col
-                [:p (t :encryption/remember-password-rich)]
-                [:p (t :encryption/cloud-password-rich)]])
-             (reset-encryption-password current-password new-password
-                                        {:reset-password-status reset-password-status
-                                         :set-new-password! set-new-password!
-                                         :set-current-password! set-current-password!
-                                         :on-click on-submit
-                                         :token token
-                                         :forgot? forgot?
-                                         :set-forgot! set-forgot!
-                                         :refresh-token refresh-token
-                                         :user-uuid user-uuid})])))]]))
-
 (hsx/defc mcp-server-row
   [t]
   (let [server-state (rfx/use-sub [:electron/server])
@@ -1552,8 +1265,7 @@
         _installed-plugins (rfx/use-sub [:plugin/installed-plugins])
         plugins-of-settings (and config/lsp-enabled? (seq (plugin-handler/get-enabled-plugins-if-setting-schema)))
         *active (hooks/use-memo #(atom DEFAULT-ACTIVE-TAB-STATE) [])
-        [active] (hooks/use-atom *active)
-        logged-in? (user-handler/logged-in?)]
+        [active] (hooks/use-atom *active)]
     (hooks/use-effect!
      (fn []
        (state/load-app-user-cfgs)
@@ -1584,11 +1296,6 @@
 
                [:advanced (t :settings/advanced) (ui/icon "bulb")]
                [:features (t :settings/features) (ui/icon "app-feature")]
-               (when logged-in?
-                 [:collaboration (t :settings/collaboration) (ui/icon "users")])
-
-               (when logged-in?
-                 [:encryption (t :settings/encryption) (ui/icon "lock")])
 
                (when plugins-of-settings
                  [:plugins-setting (t :settings/plugins) (ui/icon "puzzle")])]]
@@ -1640,12 +1347,6 @@
 
         :features
         (settings-features)
-
-        :collaboration
-        (settings-collaboration)
-
-        :encryption
-        (encryption)
 
          :ai
          (if (util/electron?)

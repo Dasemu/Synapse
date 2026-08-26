@@ -3,7 +3,6 @@
   (:require ["@capacitor/dialog" :refer [Dialog]]
             [clojure.string :as string]
             [frontend.components.repo :as repo]
-            [frontend.components.rtc.indicator :as rtc-indicator]
             [frontend.context.i18n :refer [t]]
             [frontend.date :as date]
             [frontend.db.async :as db-async]
@@ -11,7 +10,6 @@
             [frontend.handler.notification :as notification]
             [frontend.handler.page :as page-handler]
             [frontend.handler.route :as route-handler]
-            [frontend.handler.user :as user-handler]
             [frontend.mobile.util :as mobile-util]
             [frontend.rfx :as rfx]
             [frontend.state :as state]
@@ -165,22 +163,6 @@
      {:title (t :flashcard/select-cards)
       :default-height false})))
 
-(defn current-local-uploadable-graph
-  [rtc-graph-uuid]
-  (let [current-repo (state/get-current-repo)]
-    (some (fn [{:keys [url] :as graph}]
-            (when (and (= current-repo url)
-                       (repo/local-uploadable-graph?
-                        (assoc graph :rtc-graph?
-                               (boolean rtc-graph-uuid))))
-              graph))
-          (state/get-repos))))
-
-(defn <load-rtc-graph-uuid
-  [current-repo db-worker-ready?]
-  (when (and current-repo db-worker-ready?)
-    (state/<invoke-db-worker :thread-api/get-rtc-graph-uuid current-repo)))
-
 (defn- register-native-top-bar-events! [*configure-top-bar-f]
   (when (and (mobile-util/native-platform?)
              mobile-util/native-top-bar
@@ -200,13 +182,6 @@
                       "add-graph" (open-new-db-graph!)
                       "home-setting" (open-home-settings-actions!)
                       "graph-setting" (open-graph-settings-actions!)
-                      "sync" (p/let [rtc-graph-uuid (state/<invoke-db-worker :thread-api/get-rtc-graph-uuid
-                                                                             (state/get-current-repo))]
-                               (if-let [graph (current-local-uploadable-graph rtc-graph-uuid)]
-                                 (repo/upload-local-graph-with-confirm! graph)
-                                 (shui/popup-show! nil
-                                                   (rtc-indicator/details)
-                                                   {})))
                       "favorite" (when-let [id (state/get-current-page)]
                                    (when (common-util/uuid-string? id)
                                      (p/let [block (db-async/<get-block (state/get-current-repo)
@@ -236,7 +211,7 @@
     (reset! native-top-bar-listener-version native-top-bar-listener-current-version)))
 
 (defn- configure-native-top-bar!
-  [{:keys [tab title route-name route-view sync-color favorited? show-sync? show-local-upload?]}]
+  [{:keys [tab title route-name route-view favorited?]}]
   (when (and (mobile-util/native-platform?)
              mobile-util/native-top-bar)
     (let [hidden? (and (mobile-util/native-ios?) (= tab "search"))
@@ -261,13 +236,7 @@
                           (= tab "home")
                           (cond-> []
                             (nil? route-view)
-                            (conj {:id "home-setting" :systemIcon "ellipsis"})
-                            (and show-local-upload? (not page?))
-                            (conj {:id "sync" :systemIcon "icloud.and.arrow.up"
-                                   :size "medium"})
-                            (and (not show-local-upload?) show-sync? (not page?))
-                            (conj {:id "sync" :systemIcon "circle.fill" :color sync-color
-                                   :size "small"}))
+                            (conj {:id "home-setting" :systemIcon "ellipsis"}))
 
                           (= tab "graphs")
                           [{:id "graph-setting" :systemIcon "ellipsis"}
@@ -325,43 +294,8 @@
         native-ios-graphs? (and (mobile-util/native-ios?) (= tab "graphs"))
         page-route? (and (= route-name :page) (not native-ios-graphs?))
         [*configure-top-bar-f _] (hooks/use-state (atom nil))
-        [rtc-graph-uuid set-rtc-graph-uuid!] (hooks/use-state nil)
-        db-worker-ready? (hooks/use-atom-value state/db-worker-ready?)
-        detail-info (rtc-indicator/use-detail-info)
         _ (rfx/use-sub [:auth/current-login-user])
-        online? (rfx/use-sub [:network/online?])
-        rtc-state (:rtc-state detail-info)
-        graph-uuid (or (:graph-uuid detail-info)
-                       rtc-graph-uuid)
-        local-uploadable-graph (current-local-uploadable-graph graph-uuid)
-        show-sync? (and current-repo graph-uuid (user-handler/logged-in?))
-        show-local-upload? (some? local-uploadable-graph)
-        unpushed-block-update-count (:pending-local-ops detail-info)
-        pending-asset-ops           (:pending-asset-ops detail-info)
-        fallback-title (build-fallback-title current-repo tab flashcards-header)
-        sync-color (if (and online?
-                            (= :open rtc-state)
-                            (zero? unpushed-block-update-count)
-                            (zero? pending-asset-ops))
-                     ;; green
-                     "#16A34A"
-                     ;; yellow
-                     "#CA8A04")]
-    (hooks/use-effect!
-     (fn []
-       (if-let [rtc-graph-uuid-request (<load-rtc-graph-uuid current-repo db-worker-ready?)]
-         (let [cancelled? (atom false)]
-           (-> rtc-graph-uuid-request
-               (p/then (fn [uuid]
-                         (when-not @cancelled?
-                           (set-rtc-graph-uuid! uuid))))
-               (p/catch (fn [_] nil)))
-           #(reset! cancelled? true))
-         (do
-           (set-rtc-graph-uuid! nil)
-           nil)))
-     [current-repo db-worker-ready?])
-
+        fallback-title (build-fallback-title current-repo tab flashcards-header)]
     (hooks/use-effect!
      (fn []
        (when (and (mobile-util/native-platform?)
@@ -374,14 +308,11 @@
                      :title title
                      :route-name route-name
                      :route-view route-view
-                     :sync-color sync-color
-                     :show-sync? show-sync?
-                     :show-local-upload? show-local-upload?
                      :favorited? favorited?}))]
            (reset! *configure-top-bar-f f)
            (f nil)))
        nil)
-     [current-repo tab route-name route-view fallback-title sync-color show-sync? show-local-upload?])
+     [current-repo tab route-name route-view fallback-title])
 
     (hooks/use-effect!
      (fn []
@@ -403,16 +334,13 @@
                                :title title
                                :route-name route-name
                                :route-view route-view
-                               :sync-color sync-color
-                               :show-sync? show-sync?
-                               :show-local-upload? show-local-upload?
                                :favorited? favorited?}))]
                      (reset! *configure-top-bar-f f)
                      (f favorited?))))
                (p/catch (fn [_] nil)))
            #(reset! cancelled? true))
          nil))
-     [current-repo tab route-name route-view route-id sync-color show-sync? show-local-upload? page-route?])
+     [current-repo tab route-name route-view route-id page-route?])
 
     [:<>]))
 

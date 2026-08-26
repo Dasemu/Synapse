@@ -8,7 +8,6 @@
             [cljs-time.core :as t]
             [clojure.string :as string]
             [frontend.commands :as commands]
-            [frontend.components.rtc.download-progress :as download-progress]
             [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
             [frontend.date :as date]
@@ -20,10 +19,7 @@
             [frontend.handler.comments :as comments-handler]
             [frontend.handler.common.page :as page-common-handler]
             [frontend.handler.db-based.property :as db-property-handler]
-            [frontend.handler.db-based.rtc-flows :as rtc-flows]
-            [frontend.handler.db-based.sync :as rtc-handler]
             [frontend.handler.editor :as editor-handler]
-            [frontend.handler.events.rtc-error :as rtc-error]
             [frontend.handler.export :as export]
             [frontend.handler.graph :as graph-handler]
             [frontend.handler.notification :as notification]
@@ -34,7 +30,6 @@
             [frontend.handler.route :as route-handler]
             [frontend.handler.shell :as shell-handler]
             [frontend.handler.ui :as ui-handler]
-            [frontend.handler.user :as user-handler]
             [frontend.mobile.util :as mobile-util]
             [frontend.modules.instrumentation.posthog :as posthog]
             [frontend.modules.outliner.pipeline :as pipeline]
@@ -283,7 +278,6 @@
   (when graph
     (schedule-search-index-build! graph))
   (export/auto-db-backup! graph)
-  (rtc-flows/trigger-rtc-start graph)
   (fsrs/update-due-cards-count)
   nil)
 
@@ -413,69 +407,6 @@
                                         _ (turn-type! db-block)]
                                   (<get-upsert-type-block repo (:block/uuid db-block))))]
         (js/setTimeout #(editor-handler/edit-block! converted-block :max) 100)))))
-
-(defn- editing-users-by-block
-  [online-users current-user-uuid]
-  (reduce (fn [result {:user/keys [editing-block-uuid uuid] :as user}]
-            (if (and (string? editing-block-uuid)
-                     (not= uuid current-user-uuid)
-                     (not (contains? result editing-block-uuid)))
-              (assoc result editing-block-uuid user)
-              result))
-          {}
-          online-users))
-
-(defn- sync-editing-users-by-block!
-  [online-users]
-  (let [current-user-uuid (user-handler/user-uuid)
-        old-users-by-block (or (state/get-state :rtc/editing-users-by-block) {})
-        new-users-by-block (editing-users-by-block online-users current-user-uuid)
-        affected-block-ids (into (set (keys old-users-by-block))
-                                 (keys new-users-by-block))]
-    (doseq [block-id affected-block-ids
-            :let [old-user (get old-users-by-block block-id)
-                  new-user (get new-users-by-block block-id)]
-            :when (not= old-user new-user)]
-      (state/set-state! :rtc/editing-users-by-block new-user :nested-path block-id))))
-
-(defevent! :rtc/sync-state [[_ state]]
-  (when (contains? state :online-users)
-    (sync-editing-users-by-block! (:online-users state)))
-  (doseq [[k value] state]
-    (state/set-state! :rtc/state value :nested-path k)))
-
-(defevent! :rtc/presence-update [[_ {:keys [editing-block-uuid]}]]
-  (rtc-handler/<rtc-update-presence! editing-block-uuid))
-
-(defevent! :rtc/log [[_ data]]
-  (state/set-state! :rtc/log data))
-
-(defevent! :rtc/remote-graph-gone [_]
-  (p/do!
-   (notification/show! (t :graph/removed-from-sync) :warning false)
-   (rtc-handler/<get-remote-graphs)))
-
-(defevent! :rtc/download-remote-graph [[_ graph-name graph-uuid graph-schema-version graph-e2ee?]]
-  (assert (= (:major (db-schema/parse-schema-version db-schema/version))
-             (:major (db-schema/parse-schema-version graph-schema-version)))
-          {:app db-schema/version
-           :remote-graph graph-schema-version})
-  (->
-   (p/do!
-    (when (util/mobile?)
-      (download-progress/show! graph-name))
-    (rtc-handler/<rtc-download-graph! graph-name graph-uuid graph-e2ee?)
-    (rtc-handler/<get-remote-graphs)
-    (state/pub-event! [:graph/switch (str config/db-version-prefix graph-name) {:rtc-download? true}])
-    (when (util/mobile?)
-      (download-progress/hide!)))
-   (p/catch (fn [e]
-              (println "RTC download graph failed, error:")
-              (log/error :rtc-download-graph-failed e)
-              (when (util/mobile?)
-                (download-progress/hide!))
-              (when (rtc-error/e2ee-decrypt-failed? e)
-                (notification/show! (t :encryption/wrong-password) :error false))))))
 
 ;; db-worker -> UI
 (defevent! :db/sync-changes [[_ data]]

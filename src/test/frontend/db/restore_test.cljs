@@ -11,8 +11,6 @@
 (deftest restore-graph-does-not-create-renderer-datascript-conn-test
   (async done
     (let [repo "logseq_db_restore_without_ui_conn"
-          block-id (str (random-uuid))
-          conflicts-by-block {block-id [{:value "remote"}]}
           previous-state (state/get-state)
           previous-conns @db-conn/conns
           calls (atom [])
@@ -36,13 +34,6 @@
                         (swap! calls conj [:current-repo repo'])
                         (state/swap-state! assoc :git/current-repo repo')
                         nil)
-                      state/<invoke-db-worker
-                      (fn [api repo']
-                        (swap! calls conj [:worker api repo'])
-                        (p/resolved conflicts-by-block))
-                      state/set-sync-block-conflicts!
-                      (fn [& args]
-                        (swap! calls conj (into [:hydrate] args)))
                       db-subs/reset-graph!
                       (fn [repo']
                         (swap! reset-graphs conj repo')
@@ -56,14 +47,12 @@
                (is (= [[:graph/restored repo] [:ui/re-render-root]]
                       @events))
                (is (= [[:open repo]
-                       [:worker :thread-api/db-sync-get-all-block-conflicts repo]
                        [:current-repo repo]
                        [:reset repo]
-                       [:hydrate repo conflicts-by-block]
                        [:event [:graph/restored repo]]
                        [:event [:ui/re-render-root]]]
                       @calls)
-                   "Restore hydrates all conflicts once after graph reset and before rendering.")
+                   "Restore resets renderer subscriptions before rendering.")
                (is (empty? @db-conn/conns)
                    "Restoring a graph must not create a renderer DataScript connection.")))
             (p/catch

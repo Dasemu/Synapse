@@ -4,7 +4,6 @@
             [clojure.string :as string]
             [frontend.background-tasks]
             [frontend.handler :as fhandler]
-            [frontend.handler.db-based.rtc-background-tasks]
             [frontend.handler.notification :as notification]
             [frontend.handler.route :as route-handler]
             [frontend.mobile.util :as mobile-util]

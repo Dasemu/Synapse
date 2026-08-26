@@ -4,7 +4,6 @@
             [frontend.components.dnd :as dnd]
             [frontend.components.email :as email-component]
             [frontend.components.user.login :as login]
-            [frontend.config :as config]
             [frontend.context.i18n :refer [t]]
             [frontend.dicts :as dicts]
             [frontend.handler.ui :as ui-handler]
@@ -277,14 +276,6 @@
        {:on-click (fn []
                     (shui/popup-show! nil (fn [] (log)) {}))}
        [:span.text-base (t :mobile.settings/check-log)]]
-
-      [:div.mobile-setting-item
-       {:on-click #(state/pub-event! [:go/sync-server-settings])}
-       [:span.text-base (t :settings.sync-server/url)]
-       [:span.text-sm.opacity-70
-        (if-let [custom (config/get-custom-sync-server-url)]
-          custom
-          "Logseq Sync")]]
 
       (when login?
         [:div.mobile-setting-item

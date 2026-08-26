@@ -467,8 +467,7 @@
         logged? (user-handler/logged-in?)
         fold-button-on-right? (state/use-enable-fold-button-right?)
         show-action-bar? (rfx/use-sub [:mobile/show-action-bar?])
-        preferred-language (rfx/use-sub [:preferred-language])
-        uploading? (rfx/use-sub [:rtc/uploading?])]
+        preferred-language (rfx/use-sub [:preferred-language])]
     (hooks/use-effect!
      (fn []
        (let [keydown-handler (fn [e]
@@ -554,18 +553,15 @@
         (when (util/electron?)
           (find-in-page/search))
 
-        (if uploading?
-          [:div.flex.items-center.justify-center.full-height-without-header
-           (ui/loading (t :sync/creating-remote-graph))]
-          (main {:route-match route-match
-                 :margin-less-pages? margin-less-pages?
-                 :logged? logged?
-                 :home? home?
-                 :route-name route-name
-                 :light? light?
-                 :db-restoring? db-restoring?
-                 :main-content main-content'
-                 :show-action-bar? show-action-bar?}))]
+        (main {:route-match route-match
+               :margin-less-pages? margin-less-pages?
+               :logged? logged?
+               :home? home?
+               :route-name route-name
+               :light? light?
+               :db-restoring? db-restoring?
+               :main-content main-content'
+               :show-action-bar? show-action-bar?})]
 
        (when window-controls?
          (window-controls/container))

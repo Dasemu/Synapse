@@ -15,7 +15,6 @@
             [frontend.date :as date]
             [frontend.db.async :as db-async]
             [frontend.db.hooks :as db-hooks]
-            [frontend.db.rtc.debug-ui :as rtc-debug-ui]
             [frontend.handler.editor :as editor-handler]
             [frontend.handler.route :as route-handler]
             [frontend.handler.ui :as ui-handler]
@@ -155,10 +154,6 @@
       [[:.flex.items-center (ui/icon "command" {:class "text-md mr-2"}) (t :help.shortcuts/label)]
        (shortcut-settings)]
 
-      :rtc
-      [[:.flex.items-center (ui/icon "cloud" {:class "text-md mr-2"}) "(Dev) RTC"]
-       (rtc-debug-ui/rtc-debug-ui)]
-
       :undo-redo
       [[:.flex.items-center (ui/icon "rotate-clockwise" {:class "text-md mr-2"}) "(Dev) Undo/Redo"]
        (undo-redo-debug-ui/undo-redo-debug-ui)]
@@ -189,9 +184,6 @@
 (defn dev-sidebar-items
   [developer-mode?]
   (cond-> []
-    (and developer-mode? (not config/publishing?))
-    (conj {:db-id "rtc" :block-type :rtc :label "(Dev) RTC"})
-
     developer-mode?
     (conj {:db-id "undo-redo" :block-type :undo-redo :label "(Dev) Undo/Redo"})
 

@@ -174,9 +174,6 @@
 
 (defn stop-db-worker!
   []
-  (when @state/*db-worker
-    (-> (state/<invoke-db-worker :thread-api/cancel-ui-requests {:reason :stop-db-worker})
-        (p/catch (constantly nil))))
   (when-let [^js worker @state/*db-worker-thread]
     (set! (.-onmessage worker) nil)
     (.terminate worker))
@@ -222,11 +219,6 @@
        (worker-handler/handle-message! worker wrapped-worker)
        (reset! state/*db-worker wrapped-worker)
        (-> (p/let [_ (state/<invoke-db-worker :thread-api/init)
-                   _ (state/<invoke-db-worker :thread-api/set-db-sync-config
-                                              {:enabled? true
-                                               :ws-url (config/db-sync-ws-url)
-                                               :http-base (config/db-sync-http-base)})
-                   _ (state/pub-event! [:rtc/sync-app-state])
                    _ (log/info "init worker spent" (str (- (util/time-ms) t1) "ms"))
                    _ (sync-ui-state!)
                    _ (ask-persist-permission!)
