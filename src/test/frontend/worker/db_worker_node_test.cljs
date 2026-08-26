@@ -195,6 +195,51 @@
   [^js client payload]
   (.send client (js/JSON.stringify (clj->js payload))))
 
+(defn- http-request-binary
+  "Like http-request, but keeps the raw response bytes instead of decoding
+  them as utf8 -- utf8-decoding arbitrary binary content (asset bytes) would
+  be lossy and non-invertible."
+  [opts body]
+  (p/create
+   (fn [resolve reject]
+     (let [req (.request http (clj->js opts)
+                         (fn [^js res]
+                           (let [chunks (array)]
+                             (.on res "data" (fn [chunk] (.push chunks chunk)))
+                             (.on res "end" (fn []
+                                              (resolve {:status (.-statusCode res)
+                                                        :headers (js->clj (.-headers res) :keywordize-keys true)
+                                                        :body-buffer (js/Buffer.concat chunks)}))))))
+           finish! (fn []
+                     (when body (.write req body))
+                     (.end req))]
+       (.on req "error" reject)
+       (finish!)))))
+
+(defn- asset-path
+  [repo file-name]
+  (str "/v1/assets/" (js/encodeURIComponent repo) "/" (js/encodeURIComponent file-name)))
+
+(defn- asset-put!
+  [host port repo file-name binary]
+  (p/let [headers (auth-headers! host port)]
+    (http-request-binary {:hostname host
+                          :port port
+                          :path (asset-path repo file-name)
+                          :method "PUT"
+                          :headers headers}
+                         binary)))
+
+(defn- asset-get
+  [host port repo file-name & [extra-headers]]
+  (p/let [headers (auth-headers! host port)]
+    (http-request-binary {:hostname host
+                          :port port
+                          :path (asset-path repo file-name)
+                          :method "GET"
+                          :headers (merge headers extra-headers)}
+                         nil)))
+
 (defn- lock-path
   [root-dir repo]
   (db-lock/lock-path root-dir repo))
@@ -1441,6 +1486,101 @@
 
                                 :else
                                 (done)))))))))
+
+(deftest db-worker-node-asset-put-get-round-trips-bytes-with-caching-headers
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-asset-roundtrip")
+               repo (str "logseq_db_asset_roundtrip_" (subs (str (random-uuid)) 0 8))
+               binary (js/Buffer.from (js/Uint8Array. (into-array (range 256))))]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       put-result (asset-put! host port repo "pic1.png" binary)
+                       _ (is (= 200 (:status put-result)))
+                       get-result (asset-get host port repo "pic1.png")
+                       {:keys [status headers body-buffer]} get-result]
+                 (is (= 200 status))
+                 (is (= "image/png" (:content-type headers)))
+                 (is (string? (:etag headers)))
+                 (is (string/starts-with? (:cache-control headers) "public, max-age=31536000, immutable"))
+                 (is (= (.toString binary "base64") (.toString body-buffer "base64")))
+                 (p/let [conditional-result (asset-get host port repo "pic1.png"
+                                                        {"If-None-Match" (:etag headers)})]
+                   (is (= 304 (:status conditional-result)))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] asset-roundtrip error:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
+
+(deftest db-worker-node-asset-get-missing-file-returns-404
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-asset-missing")
+               repo (str "logseq_db_asset_missing_" (subs (str (random-uuid)) 0 8))]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       {:keys [status]} (asset-get host port repo "does-not-exist.png")]
+                 (is (= 404 status)))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] asset-missing error:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
+
+(deftest db-worker-node-asset-repo-mismatch-returns-409
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-asset-repo-mismatch")
+               repo (str "logseq_db_asset_repo_mismatch_" (subs (str (random-uuid)) 0 8))
+               binary (js/Buffer.from #js [1 2 3])]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       get-result (asset-get host port "some_other_repo" "pic1.png")
+                       put-result (asset-put! host port "some_other_repo" "pic1.png" binary)]
+                 (is (= 409 (:status get-result)))
+                 (is (= 409 (:status put-result))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] asset-repo-mismatch error:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
+
+(deftest db-worker-node-asset-requires-auth
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-asset-auth")
+               repo (str "logseq_db_asset_auth_" (subs (str (random-uuid)) 0 8))
+               binary (js/Buffer.from #js [1 2 3])]
+           (-> (p/let [{:keys [host port stop!]} (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:stop! stop!})
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       get-result (http-request-binary {:hostname host :port port
+                                                        :path (asset-path repo "pic1.png")
+                                                        :method "GET"}
+                                                       nil)
+                       put-result (http-request-binary {:hostname host :port port
+                                                        :path (asset-path repo "pic1.png")
+                                                        :method "PUT"}
+                                                       binary)]
+                 (is (= 401 (:status get-result)))
+                 (is (= 401 (:status put-result))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] asset-auth error:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
 
 (deftest db-worker-node-export-client-ops-db-binary
   (async done

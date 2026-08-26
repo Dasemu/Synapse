@@ -23,6 +23,14 @@
        "/v1/import-db-binary?repo="
        (js/encodeURIComponent repo)))
 
+(defn- asset-url
+  [base-url repo file-name]
+  (str (normalize-base-url base-url)
+       "/v1/assets/"
+       (js/encodeURIComponent repo)
+       "/"
+       (js/encodeURIComponent file-name)))
+
 (defn- events-url
   "EventSource has no header API, so the bearer token travels as a query
   param here instead of the `Authorization` header every other request
@@ -98,6 +106,26 @@
       {:token (:token parsed) :session-id (:sessionId parsed)}
       (let [error (:error parsed)]
         (throw (ex-info (or (:message error) "login failed")
+                        (cond-> {:status status
+                                 :code (normalize-code (:code error))}
+                          error (assoc :error error))))))))
+
+(defn upload-asset!
+  "PUTs raw asset bytes to a db-worker-node daemon's /v1/assets/:repo/:name
+  (see Fase 5 in docs/agent-guide). Used by frontend.fs/write-asset-file! for
+  a web/mobile client, which has no local filesystem to write assets to --
+  Electron keeps writing straight to disk via its own IPC instead."
+  [{:keys [base-url auth-token fetch-fn]} repo file-name data]
+  (p/let [{:keys [status body]} ((or fetch-fn default-fetch-json!)
+                                 {:method "PUT"
+                                  :url (asset-url base-url repo file-name)
+                                  :headers (binary-headers auth-token)
+                                  :body data})]
+    (if (<= 200 status 299)
+      true
+      (let [parsed (parse-response-body body)
+            error (:error parsed)]
+        (throw (ex-info (or (:message error) "asset upload failed")
                         (cond-> {:status status
                                  :code (normalize-code (:code error))}
                           error (assoc :error error))))))))

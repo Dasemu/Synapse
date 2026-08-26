@@ -1,6 +1,7 @@
 (ns frontend.worker.db-worker-node
   "Node.js daemon entrypoint for db-worker."
-  (:require ["http" :as http]
+  (:require ["crypto" :as crypto]
+            ["http" :as http]
             ["ws" :as ws]
             [clojure.string :as string]
             [frontend.worker.db-core :as db-core]
@@ -384,17 +385,68 @@
   [^js req allowed-hosts]
   (contains? allowed-hosts (some-> req .-headers .-host)))
 
+(defn- asset-get-request?
+  [request-path method]
+  (and (= method "GET") (string/starts-with? request-path "/v1/assets/")))
+
 (defn- request-authorized?
-  "/v1/events (SSE) can't carry an Authorization header -- EventSource has no
-  header API -- so it accepts the bearer token as a query param instead.
-  This is interim: the WebSocket migration (see docs/agent-guide) replaces
-  it with Sec-WebSocket-Protocol, which doesn't leak into proxy/access logs
-  the way a query string does."
-  [^js req parsed-url request-path]
-  (if (= request-path "/v1/events")
-    (auth/authorized? (some->> (.get (.-searchParams parsed-url) "token")
-                                (str "Bearer ")))
-    (auth/authorized? (.. req -headers -authorization))))
+  "The Authorization header works for every route, including these two --
+  a plain JS fetch() can set it fine. It's only a *browser navigating
+  directly to a URL* that can't: EventSource (/v1/events, SSE, now a
+  fallback since the Fase 4 WS migration) has no header API, and an
+  <img src>/direct navigation to an asset GET can't set custom headers
+  either. Both accept ?token= as a fallback in place of Authorization, never
+  as a replacement for it."
+  [^js req parsed-url request-path method]
+  (or (auth/authorized? (.. req -headers -authorization))
+      (and (or (= request-path "/v1/events")
+               (asset-get-request? request-path method))
+           (auth/authorized? (some->> (.get (.-searchParams parsed-url) "token")
+                                       (str "Bearer "))))))
+
+(def ^:private asset-content-types
+  {"png" "image/png"
+   "jpg" "image/jpeg"
+   "jpeg" "image/jpeg"
+   "gif" "image/gif"
+   "webp" "image/webp"
+   "svg" "image/svg+xml"
+   "avif" "image/avif"
+   "bmp" "image/bmp"
+   "ico" "image/x-icon"
+   "pdf" "application/pdf"
+   "mp3" "audio/mpeg"
+   "wav" "audio/wav"
+   "ogg" "audio/ogg"
+   "mp4" "video/mp4"
+   "webm" "video/webm"
+   "mov" "video/quicktime"
+   "json" "application/json"
+   "txt" "text/plain"})
+
+(defn- guess-asset-content-type
+  [file-name]
+  (let [ext (some-> (re-find #"\.([A-Za-z0-9]+)$" (or file-name ""))
+                     second
+                     string/lower-case)]
+    (get asset-content-types ext "application/octet-stream")))
+
+(defn- parse-asset-path
+  "/v1/assets/:repo/:name -- both segments are URI-encoded by the client
+  (frontend.persist-db.remote), since a repo or asset file name could
+  contain characters that aren't legal in a URL path segment as-is."
+  [request-path]
+  (let [rest (subs request-path (count "/v1/assets/"))
+        slash-idx (string/index-of rest "/")]
+    (when (and slash-idx (pos? slash-idx) (< (inc slash-idx) (count rest)))
+      (try
+        {:repo (js/decodeURIComponent (subs rest 0 slash-idx))
+         :file-name (js/decodeURIComponent (subs rest (inc slash-idx)))}
+        (catch :default _ nil)))))
+
+(defn- asset-etag
+  [^js buf]
+  (str "\"" (-> (crypto/createHash "sha1") (.update buf) (.digest "hex")) "\""))
 
 (defn- ws-upgrade-handler
   [^js wss bound-repo port extra-allowed-hosts]
@@ -470,7 +522,7 @@
                         (send-json! res 400 {:ok false :error {:code :invalid-request
                                                                 :message "invalid login request body"}}))))
 
-         (not (request-authorized? req parsed-url request-path))
+         (not (request-authorized? req parsed-url request-path method))
          (send-json! res 401 {:ok false :error {:code :unauthorized
                                                  :message "missing or invalid credentials"}})
 
@@ -513,6 +565,51 @@
                                           :error error})
                               (send-json! res status payload))))))
            (send-text! res 405 "method-not-allowed"))
+
+         (and (string/starts-with? request-path "/v1/assets/") (= method "GET"))
+         (if-let [{:keys [repo file-name]} (parse-asset-path request-path)]
+           (let [method-kw :thread-api/asset-read-bytes
+                 method-str (normalize-method-str method-kw)
+                 args [repo file-name]]
+             (if-let [{:keys [status error]} (repo-error method-kw args bound-repo)]
+               (send-json! res status {:ok false :error error})
+               (-> (p/let [result (<invoke! proxy method-str method-kw args)
+                           bytes (ldb/read-transit-str result)]
+                     (if (some? bytes)
+                       (let [buf (js/Buffer.from bytes)
+                             etag (asset-etag buf)]
+                         (if (= etag (aget (.-headers req) "if-none-match"))
+                           (do
+                             (.writeHead res 304 (response-headers res #js {"ETag" etag
+                                                                            "Cache-Control" "public, max-age=31536000, immutable"}))
+                             (.end res))
+                           (do
+                             (.writeHead res 200 (response-headers
+                                                   res #js {"Content-Type" (guess-asset-content-type file-name)
+                                                            "Content-Length" (.-length buf)
+                                                            "ETag" etag
+                                                            "Cache-Control" "public, max-age=31536000, immutable"}))
+                             (.end res buf))))
+                       (send-json! res 404 {:ok false :error {:code :not-found :message "asset not found"}})))
+                   (p/catch (fn [error]
+                              (log-invoke-error! res error method-kw))))))
+           (send-json! res 400 {:ok false :error {:code :invalid-request :message "invalid asset path"}}))
+
+         (and (string/starts-with? request-path "/v1/assets/") (= method "PUT"))
+         (if-let [{:keys [repo file-name]} (parse-asset-path request-path)]
+           (-> (p/let [binary (<read-body-buffer req)
+                       method-kw :thread-api/asset-write-bytes
+                       method-str (normalize-method-str method-kw)
+                       args [repo file-name binary]]
+                 (if-let [{:keys [status error]} (repo-error method-kw args bound-repo)]
+                   (send-json! res status {:ok false :error error})
+                   (p/let [_ (let [{:keys [path lock]} @*lock-info]
+                               (db-lock/assert-lock-owner! path lock))
+                           _ (<invoke! proxy method-str method-kw args)]
+                     (send-json! res 200 {:ok true}))))
+               (p/catch (fn [error]
+                          (log-invoke-error! res error :thread-api/asset-write-bytes))))
+           (send-json! res 400 {:ok false :error {:code :invalid-request :message "invalid asset path"}}))
 
          (= request-path "/v1/invoke")
          (if (= method "POST")

@@ -888,6 +888,25 @@
   [repo config-file files opts]
   (<import-file-graph! repo config-file files opts))
 
+;; Fase 5 (server-client migration): let a remote client read/write asset
+;; bytes over HTTP instead of a local filesystem it doesn't have -- see
+;; the /v1/assets/:repo/:name routes in db_worker_node.cljs, which call
+;; these via the regular JSON+transit /v1/invoke path (same as
+;; export-db-binary/import-db-binary; transit already round-trips
+;; Uint8Array, so no separate binary RPC is needed here).
+(def-thread-api :thread-api/asset-read-bytes
+  [repo file-name]
+  (-> (platform/asset-read-bytes! (platform/current) repo file-name)
+      (p/catch (fn [_error] nil))))
+
+(def-thread-api :thread-api/asset-write-bytes
+  [repo file-name payload]
+  (platform/asset-write-bytes! (platform/current) repo file-name payload))
+
+(def-thread-api :thread-api/asset-stat
+  [repo file-name]
+  (platform/asset-stat (platform/current) repo file-name))
+
 (comment
   (def-thread-api :general/dangerousRemoveAllDbs
     []

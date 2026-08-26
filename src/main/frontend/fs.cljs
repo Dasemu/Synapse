@@ -8,6 +8,7 @@
             [frontend.fs.memory-fs :as memory-fs]
             [frontend.fs.node :as node]
             [frontend.fs.protocol :as protocol]
+            [frontend.persist-db.remote :as remote]
             [frontend.state :as state]
             [frontend.util :as util]
             [lambdaisland.glogi :as log]
@@ -115,15 +116,34 @@
                                                                   :user-agent (when js/navigator js/navigator.userAgent)
                                                                   :content-length (count content)}}])))))))
 
+(defn- remote-server-configured?
+  "True for a web/mobile client pointed at a self-hosted db-worker-node
+  server (Fase 3) -- it has no local filesystem to write assets to at all,
+  unlike Electron (writes straight to disk below) or a plain local browser
+  (falls through to memory-backend). Duplicated from the equivalent check in
+  frontend.handler.assets, which can't be required here without a cycle
+  (it already requires this ns)."
+  []
+  (and (not (util/electron?))
+       (some? (config/get-server-base-url))))
+
 (defn write-asset-file!
   [repo file-name data]
   (let [repo-dir (config/get-repo-dir repo)]
-    (if (util/electron?)
+    (cond
+      (util/electron?)
       (let [assets-dir (path/path-join repo-dir common-config/local-assets-dir)
             file-path (path/path-join assets-dir file-name)]
         ;; Use writeFileBytes directly instead of ipc/ipc (write-file!) because
         ;; binary data like ArrayBuffer can't be transit-serialized
         (js/window.apis.writeFileBytes file-path data))
+
+      (remote-server-configured?)
+      (remote/upload-asset! {:base-url (config/get-server-base-url)
+                             :auth-token (config/get-server-token)}
+                            repo file-name data)
+
+      :else
       (let [file-path (path/path-join common-config/local-assets-dir file-name)]
         (write-plain-text-file! repo repo-dir file-path data {:skip-transact? true
                                                               :skip-compare? true})))))

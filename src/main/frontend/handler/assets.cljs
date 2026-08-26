@@ -76,12 +76,52 @@
         (string/replace-first "/logseq__colon/" ":/"))
     url))
 
+(defn remote-server-configured?
+  "True for a web/mobile client pointed at a self-hosted db-worker-node
+  server (Fase 3) -- the counterpart to util/electron? for asset URL
+  resolution below, since such a client has no local filesystem to read
+  assets from at all (see docs/agent-guide Fase 5)."
+  []
+  (and (not (util/electron?))
+       (some? (config/get-server-base-url))))
+
+(defn- bare-asset-file-name
+  "Strips a leading assets/ (or ./assets/, ../assets/) prefix, if any --
+  the daemon's /v1/assets/:repo/:name route stores files flat per repo, so
+  it only wants the bare file name, not a path relative to the graph root."
+  [rpath]
+  (let [rpath (string/replace-first rpath #"^\.{1,2}/" "")
+        prefix (str common-config/local-assets-dir "/")]
+    (if (string/starts-with? rpath prefix)
+      (subs rpath (count prefix))
+      rpath)))
+
+(defn remote-asset-url
+  "Builds a directly-loadable URL (<img src>, browser navigation, plain
+  fetch) for an asset served by a remote db-worker-node daemon. The token
+  travels as a query param -- the same interim mechanism SSE used before
+  the Fase 4 WebSocket migration -- since a browser navigating straight to
+  this URL (rather than fetching it from JS) can't set an Authorization
+  header. See asset-get-request? in db_worker_node.cljs."
+  [repo rpath]
+  (let [base-url (string/replace (config/get-server-base-url) #"/$" "")
+        file-name (bare-asset-file-name rpath)
+        token (config/get-server-token)]
+    (cond-> (str base-url "/v1/assets/" (js/encodeURIComponent repo) "/" (js/encodeURIComponent file-name))
+      (seq token) (str "?token=" (js/encodeURIComponent token)))))
+
 (defn resolve-asset-real-path-url
   [repo rpath]
   (when-let [rpath (and (string? rpath)
                         (string/replace rpath #"^[.\/\\]+" ""))]
-    (if config/publishing?
+    (cond
+      config/publishing?
       (str "./" rpath)
+
+      (remote-server-configured?)
+      (remote-asset-url repo rpath)
+
+      :else
       (let [ret (let [rpath (if-not (string/starts-with? rpath common-config/local-assets-dir)
                               (path/path-join common-config/local-assets-dir rpath)
                               rpath)
@@ -175,6 +215,9 @@
                             (path/path-join repo-dir path) path)]
             ;; fullpath will be encoded
             (path/prepend-protocol "assets:" (protect-windows-drive-in-assets-path full-path)))
+
+         (remote-server-configured?)
+         (remote-asset-url repo path)
 
          :else
          (p/let [binary (fs/read-file-raw repo-dir path {})
