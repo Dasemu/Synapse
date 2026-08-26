@@ -7,7 +7,6 @@
             [frontend.worker.platform :as platform]
             [frontend.worker.render-delta :as render-delta]
             [frontend.worker.shared-service :as shared-service]
-            [frontend.worker.sync :as db-sync]
             [logseq.db :as ldb]
             [logseq.db.test.helper :as db-test]
             [promesa.core :as p]))
@@ -78,25 +77,6 @@
     (is (= [["repo" nil tx-report {:defer? true}]]
            @calls))))
 
-(deftest db-listener-persists-local-tx-before-broadcasting-ui-refresh-test
-  (let [conn (db-test/create-conn)
-        calls (atom [])]
-    (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                  db-sync/handle-local-tx! (fn [& _]
-                                             (swap! calls conj :persist-local-tx))
-                  worker-pipeline/invoke-hooks (fn [_conn tx-report _context]
-                                                 {:tx-report tx-report})
-                  render-delta/build (fn [_input]
-                                       (swap! calls conj :build-ui-refresh)
-                                       {:rev 1})
-                  shared-service/broadcast-to-clients! (fn [event _payload]
-                                                         (when (= :sync-db-changes event)
-                                                           (swap! calls conj :broadcast-ui-refresh)))]
-      (db-listener/listen-db-changes! "repo" conn :handler-keys [:sync-db-to-main-thread :db-sync])
-      (d/transact! conn [{:db/id -1 :block/title "b1"}] {:local-tx? true}))
-    (is (= [:persist-local-tx :build-ui-refresh :broadcast-ui-refresh] @calls)
-        "UI refresh work must wait until the local tx has been persisted.")))
-
 (deftest db-listener-builds-one-render-delta-for-origin-and-broadcast-test
   (let [repo "repo"
         conn (db-test/create-conn)
@@ -115,9 +95,7 @@
         post-pipeline-report (atom nil)
         build-inputs (atom [])
         broadcast-payloads (atom [])]
-    (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                  db-sync/handle-local-tx! (fn [& _] nil)
-                  worker-pipeline/invoke-hooks
+    (with-redefs [worker-pipeline/invoke-hooks
                   (fn [_conn tx-report _context]
                     (let [block-id (some (fn [datom]
                                            (when (and (:added datom)
@@ -138,7 +116,7 @@
                     (when (= :sync-db-changes event)
                       (swap! broadcast-payloads conj payload)))]
       (db-listener/listen-db-changes! repo conn
-                                      :handler-keys [:sync-db-to-main-thread :db-sync])
+                                      :handler-keys [:sync-db-to-main-thread])
       (d/transact! conn
                    [{:db/id -1
                      :block/uuid block-uuid
@@ -249,9 +227,7 @@
     (let [conn (db-test/create-conn)
           build-inputs (atom [])
           broadcast-payloads (atom [])]
-      (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                    db-sync/handle-local-tx! (fn [& _] nil)
-                    worker-pipeline/invoke-hooks
+      (with-redefs [worker-pipeline/invoke-hooks
                     (fn [_conn tx-report _context]
                       {:tx-report tx-report})
                     render-delta/build
@@ -263,7 +239,7 @@
                       (when (= :sync-db-changes event)
                         (swap! broadcast-payloads conj payload)))]
         (db-listener/listen-db-changes! "repo" conn
-                                        :handler-keys [:sync-db-to-main-thread :db-sync])
+                                        :handler-keys [:sync-db-to-main-thread])
         (d/transact! conn
                      [{:db/id -1 :block/title "downloaded"}]
                      tx-meta))
@@ -287,9 +263,7 @@
        (fn [tx-report]
          (swap! formal-pipeline-calls conj tx-report)
          (worker-pipeline/transact-pipeline tx-report)))
-      (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                    db-sync/handle-local-tx! (fn [& _] nil)
-                    markdown-mirror/<handle-tx-report!
+      (with-redefs [markdown-mirror/<handle-tx-report!
                     (fn [_repo _conn tx-report _opts]
                       (swap! mirrored-reports conj tx-report))
                     worker-pipeline/invoke-hooks
@@ -305,7 +279,6 @@
                         (swap! broadcast-payloads conj payload)))]
         (db-listener/listen-db-changes! "repo" conn
                                         :handler-keys [:sync-db-to-main-thread
-                                                       :db-sync
                                                        :markdown-mirror])
         (ldb/transact! conn
                        [[:db/add block-id :block/title "after"]]
@@ -328,59 +301,11 @@
     (is (identical? @conn (:db-after (first @mirrored-reports)))
         "Deferred handlers must receive the raw skipped transaction report.")))
 
-(deftest db-listener-reports-post-commit-failures-without-blocking-ui-sync-test
-  (doseq [failed-stage [:checksum :persist]]
-    (let [conn (db-test/create-conn)
-          calls (atom [])
-          captured-errors (atom [])]
-      (with-redefs [db-sync/update-local-sync-checksum!
-                    (fn [& _]
-                      (swap! calls conj :checksum)
-                      (when (= :checksum failed-stage)
-                        (throw (js/Error. "checksum failed"))))
-                    db-sync/handle-local-tx!
-                    (fn [& _]
-                      (swap! calls conj :persist)
-                      (when (= :persist failed-stage)
-                        (throw (js/Error. "persist failed"))))
-                    worker-pipeline/invoke-hooks
-                    (fn [_conn tx-report _context]
-                      {:tx-report tx-report})
-                    render-delta/build
-                    (fn [_input]
-                      (swap! calls conj :build-ui-refresh)
-                      {:rev 1})
-                    shared-service/broadcast-to-clients!
-                    (fn [event _payload]
-                      (when (= :sync-db-changes event)
-                        (swap! calls conj :broadcast-ui-refresh)))
-                    platform/post-message!
-                    (fn [_platform event payload]
-                      (when (= :capture-error event)
-                        (swap! captured-errors conj payload)))
-                    platform/current (constantly :test)]
-        (db-listener/listen-db-changes! "repo" conn
-                                        :handler-keys [:sync-db-to-main-thread :db-sync])
-        (let [error (try
-                      (d/transact! conn [{:db/id -1 :block/title "hello"}]
-                                   {:local-tx? true})
-                      nil
-                      (catch :default error
-                        error))]
-          (is (nil? error) (str "Post-commit failure escaped: " failed-stage))
-          (is (= 1 (d/q '[:find (count ?e) .
-                          :where [?e :block/title "hello"]]
-                        @conn)))
-          (is (= 1 (count @captured-errors)))
-          (is (= [:checksum :persist :build-ui-refresh :broadcast-ui-refresh]
-                 @calls)))))))
-
 (deftest deferred-listener-failures-do-not-block-ui-sync-test
   (let [conn (db-test/create-conn)
         calls (atom [])
         captured-errors (atom [])]
-    (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                  worker-pipeline/invoke-hooks
+    (with-redefs [worker-pipeline/invoke-hooks
                   (fn [_conn tx-report _context]
                     {:tx-report tx-report})
                   render-delta/build (constantly {:rev 1})
@@ -416,8 +341,7 @@
                captured-errors (atom [])
                broadcasts (atom 0)]
            (-> (p/with-redefs
-                 [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                  worker-pipeline/invoke-hooks
+                 [worker-pipeline/invoke-hooks
                   (fn [_conn tx-report _context]
                     {:tx-report tx-report})
                   render-delta/build (constantly {:rev 1})

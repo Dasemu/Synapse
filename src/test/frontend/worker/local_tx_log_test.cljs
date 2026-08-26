@@ -1,7 +1,7 @@
-(ns frontend.worker.sync.client-op-test
+(ns frontend.worker.local-tx-log-test
   (:require [cljs.test :refer [deftest is testing]]
+            [frontend.worker.local-tx-log :as local-tx-log]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync.client-op :as client-op]
             [logseq.db.common.sqlite :as common-sqlite]
             [logseq.db.sqlite.gc :as sqlite-gc]))
 
@@ -32,46 +32,14 @@
           (aget row "count"))
       0)))
 
-(deftest sqlite-sync-meta-roundtrip-test
+(deftest sqlite-local-tx-roundtrip-test
   (let [repo "repo-1"]
     (with-client-ops-db
       repo
       (fn [_db]
-        (client-op/update-graph-uuid repo "graph-1")
-        (client-op/update-local-tx repo 9)
-        (client-op/update-local-checksum repo "checksum-1")
-
-        (client-op/update-graph-uuid repo "graph-2")
-        (client-op/update-local-tx repo 12)
-        (client-op/update-local-checksum repo "checksum-2")
-
-        (is (= "graph-2" (client-op/get-graph-uuid repo)))
-        (is (= 12 (client-op/get-local-tx repo)))
-        (is (= "checksum-2" (client-op/get-local-checksum repo)))))))
-
-(deftest sqlite-asset-ops-coalescing-test
-  (let [repo "repo-asset"
-        asset-uuid (random-uuid)]
-    (with-client-ops-db
-      repo
-      (fn [_db]
-        (client-op/add-asset-ops repo [[:update-asset 10 {:block-uuid asset-uuid}]])
-        (is (= 1 (client-op/get-unpushed-asset-ops-count repo)))
-        (is (= [:update-asset 10 {:block-uuid asset-uuid}]
-               (:update-asset (first (client-op/get-all-asset-ops repo)))))
-
-        ;; older remove should be ignored because a newer update already exists
-        (client-op/add-asset-ops repo [[:remove-asset 9 {:block-uuid asset-uuid}]])
-        (is (= [:update-asset 10 {:block-uuid asset-uuid}]
-               (:update-asset (first (client-op/get-all-asset-ops repo)))))
-
-        ;; newer remove should replace update
-        (client-op/add-asset-ops repo [[:remove-asset 11 {:block-uuid asset-uuid}]])
-        (is (= [:remove-asset 11 {:block-uuid asset-uuid}]
-               (:remove-asset (first (client-op/get-all-asset-ops repo)))))
-
-        (client-op/remove-asset-op repo asset-uuid)
-        (is (= 0 (client-op/get-unpushed-asset-ops-count repo)))))))
+        (local-tx-log/update-local-tx repo 9)
+        (local-tx-log/update-local-tx repo 12)
+        (is (= 12 (local-tx-log/get-local-tx repo)))))))
 
 (deftest cleanup-finished-history-ops-removes-only-unreferenced-finished-txs-test
   (let [repo "repo-cleanup"
@@ -81,8 +49,8 @@
     (with-client-ops-db
       repo
       (fn [db]
-        (client-op/update-local-tx repo 99)
-        (client-op/upsert-local-tx-entry!
+        (local-tx-log/update-local-tx repo 99)
+        (local-tx-log/upsert-local-tx-entry!
          repo
          {:tx-id keep-tx-id
           :created-at 1
@@ -90,7 +58,7 @@
           :failed? false
           :normalized-tx-data []
           :reversed-tx-data []})
-        (client-op/upsert-local-tx-entry!
+        (local-tx-log/upsert-local-tx-entry!
          repo
          {:tx-id remove-tx-id
           :created-at 2
@@ -98,7 +66,7 @@
           :failed? false
           :normalized-tx-data []
           :reversed-tx-data []})
-        (client-op/upsert-local-tx-entry!
+        (local-tx-log/upsert-local-tx-entry!
          repo
          {:tx-id pending-tx-id
           :created-at 3
@@ -107,11 +75,11 @@
           :normalized-tx-data []
           :reversed-tx-data []})
 
-        (is (= 1 (client-op/cleanup-finished-history-ops! repo #{keep-tx-id})))
+        (is (= 1 (local-tx-log/cleanup-finished-history-ops! repo #{keep-tx-id})))
         (is (= 1 (sqlite-count db "select count(*) as c from client_ops where tx_id = ?" (str keep-tx-id))))
         (is (= 0 (sqlite-count db "select count(*) as c from client_ops where tx_id = ?" (str remove-tx-id))))
         (is (= 1 (sqlite-count db "select count(*) as c from client_ops where tx_id = ?" (str pending-tx-id))))
-        (is (= 99 (client-op/get-local-tx repo)))))))
+        (is (= 99 (local-tx-log/get-local-tx repo)))))))
 
 (deftest cleanup-finished-history-ops-no-conn-is-noop-test
   (let [repo "repo-no-conn"
@@ -119,11 +87,11 @@
     (reset! worker-state/*client-ops-conns {})
     (try
       (testing "cleanup should be safe when client-ops conn is missing"
-        (is (= 0 (client-op/cleanup-finished-history-ops! repo #{}))))
+        (is (= 0 (local-tx-log/cleanup-finished-history-ops! repo #{}))))
       (finally
         (reset! worker-state/*client-ops-conns prev-client-ops-conns)))))
 
-(deftest gc-on-client-ops-db-preserves-sync-metadata-test
+(deftest gc-on-client-ops-db-preserves-local-tx-test
   "Reproduces the bug where GC on client-ops db could reset local-tx to 0.
   The client-ops db has a kvs table (created by create-kvs-table!) but it's
   empty because client-ops doesn't store Datascript data. Running GC on an
@@ -135,9 +103,9 @@
       (fn [db]
         ;; client-ops db gets a kvs table during db open, but it's empty
         (common-sqlite/create-kvs-table! db)
-        (client-op/ensure-sqlite-schema! db)
-        (client-op/update-local-tx repo 42)
-        (is (= 42 (client-op/get-local-tx repo))
+        (local-tx-log/ensure-sqlite-schema! db)
+        (local-tx-log/update-local-tx repo 42)
+        (is (= 42 (local-tx-log/get-local-tx repo))
             "local-tx should be 42 before GC")
 
         ;; GC on client-ops db: kvs table is empty because client-ops db
@@ -153,10 +121,10 @@
                (sqlite-gc/gc-kvs-table! db {:full-gc? false}))))
 
         ;; After GC, local-tx should still be intact
-        (is (= 42 (client-op/get-local-tx repo))
+        (is (= 42 (local-tx-log/get-local-tx repo))
             "local-tx should still be 42 after GC")
 
         ;; VACUUM should also be safe
         (.exec db "VACUUM")
-        (is (= 42 (client-op/get-local-tx repo))
+        (is (= 42 (local-tx-log/get-local-tx repo))
             "local-tx should still be 42 after VACUUM")))))

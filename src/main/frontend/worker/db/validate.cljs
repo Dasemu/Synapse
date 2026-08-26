@@ -6,7 +6,6 @@
             [frontend.worker.db.migrate :as db-migrate]
             [frontend.worker.shared-service :as shared-service]
             [logseq.db :as ldb]
-            [logseq.db-sync.checksum :as sync-checksum]
             [logseq.db.frontend.class :as db-class]
             [logseq.db.frontend.validate :as db-validate]))
 
@@ -326,13 +325,3 @@
     (merge {:errors errors
             :invalid-entity-ids invalid-entity-ids}
            counts)))
-
-(defn recompute-checksum-diagnostics
-  [_repo conn {:keys [local-checksum remote-checksum] :as _sync-diagnostics}]
-  (let [{:keys [checksum attrs blocks e2ee?]} (sync-checksum/recompute-checksum-diagnostics @conn)]
-    {:recomputed-checksum checksum
-     :local-checksum local-checksum
-     :remote-checksum remote-checksum
-     :e2ee? e2ee?
-     :checksum-attrs attrs
-     :blocks blocks}))

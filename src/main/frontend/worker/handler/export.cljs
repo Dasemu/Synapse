@@ -5,8 +5,6 @@
             [frontend.worker.export :as worker-export]
             [frontend.worker.platform :as platform]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync :as db-sync]
-            [frontend.worker.sync.client-op :as client-op]
             [logseq.db :as ldb]
             [logseq.db.sqlite.export :as sqlite-export]
             [logseq.publishing.html :as publish-html]))
@@ -40,23 +38,6 @@
   [repo & [opts]]
   (when-let [conn (worker-state/get-datascript-conn repo)]
     (worker-db-validate/validate-db conn opts)))
-
-(defn- checksum-diagnostics
-  [repo]
-  {:local-checksum (client-op/get-local-checksum repo)
-   :remote-checksum (get @db-sync/*repo->latest-remote-checksum repo)})
-
-(def-thread-api :thread-api/recompute-checksum-diagnostics
-  [repo]
-  (when-let [conn (worker-state/get-datascript-conn repo)]
-    (let [result (worker-db-validate/recompute-checksum-diagnostics repo conn (checksum-diagnostics repo))
-          recomputed-checksum (:recomputed-checksum result)]
-      (when (and (some? recomputed-checksum)
-                 (worker-state/get-client-ops-conn repo))
-        (client-op/update-local-checksum repo recomputed-checksum))
-      (cond-> result
-        (some? recomputed-checksum)
-        (assoc :local-checksum recomputed-checksum)))))
 
 ;; Returns an export-edn map for given repo. When there's an unexpected error, a map
 ;; with key :export-edn-error is returned.

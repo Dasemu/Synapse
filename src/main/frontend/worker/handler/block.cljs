@@ -11,7 +11,6 @@
    [frontend.worker.handler.search :as search-handler]
    [frontend.worker.plain-value :as worker-plain]
    [frontend.worker.state :as worker-state]
-   [frontend.worker.sync.client-op :as client-op]
    [logseq.common.util :as common-util]
    [logseq.db :as ldb]
    [logseq.db.common.initial-data :as common-initial-data]
@@ -440,7 +439,7 @@
     block (conj block)))
 
 (defn- assoc-block-metadata
-  [db conflicts-by-block commented-block-uuids now-ms render-data? block]
+  [db commented-block-uuids now-ms render-data? block]
   (let [block-id (:db/id block)
         block-uuid (:block/uuid block)]
     (cond-> (assoc block
@@ -448,23 +447,21 @@
                    :block.temp/breadcrumb
                    (block-breadcrumb/block-breadcrumb db block)
                    :block.temp/comment-thread-present?
-                   (contains? commented-block-uuids (str block-uuid))
-                   :block.temp/sync-conflicts
-                   (vec (get conflicts-by-block block-uuid)))
+                   (contains? commented-block-uuids (str block-uuid)))
       render-data?
       (assoc :block.temp/task-spent-time
              (or (query-handler/task-spent-time db block-id now-ms) [])))))
 
 (defn- assoc-result-block-metadata
-  [result db conflicts-by-block commented-block-uuids now-ms render-data? root-render-data?]
+  [result db commented-block-uuids now-ms render-data? root-render-data?]
   (cond-> result
     (:block result)
-    (update :block #(assoc-block-metadata db conflicts-by-block commented-block-uuids
+    (update :block #(assoc-block-metadata db commented-block-uuids
                                           now-ms (or render-data? root-render-data?) %))
 
     (:children result)
     (update :children (fn [children]
-                        (mapv #(assoc-block-metadata db conflicts-by-block commented-block-uuids
+                        (mapv #(assoc-block-metadata db commented-block-uuids
                                                      now-ms render-data? %)
                               children)))))
 
@@ -485,14 +482,12 @@
                                        (mapv :block/uuid)
                                        (comments-handler/get-comment-thread-block-uuids db)
                                        set))
-          conflicts-by-block (when (seq metadata-blocks)
-                               (client-op/get-all-sync-conflicts repo))
           now-ms (common-util/time-ms)]
       (->> (mapv (fn [request result]
                    (cond-> result
                      (get-in request [:opts :block-metadata?])
                      (assoc-result-block-metadata
-                      db conflicts-by-block commented-block-uuids now-ms
+                      db commented-block-uuids now-ms
                       (true? (get-in request [:opts :render-data?]))
                       (true? (get-in request [:opts :root-render-data?])))))
                  requests

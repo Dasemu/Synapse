@@ -246,28 +246,12 @@
 
 (def ^:private non-repo-methods
   #{:thread-api/init
-    :thread-api/set-db-sync-config
-    :thread-api/get-db-sync-config
-    :thread-api/db-sync-stop
-    :thread-api/db-sync-list-remote-graphs
-    :thread-api/db-sync-update-presence
-    :thread-api/db-sync-ensure-user-rsa-keys
     :thread-api/list-db
     :thread-api/get-version
     :thread-api/set-context
     :thread-api/sync-app-state
     :thread-api/update-thread-atom
-    :thread-api/mobile-logs
-    :thread-api/get-user-rsa-key-pair
-    :thread-api/init-user-rsa-key-pair
-    :thread-api/reset-user-rsa-key-pair
-    :thread-api/change-e2ee-password
-    :thread-api/get-e2ee-password
-    :thread-api/save-e2ee-password
-    :thread-api/verify-and-save-e2ee-password
-    :thread-api/resolve-ui-request
-    :thread-api/reject-ui-request
-    :thread-api/cancel-ui-requests})
+    :thread-api/mobile-logs})
 
 (defn- repo-arg
   [args]

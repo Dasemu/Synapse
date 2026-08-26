@@ -10,7 +10,7 @@
             [frontend.worker.search :as search]
             [frontend.worker.shared-service :as shared-service]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync :as db-sync]
+            [frontend.worker.undo-redo.replay :as undo-redo-replay]
             [lambdaisland.glogi :as log]
             [promesa.core :as p]))
 
@@ -154,9 +154,9 @@
     (prn :tx-data tx-data)
     (prn :tx-meta tx-meta)))
 
-(defmethod listen-db-changes :db-sync
+(defmethod listen-db-changes :persist-local-tx
   [_ {:keys [repo]} tx-report]
-  (db-sync/handle-local-tx! repo tx-report))
+  (undo-redo-replay/persist-local-tx! repo tx-report))
 
 (defmethod listen-db-changes :markdown-mirror
   [_ {:keys [repo]} tx-report]
@@ -229,9 +229,6 @@
   [repo conn persist-local-tx-handler deferred-handlers
    sync-db-to-main-thread? {:keys [tx-data tx-meta] :as tx-report}]
   (let [started-at (perf-time-ms)]
-    (run-post-commit!
-     repo tx-meta :update-checksum
-     #(db-sync/update-local-sync-checksum! repo tx-report))
     (let [checksum-at (perf-time-ms)
           opt {:repo repo}
           handler-timings (atom [])]
@@ -239,7 +236,7 @@
         (run-post-commit!
          repo tx-meta :persist-local-tx
          #(invoke-listener-handler! handler-timings
-                                   :db-sync
+                                   :persist-local-tx
                                    persist-local-tx-handler
                                    opt
                                    tx-report)))
@@ -268,8 +265,8 @@
   (let [handlers (if (seq handler-keys)
                    (select-keys (methods listen-db-changes) handler-keys)
                    (methods listen-db-changes))
-        persist-local-tx-handler (get handlers :db-sync)
-        deferred-handlers (dissoc handlers :db-sync)
+        persist-local-tx-handler (get handlers :persist-local-tx)
+        deferred-handlers (dissoc handlers :persist-local-tx)
         sync-db-to-main-thread?
         (or (nil? handler-keys)
             (contains? (set handler-keys) :sync-db-to-main-thread))]

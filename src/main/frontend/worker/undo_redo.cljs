@@ -2,7 +2,7 @@
   "Undo redo new implementation"
   (:require [datascript.core :as d]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync.client-op :as client-op]
+            [frontend.worker.local-tx-log :as local-tx-log]
             [lambdaisland.glogi :as log]
             [logseq.common.defkeywords :refer [defkeywords]]
             [malli.core :as m]
@@ -308,7 +308,7 @@
 (defn- pending-history-action-ops
   [repo tx-id]
   (when (uuid? tx-id)
-    (client-op/history-action-ops-by-tx-id repo tx-id)))
+    (local-tx-log/history-action-ops-by-tx-id repo tx-id)))
 
 (defn gen-undo-ops!
   [repo {:keys [tx-data tx-meta db-after db-before]} tx-id

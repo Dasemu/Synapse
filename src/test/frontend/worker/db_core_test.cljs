@@ -21,10 +21,8 @@
             [frontend.worker.query-dsl :as worker-query-dsl]
             [frontend.worker.search :as search]
             [frontend.worker.shared-service :as shared-service]
+            [frontend.worker.local-tx-log :as local-tx-log]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync :as db-sync]
-            [frontend.worker.sync.client-op :as client-op]
-            [frontend.worker.sync.download :as sync-download]
             [frontend.worker.undo-redo :as worker-undo-redo]
             [goog.object :as gobj]
             [logseq.common.config :as common-config]
@@ -51,13 +49,7 @@
 (def ^:private expected-db-core-thread-apis
   (into #{}
         (concat
-         [:thread-api/list-db :thread-api/init :thread-api/set-db-sync-config :thread-api/get-db-sync-config :thread-api/get-key-value
-          :thread-api/db-sync-status :thread-api/db-sync-start :thread-api/db-sync-stop :thread-api/db-sync-update-presence
-          :thread-api/db-sync-request-asset-download :thread-api/db-sync-grant-graph-access :thread-api/db-sync-ensure-user-rsa-keys
-          :thread-api/db-sync-list-remote-graphs :thread-api/db-sync-upload-graph :thread-api/db-sync-create-remote-graph
-          :thread-api/db-sync-stop-upload :thread-api/db-sync-resume-upload :thread-api/db-sync-upload-stopped?
-          :thread-api/db-sync-get-all-block-conflicts :thread-api/db-sync-clear-block-conflicts
-          :thread-api/db-sync-download-graph-by-id
+         [:thread-api/list-db :thread-api/init :thread-api/get-key-value
           :thread-api/create-or-open-db :thread-api/q :thread-api/datoms :thread-api/pull :thread-api/task-spent-time :thread-api/get-blocks
           :thread-api/get-block-refs :thread-api/get-block-source
           :thread-api/get-block-parents :thread-api/set-context :thread-api/transact :thread-api/undo-redo-set-pending-editor-info
@@ -66,9 +58,7 @@
           :thread-api/build-publishing-html :thread-api/reset-db
           :thread-api/get-file-content :thread-api/get-all-properties :thread-api/get-date-scheduled-or-deadlines
           :thread-api/unsafe-unlink-db :thread-api/close-db
-          :thread-api/db-sync-close-db :thread-api/db-sync-invalidate-search-db :thread-api/db-sync-recreate-lock
-          :thread-api/db-sync-rehydrate-large-titles :thread-api/db-sync-import-prepare :thread-api/db-sync-import-rows-chunk
-          :thread-api/db-sync-import-finalize :thread-api/release-access-handles :thread-api/db-exists
+          :thread-api/release-access-handles :thread-api/db-exists
           :thread-api/export-db-binary :thread-api/import-file-graph
           :thread-api/export-client-ops-db-binary :thread-api/backup-db-sqlite
           :thread-api/import-db-binary :thread-api/search-blocks :thread-api/search-upsert-blocks :thread-api/search-delete-blocks
@@ -76,7 +66,7 @@
           :thread-api/search-build-pages-indice :thread-api/apply-outliner-ops :thread-api/sync-app-state
           :thread-api/markdown-mirror-set-enabled :thread-api/markdown-mirror-flush :thread-api/markdown-mirror-regenerate
           :thread-api/export-get-debug-datoms :thread-api/export-get-all-page->content :thread-api/validate-db
-          :thread-api/recompute-checksum-diagnostics :thread-api/export-edn :thread-api/import-edn
+          :thread-api/export-edn :thread-api/import-edn
           :thread-api/get-fsrs-due-card-block-ids :thread-api/get-view-data
           :thread-api/get-class-objects :thread-api/validate-block-tag
           :thread-api/convert-tag-to-page
@@ -434,7 +424,6 @@
     (platform/set-platform! platform')
     (p/with-redefs
       [shared-service/*master-client? (atom true)
-       db-sync/handle-local-tx! (fn [& _] nil)
        shared-service/broadcast-to-clients! (fn [& args]
                                               (swap! broadcasts conj args))
        db-listener/listen-db-changes!
@@ -476,17 +465,6 @@
              (p/catch (fn [error]
                         (is false (str error))))
              (p/finally done))))
-
-(deftest db-core-registers-db-sync-thread-apis
-  (let [api-map @thread-api/*thread-apis]
-    (is (contains? api-map :thread-api/set-db-sync-config))
-    (is (contains? api-map :thread-api/db-sync-start))
-    (is (contains? api-map :thread-api/db-sync-stop))
-    (is (contains? api-map :thread-api/db-sync-update-presence))
-    (is (contains? api-map :thread-api/db-sync-request-asset-download))
-    (is (contains? api-map :thread-api/db-sync-grant-graph-access))
-    (is (contains? api-map :thread-api/db-sync-ensure-user-rsa-keys))
-    (is (contains? api-map :thread-api/db-sync-upload-graph))))
 
 (deftest resolve-initial-config-falls-back-to-template-config-test
   (let [resolve-initial-config #'db-core/resolve-initial-config
@@ -532,53 +510,6 @@
                          (is false (str "expected import to succeed with active pool, got " error))))))))
      (p/finally done))))
 
-(deftest set-db-sync-config-keeps-only-non-auth-fields-test
-  (let [set-config! (get @thread-api/*thread-apis :thread-api/set-db-sync-config)
-        get-config (get @thread-api/*thread-apis :thread-api/get-db-sync-config)
-        state-prev @worker-state/*state
-        config-prev @worker-state/*db-sync-config]
-    (try
-      (reset! worker-state/*state (assoc state-prev
-                                         :auth/id-token "existing-id-token"
-                                         :auth/oauth-token-url "https://existing.example.com/oauth2/token"
-                                         :auth/oauth-domain "existing.example.com"
-                                         :auth/oauth-client-id "existing-client-id"))
-      (set-config! {:ws-url "wss://example.com/sync/%s"
-                    :http-base "https://example.com"
-                    :enabled? true
-                    :auth-token "id-token-from-config"
-                    :oauth-token-url "https://auth.example.com/oauth2/token"
-                    :oauth-domain "auth.example.com"
-                    :oauth-client-id "worker-client-id"})
-      (is (= {:ws-url "wss://example.com/sync/%s"
-              :http-base "https://example.com"
-              :enabled? true}
-             @worker-state/*db-sync-config))
-      (is (= {:ws-url "wss://example.com/sync/%s"
-              :http-base "https://example.com"
-              :enabled? true}
-             (get-config)))
-      (is (= "existing-id-token" (:auth/id-token @worker-state/*state)))
-      (is (= "https://existing.example.com/oauth2/token"
-             (:auth/oauth-token-url @worker-state/*state)))
-      (is (= "existing.example.com" (:auth/oauth-domain @worker-state/*state)))
-      (is (= "existing-client-id" (:auth/oauth-client-id @worker-state/*state)))
-      (finally
-        (reset! worker-state/*state state-prev)
-        (reset! worker-state/*db-sync-config config-prev)))))
-
-(deftest get-db-sync-config-strips-auth-fields-test
-  (let [get-config (get @thread-api/*thread-apis :thread-api/get-db-sync-config)
-        config-prev @worker-state/*db-sync-config]
-    (try
-      (reset! worker-state/*db-sync-config {:ws-url "wss://example.com/sync/%s"
-                                            :auth-token "leaked-token"
-                                            :oauth-client-id "leaked-client"})
-      (is (= {:ws-url "wss://example.com/sync/%s"}
-             (get-config)))
-      (finally
-        (reset! worker-state/*db-sync-config config-prev)))))
-
 (deftest init-service-does-not-close-db-when-graph-unchanged
   (async done
          (let [service {:status {:ready (p/resolved true)}
@@ -604,24 +535,6 @@
                  (p/finally (fn []
                               (reset! *service old-service)
                               (done))))))))
-
-(deftest handle-migrate-result-local-txs-enqueues-upgrade-reports-test
-  (let [conn (d/create-conn db-schema/schema)
-        migration-tx-report {:tx-data [[:db/add 1 :block/title "Migrated"]]
-                             :db-before @conn
-                             :db-after @conn
-                             :tx-meta {:db-migrate? true}}
-        handled-reports (atom [])]
-    (with-redefs [db-sync/handle-local-tx! (fn [repo tx-report]
-                                             (swap! handled-reports conj
-                                                    {:repo repo
-                                                     :tx-report tx-report}))]
-      (#'db-core/handle-migrate-result-local-txs!
-       test-repo
-       {:upgrade-result-coll [migration-tx-report]})
-      (is (= [{:repo test-repo
-               :tx-report migration-tx-report}]
-             @handled-reports)))))
 
 (deftest built-in-sync-repair-tx-data-covers-65-26-through-65-28-test
   (let [tx-data (#'db-core/built-in-sync-repair-tx-data)
@@ -663,12 +576,12 @@
 (deftest enqueue-built-in-sync-repair-queues-pending-fix-once-test
   (let [upserts (atom [])
         count-adjustments (atom [])]
-    (with-redefs [client-op/get-local-tx-entry (fn [_repo _tx-id] nil)
-                  client-op/upsert-local-tx-entry! (fn [repo entry]
+    (with-redefs [local-tx-log/get-local-tx-entry (fn [_repo _tx-id] nil)
+                  local-tx-log/upsert-local-tx-entry! (fn [repo entry]
                                                      (swap! upserts conj {:repo repo
                                                                           :entry entry})
                                                      {:should-inc-pending? true})
-                  client-op/adjust-pending-local-tx-count! (fn [repo delta]
+                  local-tx-log/adjust-pending-local-tx-count! (fn [repo delta]
                                                              (swap! count-adjustments conj [repo delta]))]
       (#'db-core/enqueue-built-in-sync-repair! test-repo)
       (let [{:keys [repo entry]} (first @upserts)]
@@ -683,10 +596,10 @@
 
     (reset! upserts [])
     (reset! count-adjustments [])
-    (with-redefs [client-op/get-local-tx-entry (fn [_repo _tx-id] {:tx-id (random-uuid)})
-                  client-op/upsert-local-tx-entry! (fn [_repo _entry]
+    (with-redefs [local-tx-log/get-local-tx-entry (fn [_repo _tx-id] {:tx-id (random-uuid)})
+                  local-tx-log/upsert-local-tx-entry! (fn [_repo _entry]
                                                      (swap! upserts conj :unexpected))
-                  client-op/adjust-pending-local-tx-count! (fn [_repo _delta]
+                  local-tx-log/adjust-pending-local-tx-count! (fn [_repo _delta]
                                                              (swap! count-adjustments conj :unexpected))]
       (#'db-core/enqueue-built-in-sync-repair! test-repo)
       (is (empty? @upserts))
@@ -700,12 +613,12 @@
                                :kv/value true}])
     (d/transact! local-conn [{:db/ident :logseq.kv/graph-remote?
                               :kv/value false}])
-    (with-redefs [client-op/get-local-tx-entry (fn [_repo _tx-id] nil)
-                  client-op/upsert-local-tx-entry! (fn [repo entry]
+    (with-redefs [local-tx-log/get-local-tx-entry (fn [_repo _tx-id] nil)
+                  local-tx-log/upsert-local-tx-entry! (fn [repo entry]
                                                      (swap! upserts conj {:repo repo
                                                                           :entry entry})
                                                      {:should-inc-pending? false})
-                  client-op/adjust-pending-local-tx-count! (fn [_repo _delta] nil)]
+                  local-tx-log/adjust-pending-local-tx-count! (fn [_repo _delta] nil)]
       (#'db-core/maybe-enqueue-built-in-sync-repair! test-repo remote-conn nil true)
       (is (= 1 (count @upserts)))
 
@@ -1237,68 +1150,27 @@
     (is (= "Alpha"
            (vector-embedding-title {:title "Alpha"})))))
 
-(deftest release-access-handles-clears-active-import-state-test
+(deftest close-db-closes-all-conns-and-pauses-pool-test
   (restoring-worker-state
    (fn []
-     (let [release-access-handles! (get @thread-api/*thread-apis :thread-api/release-access-handles)
-           *import-state @#'sync-download/*import-state
-           import-state-prev @*import-state
-           closed (atom [])
+     (let [closed (atom [])
            removed-pools (atom [])
            pause-calls (atom 0)]
-       (try
-         (platform/set-platform! (build-test-platform {:remove-vfs! (fn [pool]
-                                                                      (swap! removed-pools conj pool)
-                                                                      (p/resolved nil))}))
-         (reset! worker-state/*opfs-pools {test-repo #js {:pauseVfs (fn [] (swap! pause-calls inc))}})
-         (reset! *import-state {:repo test-repo
-                                :graph-id "graph-1"
-                                :import-id "import-1"
-                                :rows-db #js {:close (fn [] (swap! closed conj :rows-db))}
-                                :rows-pool :rows-pool})
+       (platform/set-platform! (build-test-platform {:remove-vfs! (fn [pool]
+                                                                    (swap! removed-pools conj pool)
+                                                                    (p/resolved nil))}))
+       (reset! worker-state/*sqlite-conns
+               {test-repo {:db (fake-db {:close-calls closed :close-label :db})
+                           :search (fake-db {:close-calls closed :close-label :search})
+                           :client-ops (fake-db {:close-calls closed :close-label :client-ops})}})
+       (reset! worker-state/*datascript-conns {test-repo :datascript})
+       (reset! worker-state/*client-ops-conns {test-repo :client-ops})
+       (reset! worker-state/*opfs-pools {test-repo #js {:pauseVfs (fn [] (swap! pause-calls inc))}})
 
-         (release-access-handles! test-repo)
+       (db-core/close-db! test-repo)
 
-         (is (nil? @*import-state))
-         (is (= [:rows-db] @closed))
-         (is (= [:rows-pool] @removed-pools))
-         (is (= 1 @pause-calls))
-         (finally
-           (reset! *import-state import-state-prev)))))))
-
-(deftest close-db-clears-active-import-state-test
-  (restoring-worker-state
-   (fn []
-     (let [*import-state @#'sync-download/*import-state
-           import-state-prev @*import-state
-           closed (atom [])
-           removed-pools (atom [])
-           pause-calls (atom 0)]
-       (try
-         (platform/set-platform! (build-test-platform {:remove-vfs! (fn [pool]
-                                                                      (swap! removed-pools conj pool)
-                                                                      (p/resolved nil))}))
-         (reset! worker-state/*sqlite-conns
-                 {test-repo {:db (fake-db {:close-calls closed :close-label :db})
-                             :search (fake-db {:close-calls closed :close-label :search})
-                             :client-ops (fake-db {:close-calls closed :close-label :client-ops})}})
-         (reset! worker-state/*datascript-conns {test-repo :datascript})
-         (reset! worker-state/*client-ops-conns {test-repo :client-ops})
-         (reset! worker-state/*opfs-pools {test-repo #js {:pauseVfs (fn [] (swap! pause-calls inc))}})
-         (reset! *import-state {:repo test-repo
-                                :graph-id "graph-1"
-                                :import-id "import-1"
-                                :rows-db #js {:close (fn [] (swap! closed conj :rows-db))}
-                                :rows-pool :rows-pool})
-
-         (db-core/close-db! test-repo)
-
-         (is (nil? @*import-state))
-         (is (= #{:rows-db :db :search :client-ops} (set @closed)))
-         (is (= [:rows-pool] @removed-pools))
-         (is (= 1 @pause-calls))
-         (finally
-           (reset! *import-state import-state-prev)))))))
+       (is (= #{:db :search :client-ops} (set @closed)))
+       (is (= 1 @pause-calls))))))
 
 ;; ---- ->uint8array tests ----
 
@@ -1612,25 +1484,6 @@
 
 ;; ---- checksum-diagnostics tests ----
 
-(deftest checksum-diagnostics-returns-local-and-remote
-  (restoring-worker-state
-   (fn []
-     (let [checksum-diagnostics #'worker-export-handler/checksum-diagnostics]
-       (with-redefs [client-op/get-local-checksum (fn [_] "local-checksum-123")
-                     db-sync/*repo->latest-remote-checksum (atom {test-repo "remote-checksum-456"})]
-         (is (= {:local-checksum "local-checksum-123"
-                 :remote-checksum "remote-checksum-456"}
-                (checksum-diagnostics test-repo))))))))
-
-(deftest checksum-diagnostics-handles-missing-remote
-  (restoring-worker-state
-   (fn []
-     (let [checksum-diagnostics #'worker-export-handler/checksum-diagnostics]
-       (with-redefs [client-op/get-local-checksum (fn [_] "local-checksum-123")
-                     db-sync/*repo->latest-remote-checksum (atom {})]
-         (is (= {:local-checksum "local-checksum-123"
-                 :remote-checksum nil}
-                (checksum-diagnostics test-repo))))))))
 
 ;; ---- get-all-page-titles tests ----
 
@@ -1687,12 +1540,9 @@
   (let [types db-core/broadcast-data-types]
     (is (set? types))
     (is (contains? types "sync-db-changes"))
-    (is (contains? types "sync-conflicts-updated"))
     (is (contains? types "notification"))
     (is (contains? types "log"))
-    (is (contains? types "add-repo"))
-    (is (contains? types "rtc-log"))
-    (is (contains? types "rtc-sync-state"))))
+    (is (contains? types "add-repo"))))
 
 ;; ---- init-core! tests ----
 
@@ -2314,8 +2164,7 @@
                             first
                             :block)]
            (is (contains? hydrated :block.temp/display-properties))
-           (is (contains? hydrated :block.temp/task-spent-time))
-           (is (contains? hydrated :block.temp/sync-conflicts))))))))
+           (is (contains? hydrated :block.temp/task-spent-time))))))))
 
 (deftest get-blocks-includes-render-critical-property-data
   (restoring-worker-state
@@ -2580,9 +2429,7 @@
               (reset! worker-state/*datascript-conns {test-repo conn})
               (ldb/register-transact-pipeline-fn! worker-pipeline/transact-pipeline)
               (p/with-redefs
-                [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                 db-sync/handle-local-tx! (fn [& _] nil)
-                 shared-service/broadcast-to-clients!
+                [shared-service/broadcast-to-clients!
                  (fn [event payload]
                    (when (= :sync-db-changes event)
                      (swap! renderer-payloads conj payload)))]
@@ -3314,42 +3161,6 @@
     (is (empty? missing) (str "Missing thread apis: " missing))
     (is (empty? non-functions) (str "Non-function thread apis: " non-functions))))
 
-(deftest db-sync-get-all-block-conflicts-thread-api-is-explicit-and-fail-fast-test
-  (restoring-worker-state
-   (fn []
-     (let [repo "graph-a"
-           block-uuid (random-uuid)
-           conflicts [{:block-uuid block-uuid
-                       :value "remote"}]
-           api (get @thread-api/*thread-apis
-                    :thread-api/db-sync-get-all-block-conflicts)]
-       (is (nil? (get @thread-api/*thread-apis
-                      :thread-api/db-sync-get-block-conflicts))
-           "Per-block reads must not coexist with graph hydration.")
-       (is (fn? api)
-           "The restore path needs one explicit worker API for graph conflict hydration.")
-       (when (fn? api)
-         (let [calls (atom [])]
-           (with-redefs [client-op/get-all-sync-conflicts
-                         (fn [repo']
-                           (swap! calls conj repo')
-                           {block-uuid conflicts})]
-             (is (= {(str block-uuid) conflicts}
-                    (api repo))
-                 "The API returns a graph snapshot keyed for direct renderer-state replacement."))
-           (is (= [repo] @calls)))
-         (with-redefs [client-op/get-all-sync-conflicts (constantly nil)]
-           (let [error (try
-                         (api repo)
-                         nil
-                         (catch :default error
-                           error))]
-             (is (instance? js/Error error)
-                 "A missing client-op store must fail instead of looking like an empty graph.")
-             (is (= {:repo repo
-                     :conflicts nil}
-                    (ex-data error))))))))))
-
 (deftest worker-export-replaces-block-refs-with-worker-db-test
   (let [conn (d/create-conn db-schema/schema)
         page-id -1
@@ -3413,9 +3224,7 @@
        (reset! worker-state/*datascript-conns {test-repo dest-conn})
        (ldb/register-transact-pipeline-fn! worker-pipeline/transact-pipeline)
        (try
-         (with-redefs [db-sync/update-local-sync-checksum! (fn [& _] nil)
-                       db-sync/handle-local-tx! (fn [& _] nil)
-                       shared-service/broadcast-to-clients!
+         (with-redefs [shared-service/broadcast-to-clients!
                        (fn [event payload]
                          (when (= :sync-db-changes event)
                            (swap! renderer-payloads conj payload)))]

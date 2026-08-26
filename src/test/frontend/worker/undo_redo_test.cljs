@@ -2,11 +2,11 @@
   (:require [cljs.test :refer [deftest is testing use-fixtures]]
             [datascript.core :as d]
             [frontend.worker.a-test-env]
-            [frontend.worker.sync.apply-txs :as sync-apply]
+            [frontend.worker.db-listener :as db-listener]
+            [frontend.worker.local-tx-log :as local-tx-log]
             [frontend.worker.state :as worker-state]
-            [frontend.worker.sync :as db-sync]
-            [frontend.worker.sync.client-op :as client-op]
             [frontend.worker.undo-redo :as worker-undo-redo]
+            [frontend.worker.undo-redo.replay :as replay]
             [logseq.common.util.date-time :as date-time-util]
             [logseq.db :as ldb]
             [logseq.db.test.helper :as db-test]
@@ -18,7 +18,7 @@
   []
   (let [Database (js/require "better-sqlite3")
         db (new Database ":memory:")]
-    (client-op/ensure-sqlite-schema! db)
+    (local-tx-log/ensure-sqlite-schema! db)
     db))
 
 (defn- delete-client-op-tx-row!
@@ -52,15 +52,15 @@
         client-ops-conn (new-client-ops-db)]
     (reset! worker-state/*datascript-conns {test-repo conn})
     (reset! worker-state/*client-ops-conns {test-repo client-ops-conn})
-    (reset! worker-undo-redo/*apply-history-action! sync-apply/apply-history-action!)
-    (d/listen! conn ::gen-undo-ops
-               (fn [tx-report]
-                 (db-sync/enqueue-local-tx! test-repo tx-report)))
+    (reset! worker-undo-redo/*apply-history-action! replay/apply-history-action!)
+    ;; Real production dispatch (db_listener.cljs), scoped to just the
+    ;; :persist-local-tx handler -- this is what actually wires
+    ;; persist-local-tx! to every committed local tx outside tests.
+    (db-listener/listen-db-changes! test-repo conn :handler-keys [:persist-local-tx])
     (worker-undo-redo/clear-history! test-repo)
     (try
       (f)
       (finally
-        (d/unlisten! conn ::gen-undo-ops)
         (worker-undo-redo/clear-history! test-repo)
         (.close client-ops-conn)
         (reset! worker-undo-redo/*apply-history-action! apply-history-action-prev)
@@ -286,8 +286,8 @@
 
 (defn- poison-history-tx-order!
   [tx-id]
-  (when-let [entry (client-op/get-local-tx-entry test-repo tx-id)]
-    (client-op/upsert-local-tx-entry!
+  (when-let [entry (local-tx-log/get-local-tx-entry test-repo tx-id)]
+    (local-tx-log/upsert-local-tx-entry!
      test-repo
      {:tx-id tx-id
       :pending? true

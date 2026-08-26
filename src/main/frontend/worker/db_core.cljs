@@ -24,7 +24,6 @@
    [frontend.worker.handler.query]
    [frontend.worker.handler.render-resource.engine]
    [frontend.worker.handler.search :as search-handler]
-   [frontend.worker.handler.sync]
    [frontend.worker.handler.transaction :as transaction-handler]
    [frontend.worker.handler.undo-redo]
    [frontend.worker.handler.view]
@@ -34,10 +33,7 @@
    [frontend.worker.search :as search]
    [frontend.worker.shared-service :as shared-service]
    [frontend.worker.state :as worker-state]
-   [frontend.worker.sync :as db-sync]
-   [frontend.worker.sync.client-op :as client-op]
-   [frontend.worker.sync.crypt :as sync-crypt]
-   [frontend.worker.sync.download :as sync-download]
+   [frontend.worker.local-tx-log :as local-tx-log]
    [frontend.worker.thread-atom]
    [frontend.worker.undo-redo :as worker-undo-redo]
    [goog.functions :as gfun]
@@ -364,7 +360,6 @@
   (checkpoint-db! repo db)
   (checkpoint-db! repo search)
   (checkpoint-db! repo client-ops)
-  (sync-download/close-import-state-for-repo! repo)
   (when-let [timer (get @*client-ops-cleanup-timers repo)]
     (js/clearInterval timer))
   (swap! *client-ops-cleanup-timers dissoc repo)
@@ -375,7 +370,7 @@
   (swap! *vector-indexes dissoc repo)
   (swap! *datascript-conns dissoc repo)
   (swap! *client-ops-conns dissoc repo)
-  (swap! client-op/*repo->pending-local-tx-count dissoc repo)
+  (swap! local-tx-log/*repo->pending-local-tx-count dissoc repo)
   (search-handler/clear-search-index-builds! repo)
   (when db (.close db))
   (when search (.close search))
@@ -395,27 +390,6 @@
   [repo]
   (let [{:keys [db search client-ops]} (get @*sqlite-conns repo)]
     (close-db-aux! repo db search client-ops)))
-
-(defn- <invalidate-search-db!
-  [repo]
-  (if-let [search-db (worker-state/get-sqlite-conn repo :search)]
-    (do
-      (search/truncate-table! search-db)
-      (search/truncate-vector-index! (worker-state/get-vector-index repo))
-      (p/resolved nil))
-    (when-not @*publishing?
-      (p/let [pool (<get-opfs-pool repo)
-              search-path (resolve-db-path repo pool (str "search" repo-path))
-              search-db (platform/sqlite-open (platform/current)
-                                              {:sqlite @*sqlite
-                                               :pool pool
-                                               :path search-path
-                                               :mode "c"})]
-        (try
-          (search/truncate-table! search-db)
-          (finally
-            (.close search-db)))
-        nil))))
 
 (defn- vector-index-path
   [repo pool]
@@ -476,7 +450,7 @@
 (defn- run-client-ops-cleanup!
   [repo]
   (let [protected-tx-ids (worker-undo-redo/referenced-history-tx-ids repo)]
-    (client-op/cleanup-finished-history-ops! repo protected-tx-ids)
+    (local-tx-log/cleanup-finished-history-ops! repo protected-tx-ids)
     nil))
 
 (defn- ensure-client-ops-cleanup-timer!
@@ -489,11 +463,6 @@
                                 client-ops-cleanup-interval-ms)]
       (swap! *client-ops-cleanup-timers assoc repo timer))
     nil))
-
-(defn- handle-migrate-result-local-txs!
-  [repo migrate-result]
-  (doseq [tx-report (:upgrade-result-coll migrate-result)]
-    (db-sync/handle-local-tx! repo tx-report)))
 
 (def ^:private built-in-sync-repair-tx-id
   #uuid "00000000-0000-4000-8000-652665286528")
@@ -551,9 +520,9 @@
 
 (defn- enqueue-built-in-sync-repair!
   [repo]
-  (when-not (client-op/get-local-tx-entry repo built-in-sync-repair-tx-id)
+  (when-not (local-tx-log/get-local-tx-entry repo built-in-sync-repair-tx-id)
     (let [{:keys [should-inc-pending?]}
-          (client-op/upsert-local-tx-entry!
+          (local-tx-log/upsert-local-tx-entry!
            repo
            {:tx-id built-in-sync-repair-tx-id
             :created-at 0
@@ -567,7 +536,7 @@
             :normalized-tx-data (built-in-sync-repair-tx-data)
             :reversed-tx-data []})]
       (when should-inc-pending?
-        (client-op/adjust-pending-local-tx-count! repo 1)))))
+        (local-tx-log/adjust-pending-local-tx-count! repo 1)))))
 
 (defn- maybe-enqueue-built-in-sync-repair!
   [repo conn migrate-result initial-data-exists?]
@@ -607,8 +576,8 @@
                      (debug-transit-raw->datoms debug-transit-raw)))]
     (when creating-remote-graph?
       (when (and (worker-state/get-sqlite-conn repo :client-ops)
-                 (nil? (client-op/get-local-tx repo)))
-        (client-op/update-local-tx repo 0)))
+                 (nil? (local-tx-log/get-local-tx repo)))
+        (local-tx-log/update-local-tx repo 0)))
     (when-not (worker-state/get-sqlite-conn repo)
       (p/let [[db search-db client-ops-db vector-index] (get-dbs repo)
               dbs (cond-> [db search-db]
@@ -656,29 +625,25 @@
           (swap! *datascript-conns assoc repo conn)
           (swap! *client-ops-conns assoc repo client-ops-conn)
           (when-not @*publishing?
-            (client-op/ensure-sqlite-schema! client-ops-db))
+            (local-tx-log/ensure-sqlite-schema! client-ops-db))
           (when creating-remote-graph?
-            (when (nil? (client-op/get-local-tx repo))
-              (client-op/update-local-tx repo 0)))
+            (when (nil? (local-tx-log/get-local-tx repo))
+              (local-tx-log/update-local-tx repo 0)))
           (ensure-client-ops-cleanup-timer! repo)
-          (let [initial-tx-report (when-not (or initial-data-exists?
-                                                (seq datoms)
-                                                sync-download-graph?)
-                                    (let [config (resolve-initial-config config)
-                                          initial-data (sqlite-create-graph/build-db-initial-data
-                                                        config (select-keys opts [:import-type :graph-git-sha :creating-remote-graph?]))]
-                                      (bootstrap-transact! conn initial-data)))]
+          (do
+            (when-not (or initial-data-exists?
+                          (seq datoms)
+                          sync-download-graph?)
+              (let [config (resolve-initial-config config)
+                    initial-data (sqlite-create-graph/build-db-initial-data
+                                  config (select-keys opts [:import-type :graph-git-sha :creating-remote-graph?]))]
+                (bootstrap-transact! conn initial-data)))
             (when-not sync-download-graph?
               (let [migrate-result (db-migrate/migrate conn)]
-                (if migrate-result
-                  (handle-migrate-result-local-txs! repo migrate-result)
-                  (maybe-enqueue-built-in-sync-repair! repo conn migrate-result initial-data-exists?)))
+                (maybe-enqueue-built-in-sync-repair! repo conn migrate-result initial-data-exists?))
               (transaction-handler/maybe-run-recycle-gc! conn))
 
             (ensure-canonical-revisions! conn)
-
-            (when initial-tx-report
-              (db-sync/handle-local-tx! repo initial-tx-report))
 
             (db-listener/listen-db-changes! repo conn)
 
@@ -713,19 +678,7 @@
   []
   (init-sqlite-module!))
 
-(defn- db-sync-dbs-open?
-  [repo]
-  (and (some? (worker-state/get-datascript-conn repo))
-       (some? (worker-state/get-client-ops-conn repo))))
-
 (declare start-db!)
-(def-thread-api :thread-api/db-sync-start
-  [repo]
-  (if (db-sync-dbs-open? repo)
-    (db-sync/start! repo)
-    (p/do!
-     (start-db! repo {:close-other-db? false})
-     (db-sync/start! repo))))
 
 ;; [graph service]
 (defonce *service (atom []))
@@ -772,54 +725,17 @@
 (def-thread-api :thread-api/unsafe-unlink-db
   [repo]
   (p/let [pool (<get-opfs-pool repo)
-          _ (sync-crypt/cancel-ui-requests! {:reason :unsafe-unlink-db
-                                             :repo repo})
           _ (close-db! repo)
           _result (remove-vfs! pool)]
     nil))
 
 (def-thread-api :thread-api/close-db
   [repo]
-  (sync-crypt/cancel-ui-requests! {:reason :close-db
-                                   :repo repo})
   (close-db! repo)
   nil)
 
-(def-thread-api :thread-api/db-sync-close-db
-  [repo]
-  (sync-crypt/cancel-ui-requests! {:reason :db-sync-close-db
-                                   :repo repo})
-  (close-db! repo))
-
-(def-thread-api :thread-api/db-sync-invalidate-search-db
-  [repo]
-  (<invalidate-search-db! repo))
-
-(def-thread-api :thread-api/db-sync-recreate-lock
-  [repo]
-  (if-let [recreate-lock-fn (get-in (platform/current) [:env :recreate-lock-fn])]
-    (recreate-lock-fn repo)
-    nil))
-
-(def-thread-api :thread-api/db-sync-rehydrate-large-titles
-  [repo graph-id]
-  (db-sync/rehydrate-large-titles-from-db! repo graph-id))
-
-(def-thread-api :thread-api/db-sync-import-prepare
-  [repo reset? graph-id graph-e2ee? & [total-datoms]]
-  (sync-download/prepare-import! repo reset? graph-id graph-e2ee? total-datoms))
-
-(def-thread-api :thread-api/db-sync-import-rows-chunk
-  [rows graph-id import-id]
-  (sync-download/import-rows-chunk! rows graph-id import-id))
-
-(def-thread-api :thread-api/db-sync-import-finalize
-  [repo graph-id remote-tx import-id]
-  (sync-download/finalize-import! repo graph-id remote-tx import-id))
-
 (def-thread-api :thread-api/release-access-handles
   [repo]
-  (sync-download/close-import-state-for-repo! repo)
   (when-let [^js pool (get-storage-pool repo)]
     (when (exists? (.-pauseVfs pool))
       (.pauseVfs pool))
@@ -929,12 +845,9 @@
   (set (map
         common-util/keyword->string
         [:sync-db-changes
-         :sync-conflicts-updated
          :notification
          :log
-         :add-repo
-         :rtc-log
-         :rtc-sync-state])))
+         :add-repo])))
 
 (defn- <init-service!
   [graph start-opts]
