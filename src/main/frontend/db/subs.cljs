@@ -45,6 +45,12 @@
 (defn ^:no-doc clear-query-reload-timeout! [timer-id]
   (js/clearTimeout timer-id))
 (defn ^:no-doc schedule-load-batch! [callback]
+  ;; Stays a same-tick 0ms timeout, calibrated for postMessage-to-a-worker
+  ;; being free -- a coalescing window here would be redundant with the one
+  ;; frontend.persist-db.remote's invoke batcher already applies at the HTTP
+  ;; transport layer (Fase 6), and widening it here breaks the large body of
+  ;; existing subs-test.cljs coverage that synchronizes on same-tick flushing
+  ;; via (p/delay 0).
   (js/setTimeout callback 0))
 (defn <load-block [graph-id block-uuid]
   (loader/load! graph-id [:block block-uuid] schedule-load-batch!))

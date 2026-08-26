@@ -17,6 +17,10 @@
   [base-url]
   (str (normalize-base-url base-url) "/v1/invoke"))
 
+(defn- invoke-batch-url
+  [base-url]
+  (str (normalize-base-url base-url) "/v1/invoke-batch"))
+
 (defn- import-db-binary-url
   [base-url repo]
   (str (normalize-base-url base-url)
@@ -214,6 +218,62 @@
                   (on-invoke-failure method args error))
                 (throw error))))))
 
+(defn create-invoke-batcher
+  "Coalesces thread-api invokes issued within a short window into a single
+  POST /v1/invoke-batch instead of one HTTP round trip per call -- the
+  generalization, to every wrapped-worker call a remote client makes, of the
+  request-group batching frontend.db.subs-loader already does for
+  get-render-snapshots specifically (Fase 6). Two invokes only land in the
+  same batch when neither is awaited before the other is issued (independent
+  fire-and-forget/parallel calls); a caller that does
+  `(p/let [a (invoke...) b (invoke...)] ...)` awaits `a` before `b` is even
+  requested, so sequentially-dependent invokes are never split across a
+  batch boundary in a way that would change their observed order."
+  [{:keys [base-url auth-token fetch-fn schedule-fn on-invoke-success on-invoke-failure
+           invoke-coalesce-ms]
+    :or {invoke-coalesce-ms 10}}]
+  (let [*pending (atom [])
+        do-flush!
+        (fn []
+          (let [batch @*pending]
+            (reset! *pending [])
+            (when (seq batch)
+              (let [payload (js/JSON.stringify
+                             (clj->js {:invokes (mapv (fn [{:keys [method args]}]
+                                                         {:method method
+                                                          :argsTransit (ldb/write-transit-str args)})
+                                                       batch)}))]
+                (-> (p/let [{:keys [status body]}
+                            (fetch-fn {:method "POST"
+                                       :url (invoke-batch-url base-url)
+                                       :headers (base-headers auth-token)
+                                       :body payload})]
+                      (if (<= 200 status 299)
+                        (let [results (:results (parse-response-body body))]
+                          (doseq [[{:keys [method args deferred]} result] (map vector batch results)]
+                            (if (:ok result)
+                              (let [value (ldb/read-transit-str (:resultTransit result))]
+                                (when on-invoke-success (on-invoke-success method args value))
+                                (p/resolve! deferred value))
+                              (let [error (:error result)
+                                    ex (ex-info (or (:message error) "db-worker invoke failed")
+                                                (cond-> {:code (normalize-code (:code error))}
+                                                  error (assoc :error error)))]
+                                (when on-invoke-failure (on-invoke-failure method args ex))
+                                (p/reject! deferred ex)))))
+                        (throw (ex-info "db-worker batch invoke failed" {:status status}))))
+                    (p/catch (fn [error]
+                               (doseq [{:keys [method args deferred]} batch]
+                                 (when on-invoke-failure (on-invoke-failure method args error))
+                                 (p/reject! deferred error)))))))))]
+    (fn invoke-batched! [method args]
+      (let [deferred (p/deferred)
+            schedule? (empty? @*pending)]
+        (swap! *pending conj {:method method :args args :deferred deferred})
+        (when schedule?
+          (schedule-fn do-flush! invoke-coalesce-ms))
+        deferred))))
+
 (defn- import-db-binary!
   [{:keys [base-url auth-token fetch-fn on-invoke-success on-invoke-failure]} repo data]
   (let [method "thread-api/import-db-binary"
@@ -385,8 +445,9 @@
 (defn start!
   [{:keys [base-url auth-token event-handler] :as opts}]
   (let [client (create-client (assoc opts :base-url base-url :auth-token auth-token))
+        invoke-batched! (create-invoke-batcher client)
         wrapped-worker (fn [qkw & args]
-                         (invoke! client (method->str qkw) args))
+                         (invoke-batched! (method->str qkw) args))
         {:keys [disconnect!]} (connect-events-ws! (assoc client
                                                          :event-handler event-handler
                                                          :auth-token auth-token)

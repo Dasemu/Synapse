@@ -3,20 +3,22 @@
   (:require [frontend.state :as state]
             [promesa.core :as p]))
 
-(def ^:private limits {:blocks 1000 :children 25 :resources 25})
+(def ^:private limits {:blocks 1000 :children 200 :resources 200})
 (def ^:private slot-kind {:block :blocks :children :children :resource :resources})
 
 (defonce ^:private *batch (atom {}))
+
+(defonce ^:private *inflight (atom {}))
 
 (defonce ^:private *stats (atom {:dedup-hits 0 :new-entries 0 :flushes 0 :batch-sizes {}}))
 
 (defn get-stats
   "Snapshot of subs-loader batching counters: :dedup-hits counts load! calls
-  that reused an already-pending slot request within the same unflushed
-  batch window (see `load!`); :batch-sizes tallies entries per slot kind
-  across flushes. Dev-only instrumentation for the server-client migration
-  latency baseline (see docs/agent-guide); does not affect batching or the
-  `limits` above."
+  that reused an already-pending OR already-in-flight slot request (see
+  `load!` and `*inflight`) instead of firing a duplicate; :batch-sizes
+  tallies entries per slot kind across flushes. Dev-only instrumentation for
+  the server-client migration latency baseline (see docs/agent-guide); does
+  not affect batching or the `limits` above."
   []
   @*stats)
 
@@ -57,10 +59,25 @@
     (throw (ex-info "Missing renderer snapshot group"
                     {:slot-key slot-key}))))
 
+(defn- untrack-inflight!
+  [entries]
+  (swap! *inflight
+         (fn [inflight]
+           (reduce (fn [m {:keys [graph-id slot-key]}]
+                     (dissoc m [graph-id slot-key]))
+                   inflight
+                   entries))))
+
 (defn- flush!
   []
   (when @state/db-worker-ready?
     (let [batch (take-batch!)]
+      ;; Moved into *inflight* (not just dropped after take-batch! clears
+      ;; *batch*) so a load! for the same slot arriving while this request is
+      ;; still in the air reuses this promise instead of firing a duplicate
+      ;; request -- *batch* alone only dedupes calls that land before the
+      ;; batch is sent, not across the flush boundary (Fase 6).
+      (swap! *inflight into (map (fn [entry] [[(:graph-id entry) (:slot-key entry)] entry]) batch))
       (swap! *stats
              (fn [s]
                (-> s
@@ -80,7 +97,8 @@
                             (p/resolve! (:result entry) value)))
                         (catch :default error
                           (reject! entries error)))))
-            (p/catch #(reject! entries %)))))))
+            (p/catch #(reject! entries %))
+            (p/finally #(untrack-inflight! entries)))))))
 
 (defn- flush-when-db-worker-ready!
   [_key _ref _old-value ready?]
@@ -94,7 +112,8 @@
 (defn load!
   [graph-id slot-key schedule!]
   (let [entry-key [graph-id slot-key]]
-    (if-let [result (get-in @*batch [entry-key :result])]
+    (if-let [result (or (get-in @*batch [entry-key :result])
+                        (get-in @*inflight [entry-key :result]))]
       (do (swap! *stats update :dedup-hits inc)
           result)
       (let [result (p/deferred)
@@ -108,6 +127,7 @@
 
 (defn reject-pending!
   [error]
-  (let [entries (vals @*batch)]
+  (let [entries (concat (vals @*batch) (vals @*inflight))]
     (reset! *batch {})
+    (reset! *inflight {})
     (reject! entries error)))

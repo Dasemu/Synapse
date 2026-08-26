@@ -448,6 +448,34 @@
   [^js buf]
   (str "\"" (-> (crypto/createHash "sha1") (.update buf) (.digest "hex")) "\""))
 
+(defn- <process-batch-invoke!
+  "One entry of a /v1/invoke-batch request, run through the same
+  repo-check/lock/invoke path as /v1/invoke but never rejecting -- a failed
+  item becomes {:ok false :error ...} in its slot of the batch response
+  instead of failing every other invoke that happened to coalesce into the
+  same HTTP request (Fase 6)."
+  [proxy bound-repo {:keys [method argsTransit args]}]
+  (let [method-kw (normalize-method-kw method)
+        method-str (normalize-method-str method)
+        args' (or argsTransit args)]
+    (-> (p/let [args-for-validation (if (string? args')
+                                      (ldb/read-transit-str args')
+                                      args')]
+          (if-let [{:keys [error]} (repo-error method-kw args-for-validation bound-repo)]
+            {:ok false :error error}
+            (p/let [_ (when-not (contains? non-repo-methods method-kw)
+                        (let [{:keys [path lock]} @*lock-info]
+                          (db-lock/assert-lock-owner! path lock)))
+                    _ (invoke-started! bound-repo)
+                    result (-> (<invoke! proxy method-str method-kw args')
+                               (p/finally (fn [] (invoke-finished! bound-repo))))]
+              {:ok true :resultTransit result})))
+        (p/catch (fn [error]
+                   (let [data (ex-data error)]
+                     {:ok false
+                      :error {:code (invoke-error-code data)
+                              :message (invoke-error-message error data)}}))))))
+
 (defn- ws-upgrade-handler
   [^js wss bound-repo port extra-allowed-hosts]
   (fn [^js req ^js socket head]
@@ -610,6 +638,16 @@
                (p/catch (fn [error]
                           (log-invoke-error! res error :thread-api/asset-write-bytes))))
            (send-json! res 400 {:ok false :error {:code :invalid-request :message "invalid asset path"}}))
+
+         (= request-path "/v1/invoke-batch")
+         (if (= method "POST")
+           (-> (p/let [body (<read-body req)
+                       {:keys [invokes]} (js->clj (js/JSON.parse body) :keywordize-keys true)
+                       results (p/all (map #(<process-batch-invoke! proxy bound-repo %) invokes))]
+                 (send-json! res 200 {:ok true :results results}))
+               (p/catch (fn [error]
+                          (log-invoke-error! res error nil))))
+           (send-text! res 405 "method-not-allowed"))
 
          (= request-path "/v1/invoke")
          (if (= method "POST")

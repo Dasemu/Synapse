@@ -122,6 +122,21 @@
                      :headers headers}
                     payload))))
 
+(defn- invoke-batch-raw
+  [host port invokes]
+  (let [payload (js/JSON.stringify
+                 (clj->js {:invokes (mapv (fn [[method args]]
+                                            {:method method
+                                             :argsTransit (ldb/write-transit-str args)})
+                                          invokes)}))]
+    (p/let [headers (auth-headers! host port)]
+      (http-request {:hostname host
+                     :port port
+                     :path "/v1/invoke-batch"
+                     :method "POST"
+                     :headers headers}
+                    payload))))
+
 (defn- invoke-import-db-binary-raw
   [host port repo payload]
   (p/let [headers (auth-headers! host port)]
@@ -1126,6 +1141,66 @@
                                                  (is (or (nil? contents)
                                                          (not (string/includes? contents (str (.-pid js/process) " ")))))
                                                  (done)))))
+                              (done))))))))
+
+(deftest db-worker-node-invoke-batch-mixes-success-and-failure
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-invoke-batch")
+               repo (str "logseq_db_batch_" (subs (str (random-uuid)) 0 8))]
+           (-> (p/let [{:keys [host port stop!]}
+                       (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:host host :port port :stop! stop!})
+                       _ (invoke host port "thread-api/create-or-open-db" [repo {}])
+                       {:keys [status body]}
+                       (invoke-batch-raw host port
+                                         [["thread-api/list-db" []]
+                                          ["thread-api/create-or-open-db" ["wrong-repo" {}]]
+                                          ["thread-api/list-db" []]])
+                       parsed (js->clj (js/JSON.parse body) :keywordize-keys true)]
+                 (is (= 200 status))
+                 (is (:ok parsed))
+                 (is (= 3 (count (:results parsed))))
+                 (let [[first-result mismatch-result third-result] (:results parsed)]
+                   (is (:ok first-result))
+                   (is (some #(= repo (:name %))
+                             (ldb/read-transit-str (:resultTransit first-result))))
+                   (is (not (:ok mismatch-result)))
+                   (is (= "repo-mismatch" (get-in mismatch-result [:error :code])))
+                   (is (:ok third-result))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] e:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
+                              (done))))))))
+
+(deftest db-worker-node-invoke-batch-requires-auth-and-post
+  (async done
+         (let [daemon (atom nil)
+               data-dir (node-helper/create-tmp-dir "db-worker-invoke-batch-auth")
+               repo (str "logseq_db_batch_auth_" (subs (str (random-uuid)) 0 8))]
+           (-> (p/let [{:keys [host port stop!]}
+                       (start-daemon! {:root-dir data-dir :repo repo})
+                       _ (reset! daemon {:host host :port port :stop! stop!})
+                       no-auth (http-request {:hostname host :port port
+                                              :path "/v1/invoke-batch" :method "POST"
+                                              :headers {"Content-Type" "application/json"}}
+                                             (js/JSON.stringify (clj->js {:invokes []})))
+                       headers (auth-headers! host port)
+                       wrong-method (http-request {:hostname host :port port
+                                                   :path "/v1/invoke-batch" :method "GET"
+                                                   :headers headers}
+                                                  nil)]
+                 (is (= 401 (:status no-auth)))
+                 (is (= 405 (:status wrong-method))))
+               (p/catch (fn [e]
+                          (println "[db-worker-node-test] e:" e)
+                          (is false (str e))))
+               (p/finally (fn []
+                            (if-let [stop! (:stop! @daemon)]
+                              (-> (stop!) (p/finally done))
                               (done))))))))
 
 (deftest db-worker-node-ws-upgrade-rejects-missing-or-invalid-token

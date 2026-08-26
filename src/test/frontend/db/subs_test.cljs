@@ -1372,13 +1372,13 @@
                 (p/let [_ (p/delay 0)
                         calls @worker-calls
                         payloads (mapv #(get-in % [2 :children]) calls)]
-                  (is (<= (count calls) 4)
+                  (is (<= (count calls) 1)
                       "Direct-child loads use the same bounded one-tick batching policy.")
                   (is (every? #(= :thread-api/get-render-snapshots (first %)) calls))
                   (is (every? #(= test-graph-id (second %)) calls))
                   (is (every? vector? payloads)
                       "Batching stays internal; the worker receives parent UUID vectors.")
-                  (is (every? #(<= (count %) 25) payloads))
+                  (is (every? #(<= (count %) 200) payloads))
                   (is (= (set parent-uuids) (set (mapcat identity payloads))))
                   (doseq [parent-uuid parent-uuids]
                     (is (= {:status :ready
@@ -1386,7 +1386,7 @@
                            (subs/children-snapshot parent-uuid))))
                   (run! (fn [unsubscribe] (unsubscribe)) unsubscribes))))))))
 
-(deftest resource-subscriptions-coalesce-default-loads-in-unique-batches-of-25-test
+(deftest resource-subscriptions-coalesce-default-loads-in-unique-batches-of-200-test
   (async done
          (let [resource-keys
                (mapv (fn [index]
@@ -1414,12 +1414,12 @@
                 (p/let [_ (p/delay 0)
                         calls @worker-calls
                         payloads (mapv #(get-in % [2 :resources]) calls)]
-                  (is (= 4 (count calls)))
+                  (is (= 1 (count calls)))
                   (is (every? #(= :thread-api/get-render-snapshots (first %))
                               calls))
                   (is (every? #(= test-graph-id (second %)) calls))
                   (is (every? vector? payloads))
-                  (is (every? #(<= (count %) 25) payloads))
+                  (is (every? #(<= (count %) 200) payloads))
                   (is (every? #(= % (vec (distinct %))) payloads))
                   (is (= (set resource-keys)
                          (set (mapcat identity payloads))))
