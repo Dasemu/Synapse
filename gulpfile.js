@@ -266,6 +266,8 @@ exports.electron = () => {
 }
 
 const prepareElectronMaker = async () => {
+  const skipCliBundle = process.env.LOGSEQ_SKIP_CLI_BUNDLE === '1'
+
   cp.execSync('pnpm cljs:release-electron', {
     stdio: 'inherit',
   })
@@ -275,9 +277,11 @@ const prepareElectronMaker = async () => {
   cp.execSync('pnpm webpack-app-build', {
     stdio: 'inherit',
   })
-  cp.execSync('pnpm cli:release', {
-    stdio: 'inherit',
-  })
+  if (!skipCliBundle) {
+    cp.execSync('pnpm cli:release', {
+      stdio: 'inherit',
+    })
+  }
   cp.execSync('pnpm desktop:prepare-runtime-js', {
     stdio: 'inherit',
   })
@@ -306,8 +310,8 @@ const prepareElectronMaker = async () => {
   }
 }
 
-const runStaticScript = (script) => {
-  cp.execSync(`pnpm ${script}`, {
+const runStaticScript = (script, extraArgs = '') => {
+  cp.execSync(`pnpm ${script}${extraArgs ? ' -- ' + extraArgs : ''}`, {
     cwd: outputPath,
     stdio: 'inherit',
   })
@@ -320,7 +324,7 @@ exports.electronMaker = async () => {
 
 exports.electronMakerUnsigned = async () => {
   await prepareElectronMaker()
-  runStaticScript('electron:make-unsigned')
+  runStaticScript('electron:make-unsigned', process.env.LOGSEQ_ELECTRON_BUILDER_ARGS || '')
 }
 
 exports.cap = common.runCapWithLocalDevServerEntry

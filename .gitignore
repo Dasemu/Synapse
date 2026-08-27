@@ -35,6 +35,7 @@ cli/_opam/
 *.log
 .vscode/
 .idea/
+.claude/
 
 # Python sidecar
 sidecar/.venv/

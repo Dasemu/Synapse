@@ -1,0 +1,25 @@
+[Unit]
+Description=Logseq db-worker-node daemon
+After=network.target
+
+[Service]
+Type=simple
+User=logseq
+Group=logseq
+WorkingDirectory=/opt/logseq
+EnvironmentFile=-/opt/logseq/daemon.env
+ExecStart=/usr/bin/node /opt/logseq/dist/db-worker-node.js \
+  --root-dir /opt/logseq/data \
+  --repo logseq_db_main \
+  --host 127.0.0.1 \
+  --port 3300 \
+  --log-level info
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/logseq/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,139 @@
+name: Build packages
+
+# Runs only on demand or when a release tag is pushed -- these builds are
+# long (cljs release compile + webpack + native packaging per platform) so
+# they don't run on every push.
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "v*"
+
+env:
+  # The `cli/` OCaml/dune package (a separate CLI companion tool) isn't
+  # bundled: this fork doesn't have the opam/dune toolchain wired into CI,
+  # and the `.agents/skills/logseq-cli/SKILL.md` doc it also depends on
+  # doesn't exist in this repo yet. Both the desktop-runtime staging script
+  # and gulpfile.js's prepareElectronMaker respect this flag by skipping the
+  # CLI-only steps instead of failing. Unset (or set to '0') once the CLI
+  # toolchain and skill doc are added.
+  LOGSEQ_SKIP_CLI_BUNDLE: "1"
+
+jobs:
+  linux:
+    name: Linux (AppImage, deb, rpm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rpmbuild
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: DeLaGuardo/setup-clojure@13.1
+        with:
+          cli: 1.12.5.1664
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned AppImage/deb/rpm
+        env:
+          LOGSEQ_ELECTRON_BUILDER_ARGS: "--linux AppImage deb rpm"
+        run: pnpm release-electron:unsigned
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logseq-linux
+          path: |
+            static/dist/*.AppImage
+            static/dist/*.deb
+            static/dist/*.rpm
+          if-no-files-found: error
+
+  windows:
+    name: Windows (nsis)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: DeLaGuardo/setup-clojure@13.1
+        with:
+          cli: 1.12.5.1664
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned nsis installer
+        run: pnpm release-electron:unsigned
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logseq-windows
+          path: |
+            static/dist/*.exe
+            static/dist/*.zip
+          if-no-files-found: error
+
+  android:
+    name: Android (debug APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform/build-tools
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: DeLaGuardo/setup-clojure@13.1
+        with:
+          cli: 1.12.5.1664
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web assets and sync into the Android project
+        run: pnpm sync-android-release
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logseq-android
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -29,7 +29,7 @@
                                       :i18n-key :electron/link-open-failed-no-graph
                                       :i18n-args [graph-identifier]})
     (send-to-renderer "notification" {:type "error"
-                                      :payload "Failed to open link. Missing graph identifier after `logseq://graph/`."
+                                      :payload "Failed to open link. Missing graph identifier after `synapse://graph/`."
                                       :i18n-key :electron/link-open-failed-missing-graph})))
 
 (defn local-url-handler

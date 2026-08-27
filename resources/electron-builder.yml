@@ -1,4 +1,4 @@
-appId: com.logseq.logseq
+appId: es.dariosevilla.synapse
 electronUpdaterCompatibility: ">=2.16"
 
 directories:
@@ -37,18 +37,11 @@ toolsets:
   appimage: "1.0.2"
 
 protocols:
-  - name: logseq
+  - name: synapse
     schemes:
-      - logseq
-
-publish:
-  - provider: github
-    owner: logseq
-    repo: logseq
+      - synapse
 
 extraResources:
-  - from: .agents/skills/logseq-cli/SKILL.md
-    to: .agents/skills/logseq-cli/SKILL.md
   - from: ../sidecar
     to: sidecar
 
@@ -83,7 +76,6 @@ linux:
   icon: icons/logseq.png
   category: Office
   target:
-    - AppImage
-    - zip
+    - rpm
   mimeTypes:
-    - x-scheme-handler/logseq
+    - x-scheme-handler/synapse

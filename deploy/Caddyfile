@@ -1,0 +1,11 @@
+your-domain.example {
+	# Everything the db-worker-node daemon serves: RPC, SSE/WS events,
+	# session auth, assets, the semantic API, and the MCP endpoint.
+	@daemon path /healthz /v1/* /mcp
+	reverse_proxy @daemon 127.0.0.1:3300
+
+	# Everything else is the static web client build.
+	root * /opt/logseq/static
+	file_server
+	try_files {path} /index.html
+}

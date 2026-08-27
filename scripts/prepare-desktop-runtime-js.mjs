@@ -17,6 +17,7 @@ const cliBundleRelativePath = "cli/_build/default/dist/logseq-cli.js";
 const stagedCliRelativePath = "static/logseq-cli.js";
 const desktopCliRelativePath = "static/js/logseq-cli.js";
 const cliBundlePath = path.join(repoRoot, ...cliBundleRelativePath.split("/"));
+const skipCliBundle = process.env.LOGSEQ_SKIP_CLI_BUNDLE === "1";
 
 const copyPairs = [
   {
@@ -24,6 +25,7 @@ const copyPairs = [
     to: path.join(repoRoot, ...desktopCliRelativePath.split("/")),
     generatedFrom: cliBundlePath,
     refreshCommand: "pnpm cli:release",
+    optional: skipCliBundle,
   },
   {
     from: path.join(staticDir, "logseq-cli.js.map"),
@@ -39,6 +41,7 @@ const copyPairs = [
   {
     from: path.join(skillSourceDir, "SKILL.md"),
     to: path.join(stagedSkillDir, "SKILL.md"),
+    optional: skipCliBundle,
   },
 ];
 

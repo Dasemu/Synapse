@@ -5,8 +5,10 @@ import * as fs from 'fs'
 const version = fs.readFileSync('static/package.json', 'utf8').match(/"version": "(.*?)"/)?.at(1) ?? '0.0.0'
 
 const config: CapacitorConfig = {
+  // appId intentionally left as-is: it must match android/'s applicationId
+  // and ios/'s bundle id, which haven't been renamed yet.
   appId: 'com.logseq.app',
-  appName: 'Logseq',
+  appName: 'Synapse',
   webDir: 'static/mobile',
   loggingBehavior: 'debug',
   server: {

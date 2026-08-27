@@ -1,11 +1,15 @@
 {
-  "name": "logseq",
+  "name": "synapse",
   "version": "0.0.1",
   "private": true,
+  "author": {
+    "name": "Darío Sevilla",
+    "email": "dario@dariosevilla.es"
+  },
   "packageManager": "pnpm@10.33.0",
   "main": "static/electron.js",
   "bin": {
-    "logseq": "dist/logseq.js"
+    "synapse": "dist/logseq.js"
   },
   "files": [
     "dist/",

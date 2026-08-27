@@ -1,13 +1,16 @@
 {
-  "name": "Logseq",
-  "productName": "Logseq",
+  "name": "Synapse",
+  "productName": "Synapse",
   "version": "2.0.1",
   "packageManager": "pnpm@10.33.0",
   "main": "electron.js",
-  "author": "Logseq",
+  "author": {
+    "name": "Darío Sevilla",
+    "email": "dario@dariosevilla.es"
+  },
   "license": "AGPL-3.0",
-  "description": "A privacy-first, open-source platform for knowledge management and collaboration.",
-  "repository": "https://github.com/logseq/logseq",
+  "description": "A privacy-first, personal knowledge management platform.",
+  "repository": "ssh://gitea@git.dariosevilla.es:2222/dasemu/Synapse.git",
   "scripts": {
     "electron:dev": "electron .",
     "electron:debug": "electron --inspect=9229 .",
