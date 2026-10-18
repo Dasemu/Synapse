@@ -27,6 +27,7 @@ cli/_opam/
 # Env / secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 
@@ -35,7 +36,7 @@ cli/_opam/
 *.log
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
 
 # Python sidecar
 sidecar/.venv/
