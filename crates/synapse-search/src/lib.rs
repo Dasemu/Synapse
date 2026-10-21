@@ -467,14 +467,29 @@ impl Search {
         model_id: &str,
         items: &[(PendingEmbedding, Vec<f32>)],
     ) -> Result<()> {
-        let tx = graph.conn().unchecked_transaction()?;
+        graph.conn().execute_batch("SAVEPOINT search_store")?;
+        let r = self.store_rows(graph, model_id, items);
+        graph.conn().execute_batch(if r.is_ok() {
+            "RELEASE search_store"
+        } else {
+            "ROLLBACK TO search_store; RELEASE search_store"
+        })?;
+        r
+    }
+
+    fn store_rows(
+        &self,
+        graph: &Graph,
+        model_id: &str,
+        items: &[(PendingEmbedding, Vec<f32>)],
+    ) -> Result<()> {
         self.ensure_loaded(graph, model_id)?;
         let mut vectors = self.vectors.borrow_mut();
         let mv = vectors.get_mut(model_id).expect("loaded");
         for (p, v) in items {
             let (q, scale) = quantize(&normalize(v));
             let bytes: Vec<u8> = q.iter().map(|&x| x as u8).collect();
-            tx.execute(
+            graph.conn().execute(
                 "INSERT OR REPLACE INTO search_vectors
                  (id, model_id, kind, page_id, stamp, dims, scale, vec)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -495,7 +510,6 @@ impl Search {
             };
             ix.upsert_quantized(p.id, p.page_id, p.stamp, &q, scale);
         }
-        tx.commit()?;
         Ok(())
     }
 

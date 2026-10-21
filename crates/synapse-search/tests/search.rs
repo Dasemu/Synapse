@@ -292,3 +292,42 @@ fn unlinked_references_and_apply() {
         1
     );
 }
+
+#[test]
+fn store_inside_graph_transaction_and_rename_delete() {
+    let (_d, g) = setup();
+    let rust = g.ensure_page("Rust", None).unwrap();
+    let b = add(&g, "Notes", "I like [[Rust]] a lot");
+    let mut s = Search::open(&g).unwrap();
+    s.sync(&g).unwrap();
+    let emb = HashEmbedder::new(64);
+    // Nested inside a core transaction: must not fail with BEGIN-in-transaction.
+    g.transaction(|g| {
+        s.embed_pending(g, &emb, 10, 100).unwrap();
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(s.vector_counts(&g, "test/hash").unwrap().1, 1);
+
+    // Rename rewrites the referencing block: index follows.
+    g.rename_page(rust.id, "Ferris").unwrap();
+    s.sync(&g).unwrap();
+    let f = Filter::default();
+    assert_eq!(
+        s.search(&g, "ferris", &f, 10)
+            .unwrap()
+            .iter()
+            .filter(|h| h.id == b.id)
+            .count(),
+        1
+    );
+    assert!(s.search(&g, "rust", &f, 10).unwrap().is_empty());
+
+    // Deleting the page removes its docs and vectors; deleting a block drops its vector.
+    s.embed_pending(&g, &emb, 10, 100).unwrap();
+    g.delete_block(b.id).unwrap();
+    g.delete_page(rust.id).unwrap();
+    s.sync(&g).unwrap();
+    assert!(s.search(&g, "ferris", &f, 10).unwrap().is_empty());
+    assert_eq!(s.vector_counts(&g, "test/hash").unwrap(), (1, 0));
+}
