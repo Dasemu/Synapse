@@ -298,6 +298,7 @@ class OutlineController extends ChangeNotifier {
       if (wasFocused) focusedId = b.id;
       if (!_disposed) notifyListeners();
     });
+    _scheduleVerify();
   }
 
   void _refocus(OutlineNode n, int? caret) {
@@ -308,11 +309,15 @@ class OutlineController extends ChangeNotifier {
   }
 
   void _structural(Future<List<BlockDto>> Function() op) {
-    _structuralEdits++;
-    final seen = _structuralEdits;
     _enqueue(() async {
       await op();
     });
+    _scheduleVerify();
+  }
+
+  void _scheduleVerify() {
+    _structuralEdits++;
+    final seen = _structuralEdits;
     _reconcile?.cancel();
     _reconcile = Timer(const Duration(milliseconds: 600), () {
       if (seen == _structuralEdits) _verify();

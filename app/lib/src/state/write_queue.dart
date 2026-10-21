@@ -9,7 +9,7 @@ class WriteQueue {
   WriteQueue({this.onError});
 
   /// Called with any error a task throws; the task's own future also completes with it.
-  final void Function(Object error, StackTrace stack)? onError;
+  void Function(Object error, StackTrace stack)? onError;
 
   final _tasks = Queue<Future<void> Function()>();
   bool _running = false;
@@ -23,13 +23,14 @@ class WriteQueue {
     return (_idle ??= Completer<void>()).future;
   }
 
-  Future<T> run<T>(Future<T> Function() task) {
+  /// Queues `task`. Reads pass `report: false` so their errors do not reach [onError].
+  Future<T> run<T>(Future<T> Function() task, {bool report = true}) {
     final done = Completer<T>();
     _tasks.add(() async {
       try {
         done.complete(await task());
       } catch (e, st) {
-        onError?.call(e, st);
+        if (report) onError?.call(e, st);
         done.completeError(e, st);
       }
     });

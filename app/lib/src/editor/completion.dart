@@ -82,15 +82,21 @@ CompletionQuery? detectCompletion(String text, int caret) {
   return best;
 }
 
-/// Text after accepting `item` for `q` with the caret at `caret`.
+/// Text after accepting `item` for `q` (replacing the query text, wherever the caret is).
 TextEditingValue applyCompletion(
   String text,
-  int caret,
   CompletionQuery q,
   CompletionItem item,
 ) {
+  final end = q.start + q.query.length;
+  if (end > text.length || text.substring(q.start, end) != q.query) {
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
   final head = text.substring(0, q.start);
-  var tail = text.substring(caret);
+  var tail = text.substring(end);
   switch (q.kind) {
     case CompletionKind.page:
       if (tail.startsWith(']]')) tail = tail.substring(2);

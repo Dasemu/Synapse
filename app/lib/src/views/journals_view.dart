@@ -49,7 +49,11 @@ class _JournalsViewState extends State<JournalsView> {
     final app = AppScope.read(context);
     try {
       final before = _days.isEmpty ? null : _days.last.view.page.journalDate;
-      final views = await app.backend.journals(before: before, limit: _batch);
+      if (_days.isEmpty) await WidgetsBinding.instance.endOfFrame;
+      final views = await app.queue.run(
+        () => app.backend.journals(before: before, limit: _batch),
+        report: false,
+      );
       if (!mounted) return;
       setState(() {
         for (final v in views) {

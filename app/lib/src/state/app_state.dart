@@ -34,8 +34,10 @@ class PageTarget extends AppRoute {
 /// paying for itself; rebuilds are scoped with `ListenableBuilder`.
 class AppState extends ChangeNotifier {
   AppState(this.backend, {WriteQueue? queue})
-    : queue = queue ?? WriteQueue(onError: _logError),
-      refs = BlockRefCache(backend);
+    : refs = BlockRefCache(backend),
+      queue = queue ?? WriteQueue() {
+    this.queue.onError = _writeFailed;
+  }
 
   final GraphBackend backend;
   final WriteQueue queue;
@@ -50,15 +52,27 @@ class AppState extends ChangeNotifier {
   /// Last page shown (for synapse reinforcement on navigation).
   String? _lastPageId;
 
-  /// Bumped when an error makes views reload from the core.
+  /// Bumped to make the current view reload from the core (failed writes, renames).
   int generation = 0;
+
+  /// Last write error, shown once by the shell.
+  String? writeError;
 
   AppRoute get route => _route;
   bool get canGoBack => _back.isNotEmpty;
   bool get canGoForward => _forward.isNotEmpty;
 
-  static void _logError(Object e, StackTrace st) {
+  /// A failed write leaves the optimistic UI out of sync: reload the view from the core.
+  void _writeFailed(Object e, StackTrace st) {
     debugPrint('graph write failed: $e\n$st');
+    writeError = '$e';
+    reload();
+  }
+
+  /// Rebuilds the current view from the core (after queued writes have run).
+  void reload() {
+    generation++;
+    notifyListeners();
   }
 
   void go(AppRoute r) {

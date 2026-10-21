@@ -27,6 +27,18 @@ class _ShellState extends State<Shell> {
     final app = AppScope.of(context);
     final colors = context.colors;
     final route = app.route;
+    final error = app.writeError;
+    if (error != null) {
+      app.writeError = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save a change; reloaded. ($error)'),
+          ),
+        );
+      });
+    }
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
@@ -96,7 +108,7 @@ class _ShellState extends State<Shell> {
                         ),
                         Expanded(
                           child: KeyedSubtree(
-                            key: ValueKey(route),
+                            key: ValueKey((route, app.generation)),
                             child: switch (route) {
                               JournalsRoute() => const JournalsView(),
                               TimelineRoute() => const TimelineView(),

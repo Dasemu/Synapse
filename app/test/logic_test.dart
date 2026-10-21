@@ -78,7 +78,6 @@ void main() {
       final tag = detectCompletion('x #se', 5)!;
       final v = applyCompletion(
         'x #se',
-        5,
         tag,
         const CompletionItem('Second Brain', 'Second Brain'),
       );
@@ -87,12 +86,21 @@ void main() {
       expect(
         applyCompletion(
           '[[Ru]]',
-          4,
           page,
           const CompletionItem('Rust', 'Rust'),
         ).text,
         '[[Rust]]',
       );
+    });
+
+    test('replaces only the query even if the caret moved', () {
+      final q = detectCompletion('[[foo]]', 5)!;
+      final v = applyCompletion(
+        '[[foo]]',
+        q,
+        const CompletionItem('Foo', 'Foo'),
+      );
+      expect(v.text, '[[Foo]]');
     });
 
     test('auto-pairs brackets', () {
@@ -150,6 +158,20 @@ void main() {
       expect(plain(todo), '￼ship it');
       expect(todo.toSource(0), 5);
     });
+  });
+
+  test('a failed write makes the app reload its view', () async {
+    final app = AppState(MemoryBackend());
+    final gen = app.generation;
+    await app.queue
+        .run<void>(() async => throw StateError('boom'))
+        .catchError((_) {});
+    expect(app.generation, gen + 1);
+    expect(app.writeError, contains('boom'));
+    await app.queue
+        .run<void>(() async => throw StateError('read'), report: false)
+        .catchError((_) {});
+    expect(app.generation, gen + 1);
   });
 
   test(

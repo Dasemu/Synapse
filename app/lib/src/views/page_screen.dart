@@ -41,12 +41,15 @@ class _PageScreenState extends State<PageScreen> {
     final app = AppScope.read(context);
     try {
       final t = widget.target;
-      PageData? v;
-      if (t.id != null) {
-        v = await app.backend.page(t.id!);
-      } else {
-        v = await app.backend.openPage(t.title!);
-      }
+      // Read after the previous view's pending saves (flushed when it is disposed at the
+      // end of this frame) have reached the core.
+      await WidgetsBinding.instance.endOfFrame;
+      final v = await app.queue.run(
+        () => t.id != null
+            ? app.backend.page(t.id!)
+            : app.backend.openPage(t.title!).then<PageData?>((p) => p),
+        report: false,
+      );
       if (!mounted) return;
       if (v == null) {
         setState(() => _error = 'This page no longer exists.');
@@ -228,6 +231,8 @@ class _TitleFieldState extends State<_TitleField> {
       await app.queue.run(() => app.backend.renamePage(widget.page.id, title));
       _committed = title;
       app.renamed(widget.page.id, title);
+      // The core rewrote links in other blocks, possibly on this page: reload them.
+      app.reload();
     } catch (e) {
       _text.text = _committed;
       messenger.showSnackBar(SnackBar(content: Text('Rename failed: $e')));

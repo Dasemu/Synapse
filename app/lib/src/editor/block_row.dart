@@ -165,7 +165,9 @@ class _BlockRowState extends State<BlockRow> {
     if (p.dy < box.size.height / 2) {
       d = _Drop.before;
     } else {
-      d = p.dx > contentX + 28 ? _Drop.child : _Drop.after;
+      // Below an expanded parent the gap is above its first child: drop there.
+      final expandedParent = widget.hasChildren && !n.collapsed;
+      d = expandedParent || p.dx > contentX + 28 ? _Drop.child : _Drop.after;
     }
     if (d != _drop) setState(() => _drop = d);
   }
@@ -561,12 +563,7 @@ class _BlockEditorState extends State<BlockEditor> {
   void _accept(int i) {
     final q = _query;
     if (q == null || i >= _items.length) return;
-    final v = applyCompletion(
-      _text.text,
-      _text.selection.baseOffset,
-      q,
-      _items[i],
-    );
+    final v = applyCompletion(_text.text, q, _items[i]);
     _closeCompletion();
     _text.value = v;
     _last = v;
@@ -642,6 +639,13 @@ class _BlockEditorState extends State<BlockEditor> {
       if (key == LogicalKeyboardKey.escape) {
         _closeCompletion();
         return KeyEventResult.handled;
+      }
+      // Moving the caret elsewhere ends the completion.
+      if (key == LogicalKeyboardKey.arrowLeft ||
+          key == LogicalKeyboardKey.arrowRight ||
+          key == LogicalKeyboardKey.home ||
+          key == LogicalKeyboardKey.end) {
+        _closeCompletion();
       }
     }
 
