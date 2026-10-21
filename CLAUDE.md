@@ -8,11 +8,14 @@ and an optional self-hosted sync server. Local-only (standalone graph) or client
 
 ## Commands
 - Format: `cargo fmt --all` (Rust), `dart format app/` (Flutter)
-- Lint: `cargo clippy --workspace --all-targets -- -D warnings`, `cd app && flutter analyze`
+- Lint: `cargo clippy --workspace --all-targets -- -D warnings`, `cd app && dart analyze`
+  (`flutter analyze` crashes on non-ASCII paths like `Darío/`)
 - Test: `cargo test --workspace`, `cd app && flutter test`
 - Run server: `cargo run -p synapse-server`
-- Run app: `cd app && flutter run -d linux` (or `-d windows`, an Android device)
-- Regenerate FFI bindings: `cd app && flutter_rust_bridge_codegen generate`
+- Run app: `cd app && flutter run -d linux` (or `-d windows`, an Android device); Flutter SDK
+  in `~/development/flutter/bin`. Graph dir override: `SYNAPSE_GRAPH=/path`. See `docs/app.md`.
+- Regenerate FFI bindings: `cd app && flutter_rust_bridge_codegen generate` (frb 2.13.0; commit
+  the generated Rust and Dart files)
 
 ## Architecture
 Cargo workspace under `crates/`, Flutter app under `app/`. Details in `docs/architecture.md`,
@@ -28,6 +31,8 @@ roadmap in `docs/plan.md`.
 
 ## Conventions
 - The Flutter app never touches storage directly; everything goes through `synapse-ffi`.
+  UI code depends on the `GraphBackend` interface, not the generated FFI class (tests use an
+  in-memory backend).
 - Core crates are sync-free of UI concerns and must compile for Android (no desktop-only deps
   in `synapse-core`).
 - IDs are UUIDv7 (time-ordered). Journals are keyed by local date `YYYY-MM-DD`.

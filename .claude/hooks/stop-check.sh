@@ -6,7 +6,8 @@ if [ -f Cargo.toml ]; then
   out=$(cargo clippy --workspace --all-targets -q -- -D warnings 2>&1) || fail clippy "$out"
   out=$(cargo test --workspace -q 2>&1) || fail "cargo test" "$out"
 fi
-if [ -f app/pubspec.yaml ] && command -v flutter >/dev/null; then
-  out=$(cd app && flutter analyze 2>&1) || fail "flutter analyze" "$out"
+if [ -f app/pubspec.yaml ] && command -v dart >/dev/null; then
+  # dart analyze: flutter analyze crashes on non-ASCII project paths.
+  out=$(cd app && dart analyze 2>&1) || fail "dart analyze" "$out"
 fi
 exit 0
