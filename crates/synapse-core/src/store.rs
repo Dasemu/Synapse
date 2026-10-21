@@ -43,7 +43,9 @@ impl Graph {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "OFF")?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(schema::SCHEMA)?;
+        schema::migrate(&conn)?;
         let actor: String = match conn
             .query_row("SELECT value FROM meta WHERE key='actor'", [], |r| r.get(0))
             .optional()?
@@ -182,6 +184,11 @@ impl Graph {
         if title.is_empty() {
             return Err(Error::Invalid("empty page title".into()));
         }
+        if parse_day(&title).is_some() {
+            return Err(Error::Invalid(format!(
+                "{title:?} is a journal date; use journal()"
+            )));
+        }
         if self.page_by_title(&title)?.is_some() {
             return Err(Error::Conflict(format!("page {title:?} already exists")));
         }
@@ -215,6 +222,9 @@ impl Graph {
     pub fn ensure_page(&self, title: &str, origin: Option<NaiveDate>) -> Result<Page> {
         if let Some(p) = self.page_by_title(title)? {
             return Ok(p);
+        }
+        if let Some(date) = parse_day(title) {
+            return self.journal(date);
         }
         self.create_page(NewPage {
             title: title.into(),
@@ -254,9 +264,11 @@ impl Graph {
         let mut page = self
             .get_page(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
+        let tx = self.tx()?;
         page.properties = properties;
         page.updated_at = self.now_ms();
         self.write_page(&page, &self.tick())?;
+        tx.commit()?;
         Ok(page)
     }
 
@@ -270,6 +282,12 @@ impl Graph {
             return Err(Error::Invalid("journal pages cannot be renamed".into()));
         }
         let new_title = new_title.trim();
+        if new_title.is_empty() {
+            return Err(Error::Invalid("empty page title".into()));
+        }
+        if parse_day(new_title).is_some() {
+            return Err(Error::Invalid(format!("{new_title:?} is a journal date")));
+        }
         if let Some(other) = self.page_by_title(new_title)?
             && other.id != id
         {
@@ -291,7 +309,17 @@ impl Graph {
         for bid in referencing {
             if let Some(mut b) = self.get_block(parse_id(&bid)?)? {
                 let rewritten = parse::rewrite_refs(&b.content, &old_key, new_title);
-                if rewritten != b.content {
+                let mut props_changed = false;
+                for v in b.properties.values_mut() {
+                    if let Some(text) = v.as_str() {
+                        let r = parse::rewrite_refs(text, &old_key, new_title);
+                        if r != text {
+                            *v = serde_json::Value::String(r);
+                            props_changed = true;
+                        }
+                    }
+                }
+                if rewritten != b.content || props_changed {
                     b.content = rewritten;
                     b.updated_at = self.now_ms();
                     self.write_block(&b, &self.tick())?;
@@ -322,15 +350,17 @@ impl Graph {
 
     /// Points `alias` at `page` (or removes it with `None`).
     pub fn set_alias(&self, alias: &str, page: Option<PageId>) -> Result<()> {
+        let tx = self.tx()?;
         let hlc = self.tick();
-        self.write_alias(alias, page)?;
+        self.write_alias(alias, page, &hlc)?;
         self.log(
             &hlc,
             &Op::SetAlias {
                 alias: alias.to_string(),
                 page,
             },
-        )
+        )?;
+        tx.commit()
     }
 
     pub fn aliases_of(&self, page: PageId) -> Result<Vec<String>> {
@@ -508,6 +538,22 @@ impl Graph {
             }
             out.push((d, b));
         }
+        // Blocks not reachable from the roots (parent missing after a concurrent delete, or a
+        // parent cycle from concurrent moves) are shown as roots, deterministically ordered.
+        let mut parents: Vec<Option<BlockId>> = children.keys().copied().collect();
+        parents.sort();
+        for parent in parents {
+            let mut stack: Vec<(usize, Block)> = match children.remove(&parent) {
+                Some(blocks) => blocks.into_iter().rev().map(|b| (0, b)).collect(),
+                None => continue,
+            };
+            while let Some((d, b)) = stack.pop() {
+                if let Some(kids) = children.remove(&Some(b.id)) {
+                    stack.extend(kids.into_iter().rev().map(|k| (d + 1, k)));
+                }
+                out.push((d, b));
+            }
+        }
         Ok(out)
     }
 
@@ -573,7 +619,9 @@ impl Graph {
             .get_block(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
         b.collapsed = collapsed;
-        self.write_block(&b, &self.tick())
+        let tx = self.tx()?;
+        self.write_block(&b, &self.tick())?;
+        tx.commit()
     }
 
     /// Moves a block (with its subtree) to a new place, possibly on another page.
@@ -584,7 +632,11 @@ impl Graph {
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
         let (parent_id, position) = self.resolve_placement(page, at)?;
         let mut p = parent_id;
+        let mut seen = std::collections::HashSet::new();
         while let Some(pid) = p {
+            if !seen.insert(pid) {
+                break; // pre-existing cycle (from concurrent moves); page_tree tolerates it
+            }
             if pid == id {
                 return Err(Error::Invalid(
                     "cannot move a block into its own subtree".into(),
@@ -629,7 +681,7 @@ impl Graph {
     fn descendants(&self, id: BlockId) -> Result<Vec<BlockId>> {
         let mut st = self.conn.prepare_cached(
             "WITH RECURSIVE d(id) AS (SELECT id FROM blocks WHERE parent_id=?1
-               UNION ALL SELECT b.id FROM blocks b JOIN d ON b.parent_id = d.id)
+               UNION SELECT b.id FROM blocks b JOIN d ON b.parent_id = d.id)
              SELECT id FROM d",
         )?;
         let rows = st.query_map([id.to_string()], |r| r.get::<_, String>(0))?;
@@ -694,6 +746,9 @@ impl Graph {
         let parent_sql = "page_id=?1 AND parent_id IS ?2";
         Ok(match at {
             Placement::LastChildOf(parent) => {
+                if let Some(p) = parent {
+                    sib(p)?;
+                }
                 let max: Option<String> = self.conn.query_row(
                     &format!("SELECT max(position) FROM blocks WHERE {parent_sql}"),
                     params![page.to_string(), parent.map(|p| p.to_string())],
@@ -841,6 +896,7 @@ impl Graph {
             original_name: name.map(str::to_string),
             created_at: self.now_ms(),
         };
+        let tx = self.tx()?;
         let hlc = self.tick();
         self.write_asset(&asset)?;
         self.log(
@@ -849,6 +905,7 @@ impl Graph {
                 asset: asset.clone(),
             },
         )?;
+        tx.commit()?;
         Ok(asset)
     }
 
@@ -948,17 +1005,30 @@ impl Graph {
                     false
                 } else {
                     let mut page = page.clone();
-                    // Two replicas created the same title offline: the smaller id keeps it.
-                    if let Some(other) = self.page_by_title(&page.title)? {
-                        if other.id != page.id && other.id < page.id {
-                            page.title =
-                                format!("{} ~{}", page.title, &page.id.simple().to_string()[..6]);
-                        } else if other.id != page.id {
+                    // Two replicas created the same title offline. Journals always keep their
+                    // date title; otherwise the smaller id keeps it. Every replica applies the
+                    // same rule, so they converge.
+                    if let Some(other) = self.page_by_exact_title(&page.title)?
+                        && other.id != page.id
+                    {
+                        let incoming_wins = match (page.is_journal(), other.is_journal()) {
+                            (true, false) => true,
+                            (false, true) => false,
+                            _ => page.id < other.id,
+                        };
+                        if incoming_wins {
                             let mut o = other.clone();
-                            o.title = format!("{} ~{}", o.title, &o.id.simple().to_string()[..6]);
+                            o.title = self.conflict_title(&o.title, o.id)?;
                             self.write_page(&o, &self.tick())?;
+                        } else {
+                            page.title = self.conflict_title(&page.title, page.id)?;
                         }
                     }
+                    // A page title beats a colliding alias.
+                    self.conn.execute(
+                        "DELETE FROM aliases WHERE alias_key=?1 AND page_id != ?2",
+                        params![title_key(&page.title), page.id.to_string()],
+                    )?;
                     self.write_page_row(&page, hlc)?;
                     true
                 }
@@ -982,14 +1052,26 @@ impl Graph {
                 }
             }
             Op::PutAsset { asset } => {
-                self.asset(&asset.hash)?.is_none() && {
+                crate::blob::is_valid_hash(&asset.hash) && self.asset(&asset.hash)?.is_none() && {
                     self.write_asset(asset)?;
                     true
                 }
             }
             Op::SetAlias { alias, page } => {
-                self.write_alias(alias, *page)?;
-                true
+                let key = title_key(alias);
+                let local: Option<String> = self
+                    .conn
+                    .query_row(
+                        "SELECT hlc FROM aliases WHERE alias_key=?1
+                         UNION ALL SELECT hlc FROM tombstones WHERE id=?2",
+                        params![key, format!("alias:{key}")],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                local.is_none_or(|l| hlc > l.as_str()) && {
+                    self.write_alias(alias, *page, hlc)?;
+                    true
+                }
             }
         };
         if applied {
@@ -1046,6 +1128,21 @@ impl Graph {
 
     fn remove_page_row_raw(&self, id: PageId, hlc: &str) -> Result<()> {
         let s = id.to_string();
+        // Cascade: blocks inserted concurrently on another replica must not linger orphaned.
+        self.conn.execute(
+            "INSERT OR REPLACE INTO tombstones(id, hlc) SELECT id, ?2 FROM blocks WHERE page_id=?1",
+            params![s, hlc],
+        )?;
+        self.conn.execute(
+            "DELETE FROM refs WHERE block_id IN (SELECT id FROM blocks WHERE page_id=?1)",
+            [&s],
+        )?;
+        self.conn.execute(
+            "DELETE FROM block_refs WHERE block_id IN (SELECT id FROM blocks WHERE page_id=?1)",
+            [&s],
+        )?;
+        self.conn
+            .execute("DELETE FROM blocks WHERE page_id=?1", [&s])?;
         self.conn.execute("DELETE FROM pages WHERE id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM aliases WHERE page_id=?1", [&s])?;
@@ -1153,17 +1250,55 @@ impl Graph {
         Ok(())
     }
 
-    fn write_alias(&self, alias: &str, page: Option<PageId>) -> Result<()> {
+    fn write_alias(&self, alias: &str, page: Option<PageId>, hlc: &str) -> Result<()> {
+        let key = title_key(alias);
         match page {
-            Some(p) => self.conn.execute(
-                "INSERT OR REPLACE INTO aliases(alias_key, alias, page_id) VALUES (?1, ?2, ?3)",
-                params![title_key(alias), alias.trim(), p.to_string()],
-            )?,
-            None => self
-                .conn
-                .execute("DELETE FROM aliases WHERE alias_key=?1", [title_key(alias)])?,
-        };
+            Some(p) => {
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO aliases(alias_key, alias, page_id, hlc) VALUES (?1, ?2, ?3, ?4)",
+                    params![key, alias.trim(), p.to_string(), hlc],
+                )?;
+                self.conn.execute(
+                    "DELETE FROM tombstones WHERE id=?1",
+                    [format!("alias:{key}")],
+                )?;
+            }
+            None => {
+                self.conn
+                    .execute("DELETE FROM aliases WHERE alias_key=?1", [&key])?;
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
+                    params![format!("alias:{key}"), hlc],
+                )?;
+            }
+        }
         Ok(())
+    }
+
+    /// Page whose own title (not alias) matches, case-insensitively.
+    fn page_by_exact_title(&self, title: &str) -> Result<Option<Page>> {
+        Ok(self
+            .conn
+            .query_row(
+                &format!("SELECT {PAGE_COLS} FROM pages WHERE title_key=?1"),
+                [title_key(title)],
+                page_row,
+            )
+            .optional()?)
+    }
+
+    /// A free title for the loser of a title conflict, using the random tail of its id.
+    fn conflict_title(&self, title: &str, id: PageId) -> Result<String> {
+        let hex = id.simple().to_string();
+        for n in [8, 16, 32] {
+            let t = format!("{title} ~{}", &hex[32 - n..]);
+            if self.page_by_exact_title(&t)?.is_none() {
+                return Ok(t);
+            }
+        }
+        Err(Error::Conflict(format!(
+            "no free conflict title for {title:?}"
+        )))
     }
 }
 

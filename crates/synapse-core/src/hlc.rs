@@ -3,6 +3,8 @@
 
 use std::sync::Mutex;
 
+const MAX_COUNTER: u32 = 99_999;
+
 #[derive(Debug)]
 pub struct HlcClock {
     actor: String,
@@ -26,6 +28,9 @@ impl HlcClock {
         let mut s = self.state.lock().unwrap();
         if now_ms > s.0 {
             *s = (now_ms, 0);
+        } else if s.1 >= MAX_COUNTER {
+            // Keep the fixed-width encoding sortable: borrow the next millisecond.
+            *s = (s.0 + 1, 0);
         } else {
             s.1 += 1;
         }
@@ -63,7 +68,8 @@ mod tests {
         let t2 = c.tick(1000);
         let t3 = c.tick(999);
         assert!(t1 < t2 && t2 < t3);
-        c.observe(&encode(5000, 7, "b"));
-        assert!(c.tick(10) > encode(5000, 7, "b"));
+        c.observe(&encode(5000, MAX_COUNTER, "b"));
+        let next = c.tick(10);
+        assert!(next > encode(5000, MAX_COUNTER, "b") && next.starts_with("0000000005001-"));
     }
 }

@@ -1,4 +1,4 @@
-pub const VERSION: i64 = 1;
+pub const VERSION: i64 = 2;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -20,7 +20,8 @@ CREATE INDEX IF NOT EXISTS pages_origin ON pages(origin_journal);
 CREATE TABLE IF NOT EXISTS aliases (
     alias_key TEXT PRIMARY KEY,
     alias TEXT NOT NULL,
-    page_id TEXT NOT NULL
+    page_id TEXT NOT NULL,
+    hlc TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS aliases_page ON aliases(page_id);
 
@@ -90,3 +91,18 @@ CREATE TABLE IF NOT EXISTS ops (
     payload TEXT NOT NULL
 );
 "#;
+
+/// Upgrades databases created by older versions in place.
+pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let has_alias_hlc: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('aliases') WHERE name='hlc'")?
+        .exists([])?;
+    if !has_alias_hlc {
+        conn.execute_batch("ALTER TABLE aliases ADD COLUMN hlc TEXT NOT NULL DEFAULT ''")?;
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema', ?1)",
+        [VERSION.to_string()],
+    )?;
+    Ok(())
+}

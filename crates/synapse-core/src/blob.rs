@@ -6,6 +6,11 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
+/// A blake3 hex digest: 64 lowercase hex chars.
+pub fn is_valid_hash(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 #[derive(Debug, Clone)]
 pub struct BlobStore {
     root: PathBuf,
@@ -18,12 +23,13 @@ impl BlobStore {
         Ok(Self { root })
     }
 
+    /// Path of a blob. Callers must pass a valid hash (see [`is_valid_hash`]).
     pub fn path_of(&self, hash: &str) -> PathBuf {
         self.root.join(&hash[..2]).join(&hash[2..])
     }
 
     pub fn contains(&self, hash: &str) -> bool {
-        hash.len() > 2 && self.path_of(hash).exists()
+        is_valid_hash(hash) && self.path_of(hash).exists()
     }
 
     /// Streams `reader` into the store. Returns `(hash, size)`.
@@ -63,6 +69,9 @@ impl BlobStore {
     }
 
     pub fn open_blob(&self, hash: &str) -> Result<fs::File> {
+        if !is_valid_hash(hash) {
+            return Err(crate::Error::Invalid(format!("bad blob hash {hash:?}")));
+        }
         Ok(fs::File::open(self.path_of(hash))?)
     }
 }
