@@ -9,6 +9,7 @@ mod config;
 mod names;
 mod outline;
 mod rewrite;
+mod track;
 
 use chrono::{Local, NaiveDate, TimeZone};
 use config::Config;
@@ -25,6 +26,7 @@ use uuid::Uuid;
 pub use config::DateFormat;
 
 /// Namespace for deterministic block ids of blocks without a Logseq `id::`.
+/// Namespace of fallback ids (kept for id stability across versions).
 const BLOCK_NS: Uuid = Uuid::from_u128(0x2b6d_41c9_0e87_4f3a_9d15_c7a8_e340_5b12);
 const CHUNK: usize = 256;
 
@@ -184,6 +186,7 @@ pub fn import_logseq(
 
     // One transaction for the whole write phase: much faster, and a failed import leaves the
     // graph untouched.
+    track::init(graph)?;
     graph.transaction(|g| write_all(g, opts, &docs, &origin, &mut report, &mut progress))?;
     Ok(report)
 }
@@ -213,7 +216,8 @@ fn write_all(
             total: order.len(),
         });
         let d = &docs[i];
-        match ensure_page(graph, d, origin.get(&d.key).copied()) {
+        let o = origin.get(&d.key).copied();
+        match graph.transaction(|g| ensure_page(g, d, o)) {
             Ok(r) => {
                 ids.insert(i, r);
             }
@@ -237,7 +241,8 @@ fn write_all(
             continue;
         };
         let d = &docs[i];
-        match write_doc(graph, d, pid, existed, opts, report) {
+        // A failing document rolls back as a whole and becomes a warning.
+        match graph.transaction(|g| write_doc(g, d, pid, existed, opts, report)) {
             Ok(()) => {}
             Err(e) => report.warnings.push(format!("{}: {e}", d.rel)),
         }
@@ -452,12 +457,18 @@ fn dedupe(mut docs: Vec<Doc>, warnings: &mut Vec<String>) -> Vec<Doc> {
     out
 }
 
-/// Finds or creates the page row. Returns `(id, already existed)`.
+/// Finds or creates the page row. Returns `(id, already existed)`. A page previously imported
+/// from the same file is found by source path, so renames made in Synapse are respected.
 fn ensure_page(g: &Graph, d: &Doc, origin: Option<NaiveDate>) -> Result<(PageId, bool)> {
     if let Some(date) = d.journal {
         let existed = g.get_page(synapse_core::store::journal_id(date))?.is_some();
         let p = g.journal(date)?;
         return Ok((p.id, existed));
+    }
+    if let Some(id) = track::page_of(g, &d.rel)?
+        && g.get_page(id)?.is_some()
+    {
+        return Ok((id, true));
     }
     if let Some(p) = g.page_by_title(&d.title)? {
         if title_key(&p.title) != d.key {
@@ -487,94 +498,232 @@ fn write_doc(
     report: &mut Report,
 ) -> Result<()> {
     let existing = if existed { g.page_tree(pid)? } else { vec![] };
+    let tracked = track::blocks_of(g, pid)?;
+    let first_import = tracked.is_empty();
     if existed && opts.existing == ExistingPages::Skip && !existing.is_empty() {
         report.unchanged += 1;
         return Ok(());
     }
+    let old: HashMap<Uuid, &Block> = existing.iter().map(|(_, b)| (b.id, b)).collect();
 
-    // Final ids: Logseq `id::` when free, else deterministic.
+    // Final ids: Logseq `id::` when free; otherwise derived from (source file, parent id,
+    // content, duplicate index) so edits elsewhere in the file never shift them.
     let mut ids: Vec<Uuid> = Vec::with_capacity(d.blocks.len());
     let mut used: HashSet<Uuid> = HashSet::new();
-    for (i, b) in d.blocks.iter().enumerate() {
-        let fallback = || Uuid::new_v5(&BLOCK_NS, format!("{}\0{i}", d.key).as_bytes());
+    let mut dups: HashMap<(Option<Uuid>, String), usize> = HashMap::new();
+    for b in &d.blocks {
+        let parent = b.parent.map(|p| ids[p]);
+        let fallback = |dups: &mut HashMap<(Option<Uuid>, String), usize>| {
+            let h = track::id_hash(&b.content, &b.properties);
+            let n = dups.entry((parent, h.clone())).or_default();
+            let name = format!("{}\0{parent:?}\0{h}\0{n}", d.rel);
+            *n += 1;
+            Uuid::new_v5(&BLOCK_NS, name.as_bytes())
+        };
         let id = match b.explicit_id {
             Some(id) => {
-                let taken_elsewhere =
-                    !used.contains(&id) && g.get_block(id)?.is_some_and(|x| x.page_id != pid);
-                if used.contains(&id) || taken_elsewhere {
+                let elsewhere = !old.contains_key(&id)
+                    && !used.contains(&id)
+                    && g.get_block(id)?.is_some_and(|x| x.page_id != pid);
+                if used.contains(&id) || (elsewhere && !tracked.contains_key(&id)) {
                     report.warnings.push(format!(
                         "{}: duplicate block id {id}, generated a new one",
                         d.rel
                     ));
-                    fallback()
+                    fallback(&mut dups)
                 } else {
                     id
                 }
             }
-            None => fallback(),
+            None => fallback(&mut dups),
         };
         used.insert(id);
         ids.push(id);
     }
-    let blocks: Vec<Block> = d
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(i, b)| Block {
+
+    // New root blocks of a page that already has content are appended after it.
+    let mut roots_after: Option<String> = None;
+    if first_import && !existing.is_empty() {
+        roots_after = existing
+            .iter()
+            .filter(|(_, b)| b.parent_id.is_none())
+            .map(|(_, b)| b.position.clone())
+            .max();
+    }
+
+    let mut written = 0usize;
+    let mut kept: Vec<String> = Vec::new();
+    for (i, b) in d.blocks.iter().enumerate() {
+        let mut position = b.position.clone();
+        if b.parent.is_none() && roots_after.is_some() {
+            position = synapse_core::position::between(roots_after.as_deref(), None);
+            roots_after = Some(position.clone());
+        }
+        let block = Block {
             id: ids[i],
             page_id: pid,
             parent_id: b.parent.map(|p| ids[p]),
-            position: b.position.clone(),
+            position,
             content: b.content.clone(),
             properties: b.properties.clone(),
             collapsed: b.collapsed,
             created_at: d.created,
             updated_at: d.updated,
-        })
-        .collect();
-
-    let page = g.get_page(pid)?;
-    let props_differ = page.as_ref().is_some_and(|p| p.properties != d.props);
-    let old: HashMap<Uuid, &Block> = existing.iter().map(|(_, b)| (b.id, b)).collect();
-    let same_blocks = old.len() == blocks.len()
-        && blocks.iter().all(|b| {
-            old.get(&b.id).is_some_and(|o| {
-                (
-                    o.parent_id,
-                    &o.position,
-                    &o.content,
-                    &o.properties,
-                    o.collapsed,
-                ) == (
-                    b.parent_id,
-                    &b.position,
-                    &b.content,
-                    &b.properties,
-                    b.collapsed,
-                )
-            })
-        });
-    if existed && same_blocks && !props_differ {
-        report.unchanged += 1;
-    } else {
-        for b in &blocks {
-            g.put_block(b)?;
-        }
-        let stale: Vec<Uuid> = old
-            .keys()
-            .filter(|id| !used.contains(id))
-            .copied()
-            .collect();
-        for id in stale {
-            match g.delete_block(id) {
-                Ok(()) | Err(synapse_core::Error::NotFound(_)) => {}
-                Err(e) => return Err(e),
+        };
+        let new_hash = track::state_hash(&block);
+        match (old.get(&block.id), tracked.get(&block.id)) {
+            (None, None) => {
+                // Only explicit ids can collide with blocks living elsewhere.
+                if b.explicit_id.is_some()
+                    && let Some(other) = g.get_block(block.id)?
+                    && other.page_id != pid
+                {
+                    continue; // moved away from this page in Synapse
+                }
+                g.put_block(&block)?;
+                track::set_block(g, &block, &d.rel, &new_hash)?;
+                written += 1;
+            }
+            (None, Some(h)) => {
+                // Deleted in Synapse: only resurrect when the file changed it since.
+                if *h != new_hash && g.get_block(block.id)?.is_none() {
+                    kept.push(format!("{}: block deleted in Synapse kept deleted", d.rel));
+                }
+            }
+            (Some(cur), Some(h)) => {
+                let cur_hash = track::state_hash(cur);
+                if cur_hash == new_hash {
+                    if *h != new_hash {
+                        track::set_block(g, &block, &d.rel, &new_hash)?;
+                    }
+                } else if cur_hash == *h {
+                    // untouched in Synapse: file wins
+                    g.put_block(&block)?;
+                    track::set_block(g, &block, &d.rel, &new_hash)?;
+                    written += 1;
+                } else {
+                    if *h != new_hash {
+                        kept.push(format!(
+                            "{}: block {} edited in both Synapse and the file, kept the Synapse version",
+                            d.rel, block.id
+                        ));
+                    }
+                    track::set_block(g, cur, &d.rel, &cur_hash)?;
+                }
+            }
+            (Some(cur), None) => {
+                // A Synapse block with the same (explicit) id that was never imported.
+                if track::state_hash(cur) != new_hash {
+                    kept.push(format!(
+                        "{}: block {} already exists with other content, kept it",
+                        d.rel, block.id
+                    ));
+                }
+                track::set_block(g, cur, &d.rel, &track::state_hash(cur))?;
             }
         }
-        if props_differ {
-            g.set_page_properties(pid, d.props.clone())?;
+    }
+    report.warnings.extend(kept);
+
+    // Imported blocks that vanished from the file: delete only those untouched in Synapse
+    // and without native descendants.
+    let mut deleted = 0usize;
+    let stale: Vec<(&Uuid, &String)> = tracked
+        .iter()
+        .filter(|(id, _)| !used.contains(id))
+        .collect();
+    if !stale.is_empty() {
+        let tree = g.page_tree(pid)?;
+        let mut kids: HashMap<Uuid, Vec<&Block>> = HashMap::new();
+        let mut byid: HashMap<Uuid, &Block> = HashMap::new();
+        for (_, b) in &tree {
+            byid.insert(b.id, b);
+            if let Some(p) = b.parent_id {
+                kids.entry(p).or_default().push(b);
+            }
         }
-        report.blocks += blocks.len();
+        let stale_ids: HashSet<Uuid> = stale.iter().map(|(id, _)| **id).collect();
+        for (id, hash) in &stale {
+            let Some(b) = byid.get(id) else {
+                track::drop_block(g, **id)?;
+                continue;
+            };
+            let mut subtree = vec![*b];
+            let mut i = 0;
+            while i < subtree.len() {
+                if let Some(k) = kids.get(&subtree[i].id) {
+                    subtree.extend(k.iter().copied());
+                }
+                i += 1;
+            }
+            let clean = subtree.iter().all(|x| {
+                stale_ids.contains(&x.id)
+                    && tracked
+                        .get(&x.id)
+                        .is_some_and(|h| *h == track::state_hash(x))
+            });
+            if track::state_hash(b) == **hash && clean {
+                g.delete_block(b.id)?;
+                deleted += 1;
+                for x in subtree {
+                    track::drop_block(g, x.id)?;
+                }
+            } else {
+                report.warnings.push(format!(
+                    "{}: block {} was removed from the file but edited or extended in Synapse, kept",
+                    d.rel, b.id
+                ));
+                track::drop_block(g, b.id)?;
+            }
+        }
+    }
+
+    // Page properties: merge into native pages, follow the file while unedited.
+    let page = g
+        .get_page(pid)?
+        .ok_or_else(|| synapse_core::Error::NotFound(pid.to_string()))?;
+    let stored = track::page_props_hash(g, &d.rel)?;
+    let cur_hash = track::props_hash(&page.properties);
+    let new_hash = track::props_hash(&d.props);
+    let mut props_changed = false;
+    if (existed || d.journal.is_some()) && cur_hash != new_hash {
+        let mut next = page.properties.clone();
+        match &stored {
+            Some(h) if *h == cur_hash => next = d.props.clone(),
+            Some(_) => {
+                if Some(&new_hash) != stored.as_ref() {
+                    report.warnings.push(format!(
+                        "{}: page properties edited in Synapse, kept",
+                        d.rel
+                    ));
+                }
+            }
+            None => {
+                for (k, v) in &d.props {
+                    next.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+            }
+        }
+        if next != page.properties {
+            let mut np = page.clone();
+            np.properties = next;
+            if d.journal.is_none() {
+                np.updated_at = d.updated;
+            }
+            g.put_page(&np)?;
+            props_changed = true;
+        }
+    }
+    let final_props = g.get_page(pid)?.map(|p| p.properties).unwrap_or_default();
+    let final_hash = track::props_hash(&final_props);
+    if stored.as_deref() != Some(final_hash.as_str()) {
+        track::set_page(g, &d.rel, pid, &final_hash)?;
+    }
+
+    if existed && written == 0 && deleted == 0 && !props_changed {
+        report.unchanged += 1;
+    } else {
+        report.blocks += written;
         if d.journal.is_some() {
             report.journals += 1;
         } else {

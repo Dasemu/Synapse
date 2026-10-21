@@ -27,11 +27,21 @@ CLI: `cargo run --release -p synapse-import --example import -- <logseq_dir> <gr
   them. `origin_journal` = earliest journal referencing the page (aliases resolved), else the
   file's creation day. Journal pages keep core's midnight timestamps.
 
-## Re-import
-Idempotent. Blocks without `id::` get UUIDv5 ids from `(page title, ordinal)`, so a re-import
-upserts the same rows; identical pages are counted in `Report::unchanged` and not touched. Pages
-that changed are rewritten and stale blocks deleted (`ExistingPages::Update`, default);
-`ExistingPages::Skip` leaves any page that already has blocks alone (keeps edits made in Synapse).
+## Re-import and native content
+The importer records what it wrote in two local tables (`import_pages`: source file → page id,
+`import_blocks`: block id → state hash). Re-imports use them so Synapse content is never lost:
+- Pages are found by source file first, so a page renamed in Synapse is updated, not duplicated.
+- Block ids: Logseq `id::` when present, otherwise UUIDv5 of (source file, parent id, content,
+  duplicate index). Inserting or moving a block elsewhere in a file does not change other ids.
+- Only blocks the importer wrote are ever overwritten or deleted, and only while unedited in
+  Synapse. Edited blocks keep the Synapse version (warning if the file changed too); a removed
+  block that was edited or has native children is kept (warning). Native blocks are never touched.
+- First import into an existing page (e.g. today's journal) appends the imported blocks after the
+  native ones; page properties are merged without overriding existing keys.
+- A block deleted in Synapse stays deleted unless the file changed it.
+- Each document is written in its own savepoint; a failure rolls the document back and becomes a
+  warning. The whole write phase is one transaction.
+- `ExistingPages::Skip` leaves any page that already has blocks alone.
 
 ## Report / progress
 `Progress { phase, done, total }` (phases: Scanning, Assets, Parsing, Pages, Blocks) and
@@ -39,5 +49,5 @@ that changed are rewritten and stale blocks deleted (`ExistingPages::Update`, de
 
 ## Known limits
 - Not parsed: org-mode syntax, whiteboards, `draws/`, namespace parent stubs, Logseq queries.
-- Sequential commits (core has no nestable transaction): ~7k blocks/s; 10k pages × 20 blocks ≈ 30 s,
-  typical graphs a few seconds.
+- Speed is bound by core's per-block savepoint inside the import transaction: 208k blocks
+  (10k pages) ≈ 60 s; re-importing an unchanged graph ≈ 1.3 s.
