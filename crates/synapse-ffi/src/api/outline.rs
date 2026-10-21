@@ -83,7 +83,8 @@ impl SynapseGraph {
     }
 
     /// Backspace at the start of `id`: its text is appended to `into` (the previous visible
-    /// block), its children are moved under `into`, and the block is deleted.
+    /// block) and the block is deleted. Its children keep their visual place: they take the
+    /// block's slot when `into` is its parent, otherwise they become last children of `into`.
     pub fn merge_block(&self, id: String, into: String) -> Result<Vec<BlockDto>> {
         let g = self.lock();
         let b = get(&g, parse_id(&id)?)?;
@@ -100,11 +101,16 @@ impl SynapseGraph {
             .filter(|(_, c)| c.parent_id == Some(b.id))
             .map(|(_, c)| c.id)
             .collect();
-        if !children.is_empty() && target.collapsed {
+        if !children.is_empty() && target.collapsed && b.parent_id != Some(target.id) {
             g.set_collapsed(target.id, false)?;
         }
+        let at = if b.parent_id == Some(target.id) {
+            Placement::Before(b.id)
+        } else {
+            Placement::LastChildOf(Some(target.id))
+        };
         for c in children {
-            g.move_block(c, target.page_id, Placement::LastChildOf(Some(target.id)))?;
+            g.move_block(c, target.page_id, at)?;
         }
         g.delete_block(b.id)?;
         outline(&g, target.page_id)

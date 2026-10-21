@@ -2148,6 +2148,18 @@ impl SseDecode for Vec<crate::api::dto::PageBrief> {
     }
 }
 
+impl SseDecode for Vec<crate::api::dto::PageData> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::PageData>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::dto::PageDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2155,18 +2167,6 @@ impl SseDecode for Vec<crate::api::dto::PageDto> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::dto::PageDto>::sse_decode(deserializer));
-        }
-        return ans_;
-    }
-}
-
-impl SseDecode for Vec<crate::api::dto::PageView> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut len_ = <i32>::sse_decode(deserializer);
-        let mut ans_ = Vec::with_capacity(len_ as usize);
-        for idx_ in 0..len_ {
-            ans_.push(<crate::api::dto::PageView>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2242,11 +2242,11 @@ impl SseDecode for Option<crate::api::dto::BlockRefDto> {
     }
 }
 
-impl SseDecode for Option<crate::api::dto::PageView> {
+impl SseDecode for Option<crate::api::dto::PageData> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
-            return Some(<crate::api::dto::PageView>::sse_decode(deserializer));
+            return Some(<crate::api::dto::PageData>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -2267,6 +2267,24 @@ impl SseDecode for crate::api::dto::PageBrief {
     }
 }
 
+impl SseDecode for crate::api::dto::PageData {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_page = <crate::api::dto::PageDto>::sse_decode(deserializer);
+        let mut var_blocks = <Vec<crate::api::dto::BlockDto>>::sse_decode(deserializer);
+        let mut var_aliases = <Vec<String>>::sse_decode(deserializer);
+        let mut var_prevJournal = <Option<String>>::sse_decode(deserializer);
+        let mut var_nextJournal = <Option<String>>::sse_decode(deserializer);
+        return crate::api::dto::PageData {
+            page: var_page,
+            blocks: var_blocks,
+            aliases: var_aliases,
+            prev_journal: var_prevJournal,
+            next_journal: var_nextJournal,
+        };
+    }
+}
+
 impl SseDecode for crate::api::dto::PageDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2283,24 +2301,6 @@ impl SseDecode for crate::api::dto::PageDto {
             origin_journal: var_originJournal,
             created_at: var_createdAt,
             updated_at: var_updatedAt,
-        };
-    }
-}
-
-impl SseDecode for crate::api::dto::PageView {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_page = <crate::api::dto::PageDto>::sse_decode(deserializer);
-        let mut var_blocks = <Vec<crate::api::dto::BlockDto>>::sse_decode(deserializer);
-        let mut var_aliases = <Vec<String>>::sse_decode(deserializer);
-        let mut var_prevJournal = <Option<String>>::sse_decode(deserializer);
-        let mut var_nextJournal = <Option<String>>::sse_decode(deserializer);
-        return crate::api::dto::PageView {
-            page: var_page,
-            blocks: var_blocks,
-            aliases: var_aliases,
-            prev_journal: var_prevJournal,
-            next_journal: var_nextJournal,
         };
     }
 }
@@ -2736,6 +2736,25 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageBrief> for crate::ap
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::PageData {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.page.into_into_dart().into_dart(),
+            self.blocks.into_into_dart().into_dart(),
+            self.aliases.into_into_dart().into_dart(),
+            self.prev_journal.into_into_dart().into_dart(),
+            self.next_journal.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::PageData {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageData> for crate::api::dto::PageData {
+    fn into_into_dart(self) -> crate::api::dto::PageData {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::dto::PageDto {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -2752,25 +2771,6 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::PageDto {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::PageDto {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageDto> for crate::api::dto::PageDto {
     fn into_into_dart(self) -> crate::api::dto::PageDto {
-        self
-    }
-}
-// Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::dto::PageView {
-    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.page.into_into_dart().into_dart(),
-            self.blocks.into_into_dart().into_dart(),
-            self.aliases.into_into_dart().into_dart(),
-            self.prev_journal.into_into_dart().into_dart(),
-            self.next_journal.into_into_dart().into_dart(),
-        ]
-        .into_dart()
-    }
-}
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::PageView {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageView> for crate::api::dto::PageView {
-    fn into_into_dart(self) -> crate::api::dto::PageView {
         self
     }
 }
@@ -3064,22 +3064,22 @@ impl SseEncode for Vec<crate::api::dto::PageBrief> {
     }
 }
 
+impl SseEncode for Vec<crate::api::dto::PageData> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::PageData>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::dto::PageDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::dto::PageDto>::sse_encode(item, serializer);
-        }
-    }
-}
-
-impl SseEncode for Vec<crate::api::dto::PageView> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <i32>::sse_encode(self.len() as _, serializer);
-        for item in self {
-            <crate::api::dto::PageView>::sse_encode(item, serializer);
         }
     }
 }
@@ -3144,12 +3144,12 @@ impl SseEncode for Option<crate::api::dto::BlockRefDto> {
     }
 }
 
-impl SseEncode for Option<crate::api::dto::PageView> {
+impl SseEncode for Option<crate::api::dto::PageData> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
-            <crate::api::dto::PageView>::sse_encode(value, serializer);
+            <crate::api::dto::PageData>::sse_encode(value, serializer);
         }
     }
 }
@@ -3163,6 +3163,17 @@ impl SseEncode for crate::api::dto::PageBrief {
     }
 }
 
+impl SseEncode for crate::api::dto::PageData {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::dto::PageDto>::sse_encode(self.page, serializer);
+        <Vec<crate::api::dto::BlockDto>>::sse_encode(self.blocks, serializer);
+        <Vec<String>>::sse_encode(self.aliases, serializer);
+        <Option<String>>::sse_encode(self.prev_journal, serializer);
+        <Option<String>>::sse_encode(self.next_journal, serializer);
+    }
+}
+
 impl SseEncode for crate::api::dto::PageDto {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3172,17 +3183,6 @@ impl SseEncode for crate::api::dto::PageDto {
         <Option<String>>::sse_encode(self.origin_journal, serializer);
         <i64>::sse_encode(self.created_at, serializer);
         <i64>::sse_encode(self.updated_at, serializer);
-    }
-}
-
-impl SseEncode for crate::api::dto::PageView {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <crate::api::dto::PageDto>::sse_encode(self.page, serializer);
-        <Vec<crate::api::dto::BlockDto>>::sse_encode(self.blocks, serializer);
-        <Vec<String>>::sse_encode(self.aliases, serializer);
-        <Option<String>>::sse_encode(self.prev_journal, serializer);
-        <Option<String>>::sse_encode(self.next_journal, serializer);
     }
 }
 

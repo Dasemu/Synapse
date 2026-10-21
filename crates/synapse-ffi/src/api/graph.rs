@@ -42,7 +42,7 @@ impl SynapseGraph {
 
     // ------------------------------------------------------------- pages
 
-    pub fn page(&self, id: String) -> Result<Option<PageView>> {
+    pub fn page(&self, id: String) -> Result<Option<PageData>> {
         let g = self.lock();
         match g.get_page(parse_id(&id)?)? {
             Some(p) => Ok(Some(page_view(&g, &p)?)),
@@ -51,7 +51,7 @@ impl SynapseGraph {
     }
 
     /// Page by title or alias, without creating it.
-    pub fn page_by_title(&self, title: String) -> Result<Option<PageView>> {
+    pub fn page_by_title(&self, title: String) -> Result<Option<PageData>> {
         let g = self.lock();
         match g.page_by_title(&title)? {
             Some(p) => Ok(Some(page_view(&g, &p)?)),
@@ -61,7 +61,7 @@ impl SynapseGraph {
 
     /// Page by title or alias, created if missing (following a `[[link]]`). Date titles open
     /// the journal of that day.
-    pub fn open_page(&self, title: String) -> Result<PageView> {
+    pub fn open_page(&self, title: String) -> Result<PageData> {
         let g = self.lock();
         let page = match g.page_by_title(&title)? {
             Some(p) => p,
@@ -115,7 +115,7 @@ impl SynapseGraph {
     // ---------------------------------------------------------- journals
 
     /// The journal of `date` (created if missing).
-    pub fn journal(&self, date: String) -> Result<PageView> {
+    pub fn journal(&self, date: String) -> Result<PageData> {
         let g = self.lock();
         let p = g.journal(parse_date(&date)?)?;
         page_view(&g, &p)
@@ -123,7 +123,7 @@ impl SynapseGraph {
 
     /// Journals feed, newest first. With `before = None` it starts at today (creating today's
     /// journal); otherwise at the newest journal strictly before `before`.
-    pub fn journals(&self, before: Option<String>, limit: u32) -> Result<Vec<PageView>> {
+    pub fn journals(&self, before: Option<String>, limit: u32) -> Result<Vec<PageData>> {
         let g = self.lock();
         let mut out = Vec::new();
         let mut cursor = match before {
@@ -293,7 +293,7 @@ fn asset_dto(a: synapse_core::Asset) -> AssetDto {
     }
 }
 
-pub(crate) fn page_view(g: &Graph, p: &Page) -> Result<PageView> {
+pub(crate) fn page_view(g: &Graph, p: &Page) -> Result<PageData> {
     let (prev, next) = match p.journal_date {
         Some(d) => {
             let n = g.journal_neighbors(d)?;
@@ -301,7 +301,7 @@ pub(crate) fn page_view(g: &Graph, p: &Page) -> Result<PageView> {
         }
         None => (None, None),
     };
-    Ok(PageView {
+    Ok(PageData {
         page: PageDto::from(p),
         blocks: outline(g, p.id)?,
         aliases: g.aliases_of(p.id)?,

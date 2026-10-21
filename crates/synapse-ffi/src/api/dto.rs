@@ -55,7 +55,7 @@ impl BlockDto {
 
 /// Everything the page view needs in one call.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PageView {
+pub struct PageData {
     pub page: PageDto,
     pub blocks: Vec<BlockDto>,
     pub aliases: Vec<String>,

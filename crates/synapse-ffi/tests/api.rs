@@ -67,6 +67,19 @@ fn merge_appends_text_and_adopts_children() {
 }
 
 #[test]
+fn merging_a_first_child_into_its_parent_keeps_grandchildren_in_place() {
+    let (_d, g) = open();
+    let (_, ids) = page_with(&g, "P", &["p", "c", "gc", "s"]);
+    g.indent_block(ids[1].clone()).unwrap();
+    g.indent_block(ids[2].clone()).unwrap();
+    g.indent_block(ids[2].clone()).unwrap();
+    g.indent_block(ids[3].clone()).unwrap();
+    // p > c > gc, p > s
+    let rows = g.merge_block(ids[1].clone(), ids[0].clone()).unwrap();
+    assert_eq!(shape(&rows), vec![(0, "pc"), (1, "gc"), (1, "s")]);
+}
+
+#[test]
 fn insert_first_child_and_move() {
     let (_d, g) = open();
     let (page, ids) = page_with(&g, "P", &["a", "b"]);
