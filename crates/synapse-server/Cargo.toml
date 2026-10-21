@@ -1,0 +1,36 @@
+[package]
+name = "synapse-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Self-hosted Synapse sync server (axum): multi-graph op-log sync, blobs, read API"
+
+[lib]
+name = "synapse_server"
+
+[[bin]]
+name = "synapse-server"
+path = "src/main.rs"
+
+[dependencies]
+synapse-core.workspace = true
+# Shared wire types (single source of truth for the protocol).
+synapse-sync = { path = "../synapse-sync" }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+# HTTP framework (routing, SSE, streaming bodies).
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "signal", "process"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+# Constant-time token comparison (blake3::Hash equality) and blob verification.
+blake3 = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# Per-request tracing spans.
+tower-http = { version = "0.6", features = ["trace"] }
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json"] }
