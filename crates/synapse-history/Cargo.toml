@@ -1,0 +1,25 @@
+[package]
+name = "synapse-history"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Automatic git-based backup and version history of a Synapse graph"
+
+[dependencies]
+synapse-core.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# Pure-Rust git (no C toolchain: builds for Android/Windows). Local repo only; push is ours.
+gix = { version = "0.89", default-features = false, features = ["sha1"] }
+# Blocking HTTPS client (rustls) for pushing: gix cannot push yet.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+# zlib for the pack we send (already in the tree through gix/ureq).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# Unified text diffs for page versions.
+similar = "2"
+
+[dev-dependencies]
+tempfile = "3"
