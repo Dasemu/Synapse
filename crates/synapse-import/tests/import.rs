@@ -182,3 +182,155 @@ fn copy_dir(from: &Path, to: &Path) {
         }
     }
 }
+
+fn mini_graph(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let src = tempfile::tempdir().unwrap();
+    for (rel, text) in files {
+        let p = src.path().join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+    src
+}
+
+fn imp(src: &Path, g: &Graph) -> Report {
+    import_logseq(src, g, &ImportOptions::default(), |_| {}).unwrap()
+}
+
+#[test]
+fn native_blocks_survive_import_and_reimport() {
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    let page = g.ensure_page("Notes", None).unwrap();
+    g.insert_block(
+        page.id,
+        synapse_core::Placement::LastChildOf(None),
+        "native",
+    )
+    .unwrap();
+    let today = g.today_journal().unwrap();
+    g.insert_block(
+        today.id,
+        synapse_core::Placement::LastChildOf(None),
+        "today native",
+    )
+    .unwrap();
+    let src = mini_graph(&[("pages/Notes.md", "- from logseq\n- second\n")]);
+
+    imp(src.path(), &g);
+    let t = texts(&g, "Notes");
+    assert_eq!(t[0].1, "native");
+    assert_eq!(t[1].1, "from logseq", "imported blocks are appended");
+
+    // file drops a block, user edited another one in Synapse
+    let second = g.page_tree(page.id).unwrap()[2].1.clone();
+    g.update_block(second.id, "second (edited in Synapse)")
+        .unwrap();
+    std::fs::write(src.path().join("pages/Notes.md"), "- from logseq changed\n").unwrap();
+    let r = imp(src.path(), &g);
+    let t: Vec<String> = texts(&g, "Notes").into_iter().map(|x| x.1).collect();
+    assert!(t.contains(&"native".to_string()));
+    assert!(
+        t.contains(&"second (edited in Synapse)".to_string()),
+        "{t:?}"
+    );
+    assert!(t.contains(&"from logseq changed".to_string()));
+    assert!(!t.contains(&"from logseq".to_string()));
+    assert!(
+        r.warnings.iter().any(|w| w.contains("edited")),
+        "{:?}",
+        r.warnings
+    );
+    assert_eq!(
+        texts(&g, &synapse_core::journal_title(g.today())),
+        vec![(0, "today native".to_string())]
+    );
+}
+
+#[test]
+fn imported_journal_merges_with_native_today() {
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    let today = g.today_journal().unwrap();
+    g.insert_block(today.id, synapse_core::Placement::LastChildOf(None), "mine")
+        .unwrap();
+    let name = g.today().format("%Y_%m_%d").to_string();
+    let src = mini_graph(&[(&format!("journals/{name}.md"), "- old entry\n")]);
+    imp(src.path(), &g);
+    imp(src.path(), &g);
+    let t: Vec<String> = texts(&g, &synapse_core::journal_title(g.today()))
+        .into_iter()
+        .map(|x| x.1)
+        .collect();
+    assert_eq!(t, vec!["mine", "old entry"]);
+}
+
+#[test]
+fn failing_document_is_rolled_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    g.conn()
+        .execute_batch(
+            "CREATE TRIGGER boom BEFORE INSERT ON blocks WHEN NEW.content='boom'
+             BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+        )
+        .unwrap();
+    let src = mini_graph(&[
+        ("pages/Bad.md", "- fine\n- boom\n"),
+        ("pages/Good.md", "- ok\n"),
+    ]);
+    let r = imp(src.path(), &g);
+    assert!(
+        r.warnings.iter().any(|w| w.contains("Bad.md")),
+        "{:?}",
+        r.warnings
+    );
+    assert!(
+        texts(&g, "Bad").is_empty(),
+        "partial blocks must not be committed"
+    );
+    assert_eq!(texts(&g, "Good").len(), 1);
+}
+
+#[test]
+fn inserting_a_block_keeps_other_ids_stable() {
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    let src = mini_graph(&[("pages/P.md", "- a\n\t- a1\n- b\n- b\n")]);
+    imp(src.path(), &g);
+    let ids = |g: &Graph| -> Vec<(String, uuid::Uuid)> {
+        let p = g.page_by_title("P").unwrap().unwrap();
+        g.page_tree(p.id)
+            .unwrap()
+            .into_iter()
+            .map(|(_, b)| (b.content, b.id))
+            .collect()
+    };
+    let before = ids(&g);
+    std::fs::write(
+        src.path().join("pages/P.md"),
+        "- NEW\n- a\n\t- a1\n- b\n- b\n",
+    )
+    .unwrap();
+    imp(src.path(), &g);
+    let after = ids(&g);
+    assert_eq!(after.len(), 5);
+    for old in &before {
+        assert!(after.contains(old), "{old:?} changed id: {after:?}");
+    }
+}
+
+#[test]
+fn renamed_page_is_not_duplicated() {
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    let src = mini_graph(&[("pages/Old.md", "- one\n")]);
+    imp(src.path(), &g);
+    let p = g.page_by_title("Old").unwrap().unwrap();
+    g.rename_page(p.id, "Renamed").unwrap();
+    std::fs::write(src.path().join("pages/Old.md"), "- one\n- two\n").unwrap();
+    imp(src.path(), &g);
+    assert!(g.page_by_title("Old").unwrap().is_none());
+    let t = texts(&g, "Renamed");
+    assert_eq!(t.len(), 2);
+}

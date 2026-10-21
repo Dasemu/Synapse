@@ -29,7 +29,13 @@ fn main() {
     let report = import_logseq(src, &graph, &opts, |p| {
         let step = (p.done * 20).checked_div(p.total).unwrap_or(0);
         if last != (Some(p.phase), step) {
-            eprintln!("{:?}: {}/{}", p.phase, p.done, p.total);
+            eprintln!(
+                "[{:.1?}] {:?}: {}/{}",
+                started.elapsed(),
+                p.phase,
+                p.done,
+                p.total
+            );
             last = (Some(p.phase), step);
         }
     })
