@@ -64,3 +64,38 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   structure wins if they ever disagree.
 - App shortcuts: Ctrl+K quick switcher, Ctrl+Shift+J journals, Ctrl+Shift+T timeline,
   Ctrl+\ sidebar, Alt+←/→ back/forward.
+
+## Graph view
+One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
+- **Network**: force-directed graph of pages (journals optional). Edges: links, tags,
+  property refs, block refs/embeds (aggregated per page) and dashed mentions (unlinked
+  references: a page title appearing as whole words in another page's text). Node size by
+  degree + backlinks, colour by cluster or primary tag. Filters: title, tag, created date
+  range, min links, orphans, journals, mentions. Drag nodes, hover highlights neighbours,
+  wheel/pinch zoom, tap opens the page.
+- **Local**: neighbourhood of a page at depth 1–3 (also a side panel on every page).
+- **Synapses**: `related()` spreading activation from a focus page; brightness/size =
+  activation, edge thickness = Hebbian synapse weight, a pulse travels outward by hops.
+- **Clusters**: Louvain communities with soft hulls.
+- **Namespaces**: radial tree of `a/b/c` titles and of tags with their pages.
+- **Timeline**: the journal timeline.
+
+Data and layout live in Rust: `SynapseGraph::graph_data()` returns the whole page-level
+graph as parallel arrays (cached until the op seq or the synapse table changes);
+`ForceLayout` (Barnes-Hut, O(n log n)) is stepped from Dart in small batches on a Rust
+worker thread. The painter batches draws (one call per edge kind and node colour/size),
+culls to the viewport and limits labels with an occupancy grid.
+
+```bash
+# Stats and timings for a graph (release build)
+cargo run --release -p synapse-ffi --example graph_stats -- /path/to/graph
+# Real-app smoke test of every graph mode with frame timings (opens a window; use a copy
+# of the graph, opening it may write today's journal). Profile mode for real numbers:
+cd app && flutter drive --profile -d linux --driver=test_driver/integration_test.dart \
+  --target=integration_test/graph_smoke_test.dart \
+  --dart-define=GRAPH=/path/to/copy [--dart-define=SHOTS=/dir/for/pngs]
+```
+Measured (profile, Linux, Impeller GL): 5 000 pages / 19 000 links settle in ~7 s and pan at
+build p50 6 ms / raster p50 4 ms per frame; a 360-page graph settles in ~1 s at ~2 ms/frame.
+Edges are drawn as one triangle mesh (`drawVertices`): stroking 10k+ lines made Impeller
+tessellate every frame (raster ~40 ms).

@@ -34,6 +34,10 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Graph directory.
   String dir();
 
+  /// The whole page-level graph (journals included; the UI filters). Cached until the
+  /// graph changes.
+  Future<GraphData> graphData();
+
   /// Tab: the block becomes the last child of its previous sibling (no-op for a first child).
   Future<List<BlockDto>> indentBlock({required String id});
 

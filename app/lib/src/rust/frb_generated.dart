@@ -5,6 +5,7 @@
 
 import 'api/dto.dart';
 import 'api/graph.dart';
+import 'api/layout.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -68,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1980668428;
+  int get rustContentHash => -553305025;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -80,6 +81,36 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  ForceLayout crateApiLayoutForceLayoutNew({
+    required int nodeCount,
+    required List<int> sources,
+    required List<int> targets,
+    required List<double> weights,
+    Float32List? initial,
+  });
+
+  Future<void> crateApiLayoutForceLayoutPin({
+    required ForceLayout that,
+    required int index,
+    required double x,
+    required double y,
+  });
+
+  Future<void> crateApiLayoutForceLayoutReheat({
+    required ForceLayout that,
+    required double alpha,
+  });
+
+  Future<LayoutFrame> crateApiLayoutForceLayoutStep({
+    required ForceLayout that,
+    required int iterations,
+  });
+
+  Future<void> crateApiLayoutForceLayoutUnpin({
+    required ForceLayout that,
+    required int index,
+  });
+
   Future<void> crateApiGraphSynapseGraphAddAlias({
     required SynapseGraph that,
     required String pageId,
@@ -117,6 +148,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   String crateApiGraphSynapseGraphDir({required SynapseGraph that});
+
+  Future<GraphData> crateApiGraphSynapseGraphGraphData({
+    required SynapseGraph that,
+  });
 
   Future<List<BlockDto>> crateApiGraphSynapseGraphIndentBlock({
     required SynapseGraph that,
@@ -262,6 +297,14 @@ abstract class RustLibApi extends BaseApi {
   });
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ForceLayout;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ForceLayout;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_ForceLayoutPtr;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_SynapseGraph;
 
   RustArcDecrementStrongCountFnType
@@ -277,6 +320,199 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  ForceLayout crateApiLayoutForceLayoutNew({
+    required int nodeCount,
+    required List<int> sources,
+    required List<int> targets,
+    required List<double> weights,
+    Float32List? initial,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(nodeCount, serializer);
+          sse_encode_list_prim_u_32_loose(sources, serializer);
+          sse_encode_list_prim_u_32_loose(targets, serializer);
+          sse_encode_list_prim_f_32_loose(weights, serializer);
+          sse_encode_opt_list_prim_f_32_strict(initial, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLayoutForceLayoutNewConstMeta,
+        argValues: [nodeCount, sources, targets, weights, initial],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLayoutForceLayoutNewConstMeta =>
+      const TaskConstMeta(
+        debugName: "ForceLayout_new",
+        argNames: ["nodeCount", "sources", "targets", "weights", "initial"],
+      );
+
+  @override
+  Future<void> crateApiLayoutForceLayoutPin({
+    required ForceLayout that,
+    required int index,
+    required double x,
+    required double y,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+            that,
+            serializer,
+          );
+          sse_encode_u_32(index, serializer);
+          sse_encode_f_32(x, serializer);
+          sse_encode_f_32(y, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLayoutForceLayoutPinConstMeta,
+        argValues: [that, index, x, y],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLayoutForceLayoutPinConstMeta =>
+      const TaskConstMeta(
+        debugName: "ForceLayout_pin",
+        argNames: ["that", "index", "x", "y"],
+      );
+
+  @override
+  Future<void> crateApiLayoutForceLayoutReheat({
+    required ForceLayout that,
+    required double alpha,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+            that,
+            serializer,
+          );
+          sse_encode_f_32(alpha, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLayoutForceLayoutReheatConstMeta,
+        argValues: [that, alpha],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLayoutForceLayoutReheatConstMeta =>
+      const TaskConstMeta(
+        debugName: "ForceLayout_reheat",
+        argNames: ["that", "alpha"],
+      );
+
+  @override
+  Future<LayoutFrame> crateApiLayoutForceLayoutStep({
+    required ForceLayout that,
+    required int iterations,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+            that,
+            serializer,
+          );
+          sse_encode_u_32(iterations, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_layout_frame,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLayoutForceLayoutStepConstMeta,
+        argValues: [that, iterations],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLayoutForceLayoutStepConstMeta =>
+      const TaskConstMeta(
+        debugName: "ForceLayout_step",
+        argNames: ["that", "iterations"],
+      );
+
+  @override
+  Future<void> crateApiLayoutForceLayoutUnpin({
+    required ForceLayout that,
+    required int index,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+            that,
+            serializer,
+          );
+          sse_encode_u_32(index, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLayoutForceLayoutUnpinConstMeta,
+        argValues: [that, index],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLayoutForceLayoutUnpinConstMeta =>
+      const TaskConstMeta(
+        debugName: "ForceLayout_unpin",
+        argNames: ["that", "index"],
+      );
 
   @override
   Future<void> crateApiGraphSynapseGraphAddAlias({
@@ -297,7 +533,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 6,
             port: port_,
           );
         },
@@ -335,7 +571,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 7,
             port: port_,
           );
         },
@@ -370,7 +606,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_String(hash, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_String,
@@ -406,7 +642,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 9,
             port: port_,
           );
         },
@@ -444,7 +680,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 10,
             port: port_,
           );
         },
@@ -482,7 +718,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 11,
             port: port_,
           );
         },
@@ -520,7 +756,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 12,
             port: port_,
           );
         },
@@ -551,7 +787,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -566,6 +802,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiGraphSynapseGraphDirConstMeta =>
       const TaskConstMeta(debugName: "SynapseGraph_dir", argNames: ["that"]);
+
+  @override
+  Future<GraphData> crateApiGraphSynapseGraphGraphData({
+    required SynapseGraph that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_graph_data,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGraphSynapseGraphGraphDataConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGraphSynapseGraphGraphDataConstMeta =>
+      const TaskConstMeta(
+        debugName: "SynapseGraph_graph_data",
+        argNames: ["that"],
+      );
 
   @override
   Future<List<BlockDto>> crateApiGraphSynapseGraphIndentBlock({
@@ -584,7 +856,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 15,
             port: port_,
           );
         },
@@ -626,7 +898,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 16,
             port: port_,
           );
         },
@@ -664,7 +936,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 17,
             port: port_,
           );
         },
@@ -702,7 +974,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 18,
             port: port_,
           );
         },
@@ -742,7 +1014,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 19,
             port: port_,
           );
         },
@@ -784,7 +1056,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 20,
             port: port_,
           );
         },
@@ -824,7 +1096,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 21,
             port: port_,
           );
         },
@@ -866,7 +1138,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 22,
             port: port_,
           );
         },
@@ -897,7 +1169,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 23,
             port: port_,
           );
         },
@@ -933,7 +1205,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 24,
             port: port_,
           );
         },
@@ -971,7 +1243,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1009,7 +1281,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1047,7 +1319,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1085,7 +1357,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1127,7 +1399,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1167,7 +1439,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1207,7 +1479,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1247,7 +1519,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1285,7 +1557,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1325,7 +1597,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1365,7 +1637,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1405,7 +1677,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1445,7 +1717,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1485,7 +1757,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1516,7 +1788,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1551,7 +1823,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1573,6 +1845,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ForceLayout => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ForceLayout => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_SynapseGraph => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph;
 
@@ -1587,6 +1867,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ForceLayout
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   SynapseGraph
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     dynamic raw,
@@ -1596,12 +1885,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ForceLayout
+  dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   SynapseGraph
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return SynapseGraphImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ForceLayout
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1715,6 +2022,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   EditDto dco_decode_edit_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1733,6 +2046,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  GraphData dco_decode_graph_data(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return GraphData(
+      nodes: dco_decode_list_graph_node(arr[0]),
+      sources: dco_decode_list_prim_u_32_strict(arr[1]),
+      targets: dco_decode_list_prim_u_32_strict(arr[2]),
+      kinds: dco_decode_list_prim_u_8_strict(arr[3]),
+      weights: dco_decode_list_prim_f_32_strict(arr[4]),
+      seq: dco_decode_i_64(arr[5]),
+    );
+  }
+
+  @protected
+  GraphNode dco_decode_graph_node(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return GraphNode(
+      id: dco_decode_String(arr[0]),
+      title: dco_decode_String(arr[1]),
+      journalDate: dco_decode_opt_String(arr[2]),
+      originJournal: dco_decode_opt_String(arr[3]),
+      createdAt: dco_decode_i_64(arr[4]),
+      degree: dco_decode_u_32(arr[5]),
+      backlinks: dco_decode_u_32(arr[6]),
+      cluster: dco_decode_u_32(arr[7]),
+      primaryTag: dco_decode_opt_box_autoadd_u_32(arr[8]),
+    );
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -1742,6 +2090,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64 dco_decode_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeI64(raw);
+  }
+
+  @protected
+  LayoutFrame dco_decode_layout_frame(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return LayoutFrame(
+      positions: dco_decode_list_prim_f_32_strict(arr[0]),
+      alpha: dco_decode_f_32(arr[1]),
+    );
   }
 
   @protected
@@ -1775,6 +2135,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<GraphNode> dco_decode_list_graph_node(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_graph_node).toList();
+  }
+
+  @protected
   List<PageBrief> dco_decode_list_page_brief(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_page_brief).toList();
@@ -1790,6 +2156,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<PageDto> dco_decode_list_page_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_page_dto).toList();
+  }
+
+  @protected
+  List<double> dco_decode_list_prim_f_32_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<double>;
+  }
+
+  @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Float32List;
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
   }
 
   @protected
@@ -1838,6 +2228,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PageData? dco_decode_opt_box_autoadd_page_data(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_page_data(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  Float32List? dco_decode_opt_list_prim_f_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_f_32_strict(raw);
   }
 
   @protected
@@ -2001,6 +2403,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ForceLayout
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   SynapseGraph
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SseDeserializer deserializer,
@@ -2013,12 +2427,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ForceLayout
+  sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   SynapseGraph
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return SynapseGraphImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ForceLayout
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ForceLayoutImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2143,6 +2581,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
   EditDto sse_decode_edit_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_pageId = sse_decode_String(deserializer);
@@ -2157,6 +2601,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  GraphData sse_decode_graph_data(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_nodes = sse_decode_list_graph_node(deserializer);
+    var var_sources = sse_decode_list_prim_u_32_strict(deserializer);
+    var var_targets = sse_decode_list_prim_u_32_strict(deserializer);
+    var var_kinds = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_weights = sse_decode_list_prim_f_32_strict(deserializer);
+    var var_seq = sse_decode_i_64(deserializer);
+    return GraphData(
+      nodes: var_nodes,
+      sources: var_sources,
+      targets: var_targets,
+      kinds: var_kinds,
+      weights: var_weights,
+      seq: var_seq,
+    );
+  }
+
+  @protected
+  GraphNode sse_decode_graph_node(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_journalDate = sse_decode_opt_String(deserializer);
+    var var_originJournal = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_degree = sse_decode_u_32(deserializer);
+    var var_backlinks = sse_decode_u_32(deserializer);
+    var var_cluster = sse_decode_u_32(deserializer);
+    var var_primaryTag = sse_decode_opt_box_autoadd_u_32(deserializer);
+    return GraphNode(
+      id: var_id,
+      title: var_title,
+      journalDate: var_journalDate,
+      originJournal: var_originJournal,
+      createdAt: var_createdAt,
+      degree: var_degree,
+      backlinks: var_backlinks,
+      cluster: var_cluster,
+      primaryTag: var_primaryTag,
+    );
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
@@ -2166,6 +2654,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  LayoutFrame sse_decode_layout_frame(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_positions = sse_decode_list_prim_f_32_strict(deserializer);
+    var var_alpha = sse_decode_f_32(deserializer);
+    return LayoutFrame(positions: var_positions, alpha: var_alpha);
   }
 
   @protected
@@ -2231,6 +2727,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<GraphNode> sse_decode_list_graph_node(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <GraphNode>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_graph_node(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<PageBrief> sse_decode_list_page_brief(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -2264,6 +2772,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_page_dto(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  List<double> sse_decode_list_prim_f_32_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getFloat32List(len_);
+  }
+
+  @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getFloat32List(len_);
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
   }
 
   @protected
@@ -2348,6 +2884,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_page_data(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Float32List? sse_decode_opt_list_prim_f_32_strict(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_f_32_strict(deserializer));
     } else {
       return null;
     }
@@ -2503,6 +3063,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ForceLayoutImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SynapseGraph self,
     SseSerializer serializer,
@@ -2516,6 +3089,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ForceLayoutImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SynapseGraph self,
     SseSerializer serializer,
@@ -2523,6 +3109,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as SynapseGraphImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ForceLayoutImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -2623,6 +3222,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self, serializer);
+  }
+
+  @protected
   void sse_encode_edit_dto(EditDto self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.pageId, serializer);
@@ -2636,6 +3241,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_graph_data(GraphData self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_graph_node(self.nodes, serializer);
+    sse_encode_list_prim_u_32_strict(self.sources, serializer);
+    sse_encode_list_prim_u_32_strict(self.targets, serializer);
+    sse_encode_list_prim_u_8_strict(self.kinds, serializer);
+    sse_encode_list_prim_f_32_strict(self.weights, serializer);
+    sse_encode_i_64(self.seq, serializer);
+  }
+
+  @protected
+  void sse_encode_graph_node(GraphNode self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_opt_String(self.journalDate, serializer);
+    sse_encode_opt_String(self.originJournal, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_u_32(self.degree, serializer);
+    sse_encode_u_32(self.backlinks, serializer);
+    sse_encode_u_32(self.cluster, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.primaryTag, serializer);
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
@@ -2645,6 +3275,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void sse_encode_layout_frame(LayoutFrame self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_f_32_strict(self.positions, serializer);
+    sse_encode_f_32(self.alpha, serializer);
   }
 
   @protected
@@ -2702,6 +3339,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_graph_node(
+    List<GraphNode> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_graph_node(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_page_brief(
     List<PageBrief> self,
     SseSerializer serializer,
@@ -2732,6 +3381,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_page_dto(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_prim_f_32_loose(
+    List<double> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putFloat32List(
+      self is Float32List ? self : Float32List.fromList(self),
+    );
+  }
+
+  @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putFloat32List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(
+      self is Uint32List ? self : Uint32List.fromList(self),
+    );
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
   }
 
   @protected
@@ -2825,6 +3518,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_page_data(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_list_prim_f_32_strict(
+    Float32List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_f_32_strict(self, serializer);
     }
   }
 
@@ -2945,6 +3661,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 }
 
 @sealed
+class ForceLayoutImpl extends RustOpaque implements ForceLayout {
+  // Not to be used by end users
+  ForceLayoutImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  ForceLayoutImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_ForceLayout,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ForceLayout,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ForceLayoutPtr,
+  );
+
+  /// Holds node `index` at `(x, y)` (while dragging) and keeps the layout warm.
+  Future<void> pin({
+    required int index,
+    required double x,
+    required double y,
+  }) => RustLib.instance.api.crateApiLayoutForceLayoutPin(
+    that: this,
+    index: index,
+    x: x,
+    y: y,
+  );
+
+  /// Restarts the simulation at temperature `alpha` (0..1).
+  Future<void> reheat({required double alpha}) => RustLib.instance.api
+      .crateApiLayoutForceLayoutReheat(that: this, alpha: alpha);
+
+  /// Runs up to `iterations` ticks (stops early once settled).
+  Future<LayoutFrame> step({required int iterations}) => RustLib.instance.api
+      .crateApiLayoutForceLayoutStep(that: this, iterations: iterations);
+
+  /// Releases a pinned node and lets the layout cool down again.
+  Future<void> unpin({required int index}) => RustLib.instance.api
+      .crateApiLayoutForceLayoutUnpin(that: this, index: index);
+}
+
+@sealed
 class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
   // Not to be used by end users
   SynapseGraphImpl.frbInternalDcoDecode(List<dynamic> wire)
@@ -2998,6 +3758,11 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
 
   /// Graph directory.
   String dir() => RustLib.instance.api.crateApiGraphSynapseGraphDir(that: this);
+
+  /// The whole page-level graph (journals included; the UI filters). Cached until the
+  /// graph changes.
+  Future<GraphData> graphData() =>
+      RustLib.instance.api.crateApiGraphSynapseGraphGraphData(that: this);
 
   /// Tab: the block becomes the last child of its previous sibling (no-op for a first child).
   Future<List<BlockDto>> indentBlock({required String id}) => RustLib
