@@ -1,0 +1,42 @@
+name: ci
+on:
+  pull_request:
+    branches: [development]
+  push:
+    branches: [development, main]
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        if: hashFiles('app/pubspec.yaml') != ''
+        with:
+          channel: stable
+          cache: true
+      - name: Lint
+        if: hashFiles('app/pubspec.yaml') != ''
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+      - name: Test
+        if: hashFiles('app/test/**') != ''
+        working-directory: app
+        run: flutter test

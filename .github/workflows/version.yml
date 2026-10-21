@@ -1,0 +1,50 @@
+name: version
+on:
+  push:
+    branches: [development, main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      github.actor != 'github-actions[bot]' && github.actor != 'gitea-actions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Bump version
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          git config user.name "version-bot"
+          git config user.email "version-bot@noreply.local"
+          branch="$GITHUB_REF_NAME"
+          IFS=. read -r MA MI PA < VERSION
+          if [ "$branch" = development ]; then
+            PA=$((PA + 1))
+          else
+            git fetch origin development
+            zero=0000000000000000000000000000000000000000
+            # MINOR bump only if every non-merge commit in this push is already on development.
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "$zero" ] &&
+               [ -z "$(git rev-list --no-merges "$BEFORE..HEAD" --not origin/development)" ]; then
+              MI=$((MI + 1)); PA=0
+            else
+              PA=$((PA + 1))
+            fi
+          fi
+          new="$MA.$MI.$PA"
+          echo "$new" > VERSION
+          git commit -am "chore(release): v$new [skip ci]"
+          git push origin HEAD:"$branch"
+          if [ "$branch" = main ]; then
+            main_sha=$(git rev-parse HEAD)
+            git checkout -B development origin/development
+            git merge --no-ff -m "chore: merge main into development [skip ci]" "$main_sha"
+            git push origin development
+          fi
