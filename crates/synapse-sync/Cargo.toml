@@ -1,0 +1,28 @@
+[package]
+name = "synapse-sync"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Synapse sync protocol types and client (op-log push/pull, blobs, realtime)"
+
+[dependencies]
+synapse-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+# Async runtime for the client and its background loop.
+tokio = { version = "1", features = ["rt", "sync", "time", "fs", "io-util", "macros"] }
+# HTTP client. 0.12 + rustls-tls-webpki-roots = rustls with the `ring` provider and bundled
+# roots: no OpenSSL/aws-lc/platform verifier, so it builds for Android and Windows.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json", "stream"] }
+# Stream large blobs from/to disk (ReaderStream) without buffering them.
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+# Verify downloaded blobs (same hash as the core blob store).
+blake3 = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

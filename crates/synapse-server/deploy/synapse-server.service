@@ -1,0 +1,23 @@
+[Unit]
+Description=Synapse sync server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=synapse
+Group=synapse
+EnvironmentFile=/etc/synapse/server.env
+ExecStart=/opt/synapse/bin/synapse-server
+# Also how a successful POST /admin/update takes effect: the server exits, systemd restarts it.
+Restart=always
+RestartSec=2
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/synapse /opt/synapse
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

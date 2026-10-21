@@ -10,7 +10,7 @@ and an optional self-hosted sync server. Local-only (standalone graph) or client
 - Format: `cargo fmt --all` (Rust), `dart format app/` (Flutter)
 - Lint: `cargo clippy --workspace --all-targets -- -D warnings`, `cd app && flutter analyze`
 - Test: `cargo test --workspace`, `cd app && flutter test`
-- Run server: `cargo run -p synapse-server`
+- Run server: `SYNAPSE_DATA_DIR=/tmp/syn SYNAPSE_AUTH_TOKEN=<16+ chars> cargo run -p synapse-server`
 - Run app: `cd app && flutter run -d linux` (or `-d windows`, an Android device)
 - Regenerate FFI bindings: `cd app && flutter_rust_bridge_codegen generate`
 
@@ -23,7 +23,7 @@ roadmap in `docs/plan.md`.
 - `synapse-ai`: provider-agnostic LLM/embeddings clients (user-supplied API keys).
 - `synapse-history`: automatic git-like snapshots of the graph.
 - `synapse-caldav`: CalDAV calendar + VTODO tasks.
-- `synapse-sync` / `synapse-server`: client-server protocol and axum server.
+- `synapse-sync` / `synapse-server`: client-server protocol and axum server (`docs/sync.md`).
 - `synapse-ffi`: the only API surface exposed to Flutter.
 
 ## Conventions
