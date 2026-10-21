@@ -389,11 +389,11 @@ fn parse_doc(f: &FileEntry, cfg: &Config, assets: &HashMap<String, String>) -> D
 
     let mut missing = Vec::new();
     for b in &mut blocks {
-        b.content = rewrite::rewrite_dates(&b.content, &cfg.journal_title_format);
+        b.content = rewrite::rewrite_dates(&b.content, &cfg.journal_title_formats);
         b.content = rewrite::rewrite_assets(&b.content, assets, &mut missing);
         for v in b.properties.values_mut() {
             if let Some(s) = v.as_str() {
-                let s = rewrite::rewrite_dates(s, &cfg.journal_title_format);
+                let s = rewrite::rewrite_dates(s, &cfg.journal_title_formats);
                 *v = serde_json::Value::String(rewrite::rewrite_assets(&s, assets, &mut missing));
             }
         }

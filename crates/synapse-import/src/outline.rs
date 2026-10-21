@@ -222,7 +222,7 @@ fn split_props(mut lines: Vec<String>) -> (String, Properties) {
     }
     let mut props = Properties::new();
     let first_is_prop = lines.first().is_some_and(|l| property_split(l).is_some());
-    let start = usize::from(!first_is_prop);
+    let start = usize::from(!first_is_prop).min(lines.len());
     let mut end = start;
     while end < lines.len() {
         match property_split(&lines[end]) {
@@ -329,6 +329,13 @@ pub fn split_aliases(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_bullets_do_not_panic() {
+        for text in ["-", "-\n- a", "- a\n\t-\n", "\n-\n\n"] {
+            parse_markdown(text);
+        }
+    }
 
     #[test]
     fn nesting_and_multiline() {

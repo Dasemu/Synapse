@@ -7,17 +7,20 @@ use std::path::Path;
 pub struct Config {
     /// `:journal/file-name-format` (default `yyyy_MM_dd`).
     pub journal_file_format: DateFormat,
-    /// `:journal/page-title-format` (default `MMM do, yyyy`).
-    pub journal_title_format: DateFormat,
+    /// `:journal/page-title-format` first, then Logseq's default `MMM do, yyyy`: graphs whose
+    /// format was changed still contain references written in the old one.
+    pub journal_title_formats: Vec<DateFormat>,
     /// `:file/name-format :triple-lowbar` (otherwise legacy: `.` separates namespaces).
     pub triple_lowbar: bool,
 }
+
+const DEFAULT_TITLE_FORMAT: &str = "MMM do, yyyy";
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             journal_file_format: DateFormat::new("yyyy_MM_dd"),
-            journal_title_format: DateFormat::new("MMM do, yyyy"),
+            journal_title_formats: vec![DateFormat::new(DEFAULT_TITLE_FORMAT)],
             triple_lowbar: false,
         }
     }
@@ -41,8 +44,10 @@ impl Config {
         if let Some(f) = edn_string(&text, ":journal/file-name-format") {
             c.journal_file_format = DateFormat::new(&f);
         }
-        if let Some(f) = edn_string(&text, ":journal/page-title-format") {
-            c.journal_title_format = DateFormat::new(&f);
+        if let Some(f) = edn_string(&text, ":journal/page-title-format")
+            && f != DEFAULT_TITLE_FORMAT
+        {
+            c.journal_title_formats.insert(0, DateFormat::new(&f));
         }
         c.triple_lowbar = text
             .split_once(":file/name-format")
@@ -144,20 +149,20 @@ impl DateFormat {
                 }
                 Tok::DayOrd => {
                     let (v, r) = num(rest, 1, 2)?;
-                    let r = r.get(2..).filter(|_| {
-                        matches!(
-                            r[..2].to_ascii_lowercase().as_str(),
-                            "st" | "nd" | "rd" | "th"
-                        )
-                    })?;
+                    let suffix = r.get(..2)?.to_ascii_lowercase();
+                    if !matches!(suffix.as_str(), "st" | "nd" | "rd" | "th") {
+                        return None;
+                    }
+                    let r = &r[2..];
                     (d, rest) = (Some(v), r);
                 }
                 Tok::Weekday => {
-                    let n = rest.chars().take_while(|c| c.is_alphabetic()).count();
-                    if n < 3 {
+                    let letters: Vec<char> =
+                        rest.chars().take_while(|c| c.is_alphabetic()).collect();
+                    if letters.len() < 3 {
                         return None;
                     }
-                    rest = &rest[n..];
+                    rest = &rest[letters.iter().map(|c| c.len_utf8()).sum::<usize>()..];
                 }
                 Tok::Lit(c) => rest = rest.strip_prefix(*c)?,
             }
@@ -191,6 +196,20 @@ fn month_name(s: &str, short: bool) -> Option<(u32, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_ascii_weekdays_and_suffixes_do_not_panic() {
+        let f = DateFormat::new("E, dd-MM-yyyy");
+        assert_eq!(
+            f.parse("mié, 15-03-2024"),
+            NaiveDate::from_ymd_opt(2024, 3, 15)
+        );
+        assert_eq!(
+            f.parse("miércoles, 15-03-2024"),
+            NaiveDate::from_ymd_opt(2024, 3, 15)
+        );
+        assert_eq!(DateFormat::new("MMM do, yyyy").parse("Mar 1é, 2024"), None);
+    }
 
     fn d(y: i32, m: u32, d: u32) -> Option<NaiveDate> {
         NaiveDate::from_ymd_opt(y, m, d)

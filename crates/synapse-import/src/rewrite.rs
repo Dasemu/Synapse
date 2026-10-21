@@ -53,9 +53,9 @@ pub fn rewrite_assets(
     out
 }
 
-/// Rewrites `[[Mar 15th, 2024]]` (the configured journal title format) to `[[2024-03-15]]`,
+/// Rewrites `[[Mar 15th, 2024]]` (any of the journal title formats) to `[[2024-03-15]]`,
 /// the title Synapse gives journal pages. Code fences are left alone.
-pub fn rewrite_dates(content: &str, fmt: &DateFormat) -> String {
+pub fn rewrite_dates(content: &str, fmts: &[DateFormat]) -> String {
     if !content.contains("[[") {
         return content.to_string();
     }
@@ -68,13 +68,13 @@ pub fn rewrite_dates(content: &str, fmt: &DateFormat) -> String {
         lines.push(if fence || !line.contains("[[") {
             line.to_string()
         } else {
-            rewrite_line(line, fmt)
+            rewrite_line(line, fmts)
         });
     }
     lines.join("\n")
 }
 
-fn rewrite_line(line: &str, fmt: &DateFormat) -> String {
+fn rewrite_line(line: &str, fmts: &[DateFormat]) -> String {
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
     while let Some(open) = rest.find("[[") {
@@ -82,7 +82,10 @@ fn rewrite_line(line: &str, fmt: &DateFormat) -> String {
         let Some(close) = after.find("]]") else { break };
         let inner = &after[..close];
         out.push_str(&rest[..open + 2]);
-        match fmt.parse(inner).filter(|_| !inner.contains("[[")) {
+        let date = (!inner.contains("[["))
+            .then(|| fmts.iter().find_map(|f| f.parse(inner)))
+            .flatten();
+        match date {
             Some(d) => out.push_str(&d.format("%Y-%m-%d").to_string()),
             None => out.push_str(inner),
         }
@@ -141,13 +144,16 @@ mod tests {
 
     #[test]
     fn rewrites_dates() {
-        let f = DateFormat::new("MMM do, yyyy");
+        let f = [
+            DateFormat::new("E, dd-MM-yyyy"),
+            DateFormat::new("MMM do, yyyy"),
+        ];
         assert_eq!(
             rewrite_dates(
-                "see [[Mar 15th, 2024]] and [[Other]] #[[Jan 1st, 2020]]",
+                "see [[Mar 15th, 2024]] and [[Other]] #[[Jan 1st, 2020]] [[vie, 15-03-2024]]",
                 &f
             ),
-            "see [[2024-03-15]] and [[Other]] #[[2020-01-01]]"
+            "see [[2024-03-15]] and [[Other]] #[[2020-01-01]] [[2024-03-15]]"
         );
     }
 }
