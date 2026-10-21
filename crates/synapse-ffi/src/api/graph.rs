@@ -16,6 +16,8 @@ use uuid::Uuid;
 /// same shape `synapse-sync`'s `SyncClient` takes, so a sync client can share it.
 pub struct SynapseGraph {
     graph: Arc<Mutex<Graph>>,
+    /// Page-level graph for the graph views, keyed by what invalidates it.
+    pub(crate) graph_cache: Mutex<Option<(super::graph_view::CacheKey, Arc<GraphData>)>>,
 }
 
 impl SynapseGraph {
@@ -24,6 +26,7 @@ impl SynapseGraph {
         let graph = Graph::open(&dir).with_context(|| format!("opening graph at {dir}"))?;
         Ok(SynapseGraph {
             graph: Arc::new(Mutex::new(graph)),
+            graph_cache: Mutex::new(None),
         })
     }
 

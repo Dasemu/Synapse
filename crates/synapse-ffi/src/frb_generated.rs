@@ -28,6 +28,7 @@
 // Section: imports
 
 use crate::api::graph::*;
+use crate::api::layout::*;
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
 use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
@@ -40,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1980668428;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -553305025;
 
 // Section: executor
 
@@ -48,6 +49,262 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
+fn wire__crate__api__layout__ForceLayout_new_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ForceLayout_new",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_node_count = <u32>::sse_decode(&mut deserializer);
+            let api_sources = <Vec<u32>>::sse_decode(&mut deserializer);
+            let api_targets = <Vec<u32>>::sse_decode(&mut deserializer);
+            let api_weights = <Vec<f32>>::sse_decode(&mut deserializer);
+            let api_initial = <Option<Vec<f32>>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::layout::ForceLayout::new(
+                    api_node_count,
+                    api_sources,
+                    api_targets,
+                    api_weights,
+                    api_initial,
+                ))?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__layout__ForceLayout_pin_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ForceLayout_pin",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>,
+            >>::sse_decode(&mut deserializer);
+            let api_index = <u32>::sse_decode(&mut deserializer);
+            let api_x = <f32>::sse_decode(&mut deserializer);
+            let api_y = <f32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, true,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let mut api_that_guard = api_that_guard.unwrap();
+                    let output_ok = Ok::<_, ()>({
+                        crate::api::layout::ForceLayout::pin(
+                            &mut *api_that_guard,
+                            api_index,
+                            api_x,
+                            api_y,
+                        );
+                    })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__layout__ForceLayout_reheat_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ForceLayout_reheat",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>,
+            >>::sse_decode(&mut deserializer);
+            let api_alpha = <f32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, true,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let mut api_that_guard = api_that_guard.unwrap();
+                    let output_ok = Ok::<_, ()>({
+                        crate::api::layout::ForceLayout::reheat(&mut *api_that_guard, api_alpha);
+                    })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__layout__ForceLayout_step_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ForceLayout_step",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>,
+            >>::sse_decode(&mut deserializer);
+            let api_iterations = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, true,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let mut api_that_guard = api_that_guard.unwrap();
+                    let output_ok = Ok::<_, ()>(crate::api::layout::ForceLayout::step(
+                        &mut *api_that_guard,
+                        api_iterations,
+                    ))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__layout__ForceLayout_unpin_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ForceLayout_unpin",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>,
+            >>::sse_decode(&mut deserializer);
+            let api_index = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, true,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let mut api_that_guard = api_that_guard.unwrap();
+                    let output_ok = Ok::<_, ()>({
+                        crate::api::layout::ForceLayout::unpin(&mut *api_that_guard, api_index);
+                    })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_add_alias_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -470,6 +727,58 @@ fn wire__crate__api__graph__SynapseGraph_dir_impl(
                     Ok::<_, ()>(crate::api::graph::SynapseGraph::dir(&*api_that_guard))?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_graph_data_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_graph_data",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::graph::SynapseGraph::graph_data(&*api_that_guard)?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
@@ -1913,6 +2222,9 @@ fn wire__crate__api__graph__SynapseGraph_update_block_impl(
 // Section: related_funcs
 
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>
+);
+flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>
 );
 
@@ -1926,6 +2238,16 @@ impl SseDecode for flutter_rust_bridge::for_generated::anyhow::Error {
     }
 }
 
+impl SseDecode for ForceLayout {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <RustOpaqueMoi<
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>,
+        >>::sse_decode(deserializer);
+        return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
+    }
+}
+
 impl SseDecode for SynapseGraph {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1933,6 +2255,16 @@ impl SseDecode for SynapseGraph {
             flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
+    }
+}
+
+impl SseDecode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <usize>::sse_decode(deserializer);
+        return decode_rust_opaque_moi(inner);
     }
 }
 
@@ -2062,6 +2394,52 @@ impl SseDecode for f32 {
     }
 }
 
+impl SseDecode for crate::api::dto::GraphData {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_nodes = <Vec<crate::api::dto::GraphNode>>::sse_decode(deserializer);
+        let mut var_sources = <Vec<u32>>::sse_decode(deserializer);
+        let mut var_targets = <Vec<u32>>::sse_decode(deserializer);
+        let mut var_kinds = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_weights = <Vec<f32>>::sse_decode(deserializer);
+        let mut var_seq = <i64>::sse_decode(deserializer);
+        return crate::api::dto::GraphData {
+            nodes: var_nodes,
+            sources: var_sources,
+            targets: var_targets,
+            kinds: var_kinds,
+            weights: var_weights,
+            seq: var_seq,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::GraphNode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_journalDate = <Option<String>>::sse_decode(deserializer);
+        let mut var_originJournal = <Option<String>>::sse_decode(deserializer);
+        let mut var_createdAt = <i64>::sse_decode(deserializer);
+        let mut var_degree = <u32>::sse_decode(deserializer);
+        let mut var_backlinks = <u32>::sse_decode(deserializer);
+        let mut var_cluster = <u32>::sse_decode(deserializer);
+        let mut var_primaryTag = <Option<u32>>::sse_decode(deserializer);
+        return crate::api::dto::GraphNode {
+            id: var_id,
+            title: var_title,
+            journal_date: var_journalDate,
+            origin_journal: var_originJournal,
+            created_at: var_createdAt,
+            degree: var_degree,
+            backlinks: var_backlinks,
+            cluster: var_cluster,
+            primary_tag: var_primaryTag,
+        };
+    }
+}
+
 impl SseDecode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2073,6 +2451,18 @@ impl SseDecode for i64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_i64::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for crate::api::dto::LayoutFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_positions = <Vec<f32>>::sse_decode(deserializer);
+        let mut var_alpha = <f32>::sse_decode(deserializer);
+        return crate::api::dto::LayoutFrame {
+            positions: var_positions,
+            alpha: var_alpha,
+        };
     }
 }
 
@@ -2136,6 +2526,18 @@ impl SseDecode for Vec<crate::api::dto::EditDto> {
     }
 }
 
+impl SseDecode for Vec<crate::api::dto::GraphNode> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::GraphNode>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::dto::PageBrief> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2167,6 +2569,30 @@ impl SseDecode for Vec<crate::api::dto::PageDto> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::dto::PageDto>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<f32>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<u32>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2247,6 +2673,28 @@ impl SseDecode for Option<crate::api::dto::PageData> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::api::dto::PageData>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<Vec<f32>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<Vec<f32>>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -2436,133 +2884,140 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => {
+        2 => wire__crate__api__layout__ForceLayout_pin_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__layout__ForceLayout_reheat_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__layout__ForceLayout_step_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__layout__ForceLayout_unpin_impl(port, ptr, rust_vec_len, data_len),
+        6 => {
             wire__crate__api__graph__SynapseGraph_add_alias_impl(port, ptr, rust_vec_len, data_len)
         }
-        2 => wire__crate__api__graph__SynapseGraph_aliases_impl(port, ptr, rust_vec_len, data_len),
-        4 => {
+        7 => wire__crate__api__graph__SynapseGraph_aliases_impl(port, ptr, rust_vec_len, data_len),
+        9 => {
             wire__crate__api__graph__SynapseGraph_backlinks_impl(port, ptr, rust_vec_len, data_len)
         }
-        5 => {
+        10 => {
             wire__crate__api__graph__SynapseGraph_block_ref_impl(port, ptr, rust_vec_len, data_len)
         }
-        6 => wire__crate__api__graph__SynapseGraph_delete_block_impl(
+        11 => wire__crate__api__graph__SynapseGraph_delete_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        7 => wire__crate__api__graph__SynapseGraph_delete_page_impl(
+        12 => wire__crate__api__graph__SynapseGraph_delete_page_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        9 => wire__crate__api__graph__SynapseGraph_indent_block_impl(
+        14 => {
+            wire__crate__api__graph__SynapseGraph_graph_data_impl(port, ptr, rust_vec_len, data_len)
+        }
+        15 => wire__crate__api__graph__SynapseGraph_indent_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        10 => wire__crate__api__graph__SynapseGraph_insert_block_impl(
+        16 => wire__crate__api__graph__SynapseGraph_insert_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        11 => wire__crate__api__graph__SynapseGraph_journal_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__graph__SynapseGraph_journal_neighbors_impl(
+        17 => wire__crate__api__graph__SynapseGraph_journal_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__graph__SynapseGraph_journal_neighbors_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        13 => {
+        19 => {
             wire__crate__api__graph__SynapseGraph_journals_impl(port, ptr, rust_vec_len, data_len)
         }
-        14 => {
+        20 => {
             wire__crate__api__graph__SynapseGraph_list_pages_impl(port, ptr, rust_vec_len, data_len)
         }
-        15 => wire__crate__api__graph__SynapseGraph_merge_block_impl(
+        21 => wire__crate__api__graph__SynapseGraph_merge_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => {
+        22 => {
             wire__crate__api__graph__SynapseGraph_move_block_impl(port, ptr, rust_vec_len, data_len)
         }
-        17 => wire__crate__api__graph__SynapseGraph_open_impl(port, ptr, rust_vec_len, data_len),
-        18 => {
+        23 => wire__crate__api__graph__SynapseGraph_open_impl(port, ptr, rust_vec_len, data_len),
+        24 => {
             wire__crate__api__graph__SynapseGraph_open_page_impl(port, ptr, rust_vec_len, data_len)
         }
-        19 => wire__crate__api__graph__SynapseGraph_outdent_block_impl(
+        25 => wire__crate__api__graph__SynapseGraph_outdent_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        20 => wire__crate__api__graph__SynapseGraph_outline_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__graph__SynapseGraph_page_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__graph__SynapseGraph_page_by_title_impl(
+        26 => wire__crate__api__graph__SynapseGraph_outline_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__graph__SynapseGraph_page_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__graph__SynapseGraph_page_by_title_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__crate__api__graph__SynapseGraph_put_asset_bytes_impl(
+        29 => wire__crate__api__graph__SynapseGraph_put_asset_bytes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        24 => wire__crate__api__graph__SynapseGraph_put_asset_file_impl(
+        30 => wire__crate__api__graph__SynapseGraph_put_asset_file_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__crate__api__graph__SynapseGraph_record_visit_impl(
+        31 => wire__crate__api__graph__SynapseGraph_record_visit_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__graph__SynapseGraph_related_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__graph__SynapseGraph_remove_alias_impl(
+        32 => wire__crate__api__graph__SynapseGraph_related_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__graph__SynapseGraph_remove_alias_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => wire__crate__api__graph__SynapseGraph_rename_page_impl(
+        34 => wire__crate__api__graph__SynapseGraph_rename_page_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__graph__SynapseGraph_search_blocks_impl(
+        35 => wire__crate__api__graph__SynapseGraph_search_blocks_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__graph__SynapseGraph_search_titles_impl(
+        36 => wire__crate__api__graph__SynapseGraph_search_titles_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__graph__SynapseGraph_set_collapsed_impl(
+        37 => wire__crate__api__graph__SynapseGraph_set_collapsed_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => {
+        38 => {
             wire__crate__api__graph__SynapseGraph_timeline_impl(port, ptr, rust_vec_len, data_len)
         }
-        34 => wire__crate__api__graph__SynapseGraph_update_block_impl(
+        40 => wire__crate__api__graph__SynapseGraph_update_block_impl(
             port,
             ptr,
             rust_vec_len,
@@ -2580,14 +3035,30 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        3 => wire__crate__api__graph__SynapseGraph_asset_path_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__graph__SynapseGraph_dir_impl(ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__graph__SynapseGraph_today_impl(ptr, rust_vec_len, data_len),
+        1 => wire__crate__api__layout__ForceLayout_new_impl(ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__graph__SynapseGraph_asset_path_impl(ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__graph__SynapseGraph_dir_impl(ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__graph__SynapseGraph_today_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
 
 // Section: rust2dart
+
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<ForceLayout> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
+            .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<ForceLayout> {}
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<ForceLayout>> for ForceLayout {
+    fn into_into_dart(self) -> FrbWrapper<ForceLayout> {
+        self.into()
+    }
+}
 
 // Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<SynapseGraph> {
@@ -2715,6 +3186,67 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::EditDto {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::EditDto {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::EditDto> for crate::api::dto::EditDto {
     fn into_into_dart(self) -> crate::api::dto::EditDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::GraphData {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.nodes.into_into_dart().into_dart(),
+            self.sources.into_into_dart().into_dart(),
+            self.targets.into_into_dart().into_dart(),
+            self.kinds.into_into_dart().into_dart(),
+            self.weights.into_into_dart().into_dart(),
+            self.seq.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::GraphData {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::GraphData> for crate::api::dto::GraphData {
+    fn into_into_dart(self) -> crate::api::dto::GraphData {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::GraphNode {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.title.into_into_dart().into_dart(),
+            self.journal_date.into_into_dart().into_dart(),
+            self.origin_journal.into_into_dart().into_dart(),
+            self.created_at.into_into_dart().into_dart(),
+            self.degree.into_into_dart().into_dart(),
+            self.backlinks.into_into_dart().into_dart(),
+            self.cluster.into_into_dart().into_dart(),
+            self.primary_tag.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::GraphNode {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::GraphNode> for crate::api::dto::GraphNode {
+    fn into_into_dart(self) -> crate::api::dto::GraphNode {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::LayoutFrame {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.positions.into_into_dart().into_dart(),
+            self.alpha.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::LayoutFrame {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::LayoutFrame>
+    for crate::api::dto::LayoutFrame
+{
+    fn into_into_dart(self) -> crate::api::dto::LayoutFrame {
         self
     }
 }
@@ -2892,10 +3424,28 @@ impl SseEncode for flutter_rust_bridge::for_generated::anyhow::Error {
     }
 }
 
+impl SseEncode for ForceLayout {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+    }
+}
+
 impl SseEncode for SynapseGraph {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+    }
+}
+
+impl SseEncode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        let (ptr, size) = self.sse_encode_raw();
+        <usize>::sse_encode(ptr, serializer);
+        <i32>::sse_encode(size, serializer);
     }
 }
 
@@ -2990,6 +3540,33 @@ impl SseEncode for f32 {
     }
 }
 
+impl SseEncode for crate::api::dto::GraphData {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::dto::GraphNode>>::sse_encode(self.nodes, serializer);
+        <Vec<u32>>::sse_encode(self.sources, serializer);
+        <Vec<u32>>::sse_encode(self.targets, serializer);
+        <Vec<u8>>::sse_encode(self.kinds, serializer);
+        <Vec<f32>>::sse_encode(self.weights, serializer);
+        <i64>::sse_encode(self.seq, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::GraphNode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <Option<String>>::sse_encode(self.journal_date, serializer);
+        <Option<String>>::sse_encode(self.origin_journal, serializer);
+        <i64>::sse_encode(self.created_at, serializer);
+        <u32>::sse_encode(self.degree, serializer);
+        <u32>::sse_encode(self.backlinks, serializer);
+        <u32>::sse_encode(self.cluster, serializer);
+        <Option<u32>>::sse_encode(self.primary_tag, serializer);
+    }
+}
+
 impl SseEncode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3001,6 +3578,14 @@ impl SseEncode for i64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_i64::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for crate::api::dto::LayoutFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<f32>>::sse_encode(self.positions, serializer);
+        <f32>::sse_encode(self.alpha, serializer);
     }
 }
 
@@ -3054,6 +3639,16 @@ impl SseEncode for Vec<crate::api::dto::EditDto> {
     }
 }
 
+impl SseEncode for Vec<crate::api::dto::GraphNode> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::GraphNode>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::dto::PageBrief> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3080,6 +3675,26 @@ impl SseEncode for Vec<crate::api::dto::PageDto> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::dto::PageDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <f32>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u32>::sse_encode(item, serializer);
         }
     }
 }
@@ -3150,6 +3765,26 @@ impl SseEncode for Option<crate::api::dto::PageData> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::api::dto::PageData>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u32>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<Vec<f32>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <Vec<f32>>::sse_encode(value, serializer);
         }
     }
 }
@@ -3300,6 +3935,7 @@ mod io {
 
     use super::*;
     use crate::api::graph::*;
+    use crate::api::layout::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
@@ -3309,6 +3945,20 @@ mod io {
     // Section: boilerplate
 
     flutter_rust_bridge::frb_generated_boilerplate_io!();
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_synapse_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>::increment_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_synapse_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>::decrement_strong_count(ptr as _);
+    }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_synapse_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
@@ -3337,6 +3987,7 @@ mod web {
 
     use super::*;
     use crate::api::graph::*;
+    use crate::api::layout::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
@@ -3348,6 +3999,20 @@ mod web {
     // Section: boilerplate
 
     flutter_rust_bridge::frb_generated_boilerplate_web!();
+
+    #[wasm_bindgen]
+    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>::increment_strong_count(ptr as _);
+    }
+
+    #[wasm_bindgen]
+    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ForceLayout>>::decrement_strong_count(ptr as _);
+    }
 
     #[wasm_bindgen]
     pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(

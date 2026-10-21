@@ -8,6 +8,7 @@
 
 import 'api/dto.dart';
 import 'api/graph.dart';
+import 'api/layout.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -25,11 +26,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_ForceLayoutPtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout;
+
+  CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_SynapseGraphPtr => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph;
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  ForceLayout
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    dynamic raw,
+  );
 
   @protected
   SynapseGraph
@@ -38,8 +49,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ForceLayout
+  dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    dynamic raw,
+  );
+
+  @protected
   SynapseGraph
   dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
+    dynamic raw,
+  );
+
+  @protected
+  ForceLayout
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
     dynamic raw,
   );
 
@@ -80,16 +103,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Place dco_decode_box_autoadd_place(dynamic raw);
 
   @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
   EditDto dco_decode_edit_dto(dynamic raw);
 
   @protected
   double dco_decode_f_32(dynamic raw);
 
   @protected
+  GraphData dco_decode_graph_data(dynamic raw);
+
+  @protected
+  GraphNode dco_decode_graph_node(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  LayoutFrame dco_decode_layout_frame(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -107,6 +142,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<EditDto> dco_decode_list_edit_dto(dynamic raw);
 
   @protected
+  List<GraphNode> dco_decode_list_graph_node(dynamic raw);
+
+  @protected
   List<PageBrief> dco_decode_list_page_brief(dynamic raw);
 
   @protected
@@ -114,6 +152,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<PageDto> dco_decode_list_page_dto(dynamic raw);
+
+  @protected
+  List<double> dco_decode_list_prim_f_32_loose(dynamic raw);
+
+  @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -138,6 +188,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PageData? dco_decode_opt_box_autoadd_page_data(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  Float32List? dco_decode_opt_list_prim_f_32_strict(dynamic raw);
 
   @protected
   PageBrief dco_decode_page_brief(dynamic raw);
@@ -188,14 +244,32 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  ForceLayout
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SynapseGraph
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SseDeserializer deserializer,
   );
 
   @protected
+  ForceLayout
+  sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   SynapseGraph
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ForceLayout
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
     SseDeserializer deserializer,
   );
 
@@ -238,16 +312,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Place sse_decode_box_autoadd_place(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
   EditDto sse_decode_edit_dto(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
+  GraphData sse_decode_graph_data(SseDeserializer deserializer);
+
+  @protected
+  GraphNode sse_decode_graph_node(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  LayoutFrame sse_decode_layout_frame(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -267,6 +353,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<EditDto> sse_decode_list_edit_dto(SseDeserializer deserializer);
 
   @protected
+  List<GraphNode> sse_decode_list_graph_node(SseDeserializer deserializer);
+
+  @protected
   List<PageBrief> sse_decode_list_page_brief(SseDeserializer deserializer);
 
   @protected
@@ -274,6 +363,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<PageDto> sse_decode_list_page_dto(SseDeserializer deserializer);
+
+  @protected
+  List<double> sse_decode_list_prim_f_32_loose(SseDeserializer deserializer);
+
+  @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
+
+  @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
@@ -302,6 +403,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PageData? sse_decode_opt_box_autoadd_page_data(SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  Float32List? sse_decode_opt_list_prim_f_32_strict(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PageBrief sse_decode_page_brief(SseDeserializer deserializer);
@@ -358,6 +467,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SynapseGraph self,
     SseSerializer serializer,
@@ -365,8 +481,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
+  sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     SynapseGraph self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    ForceLayout self,
     SseSerializer serializer,
   );
 
@@ -414,16 +544,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_place(Place self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_edit_dto(EditDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
+  void sse_encode_graph_data(GraphData self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_graph_node(GraphNode self, SseSerializer serializer);
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_layout_frame(LayoutFrame self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -444,6 +586,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_edit_dto(List<EditDto> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_graph_node(
+    List<GraphNode> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_page_brief(
     List<PageBrief> self,
     SseSerializer serializer,
@@ -454,6 +602,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_page_dto(List<PageDto> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_f_32_loose(
+    List<double> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -491,6 +663,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_page_data(
     PageData? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_list_prim_f_32_strict(
+    Float32List? self,
     SseSerializer serializer,
   );
 
@@ -552,6 +733,22 @@ class RustLibWire implements BaseWire {
   RustLibWire.fromExternalLibrary(ExternalLibrary lib);
 
   void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr,
+      );
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+        ptr,
+      );
+
+  void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     int ptr,
   ) => wasmModule
@@ -574,6 +771,16 @@ external RustLibWasmModule get wasmModule;
 @JS()
 @anonymous
 extension type RustLibWasmModule._(JSObject _) implements JSObject {
+  external void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    int ptr,
+  );
+
+  external void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerForceLayout(
+    int ptr,
+  );
+
   external void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
     int ptr,

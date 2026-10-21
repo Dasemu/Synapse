@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
 class AssetDto {
   final String hash;
@@ -180,6 +180,134 @@ class EditDto {
           runtimeType == other.runtimeType &&
           pageId == other.pageId &&
           edits == other.edits;
+}
+
+/// The whole page-level graph, edges as parallel arrays (cheap to move across the FFI).
+/// Edges are directed source → target, except synapses (stored once, `source < target`).
+class GraphData {
+  final List<GraphNode> nodes;
+  final Uint32List sources;
+  final Uint32List targets;
+
+  /// See [`edge_kind`].
+  final Uint8List kinds;
+
+  /// Number of references (structural edges) or synapse strength.
+  final Float32List weights;
+
+  /// Op-log sequence the data was built at.
+  final PlatformInt64 seq;
+
+  const GraphData({
+    required this.nodes,
+    required this.sources,
+    required this.targets,
+    required this.kinds,
+    required this.weights,
+    required this.seq,
+  });
+
+  @override
+  int get hashCode =>
+      nodes.hashCode ^
+      sources.hashCode ^
+      targets.hashCode ^
+      kinds.hashCode ^
+      weights.hashCode ^
+      seq.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GraphData &&
+          runtimeType == other.runtimeType &&
+          nodes == other.nodes &&
+          sources == other.sources &&
+          targets == other.targets &&
+          kinds == other.kinds &&
+          weights == other.weights &&
+          seq == other.seq;
+}
+
+class GraphNode {
+  final String id;
+  final String title;
+  final String? journalDate;
+  final String? originJournal;
+  final PlatformInt64 createdAt;
+
+  /// Distinct neighbours over structural edges (links, tags, properties, block refs).
+  final int degree;
+
+  /// Distinct pages referencing this one.
+  final int backlinks;
+
+  /// Community (Louvain), numbered by size: 0 is the largest.
+  final int cluster;
+
+  /// Node index of the tag this page uses most, if any.
+  final int? primaryTag;
+
+  const GraphNode({
+    required this.id,
+    required this.title,
+    this.journalDate,
+    this.originJournal,
+    required this.createdAt,
+    required this.degree,
+    required this.backlinks,
+    required this.cluster,
+    this.primaryTag,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      title.hashCode ^
+      journalDate.hashCode ^
+      originJournal.hashCode ^
+      createdAt.hashCode ^
+      degree.hashCode ^
+      backlinks.hashCode ^
+      cluster.hashCode ^
+      primaryTag.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GraphNode &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          journalDate == other.journalDate &&
+          originJournal == other.originJournal &&
+          createdAt == other.createdAt &&
+          degree == other.degree &&
+          backlinks == other.backlinks &&
+          cluster == other.cluster &&
+          primaryTag == other.primaryTag;
+}
+
+/// One batch of layout iterations.
+class LayoutFrame {
+  /// `x0, y0, x1, y1, ...`
+  final Float32List positions;
+
+  /// Remaining "temperature"; the layout is settled when it reaches 0.
+  final double alpha;
+
+  const LayoutFrame({required this.positions, required this.alpha});
+
+  @override
+  int get hashCode => positions.hashCode ^ alpha.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LayoutFrame &&
+          runtimeType == other.runtimeType &&
+          positions == other.positions &&
+          alpha == other.alpha;
 }
 
 class PageBrief {

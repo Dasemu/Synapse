@@ -169,3 +169,57 @@ pub struct BlockHit {
     pub content: String,
     pub page_title: String,
 }
+
+/// Kind codes of [`GraphData::kinds`].
+pub mod edge_kind {
+    pub const LINK: u8 = 0;
+    pub const TAG: u8 = 1;
+    pub const PROPERTY: u8 = 2;
+    pub const BLOCK_REF: u8 = 3;
+    pub const EMBED: u8 = 4;
+    /// Unlinked reference: the target's title appears in the source's text.
+    pub const MENTION: u8 = 5;
+    /// Hebbian association (undirected), weight = decayed synapse strength.
+    pub const SYNAPSE: u8 = 6;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GraphNode {
+    pub id: String,
+    pub title: String,
+    pub journal_date: Option<String>,
+    pub origin_journal: Option<String>,
+    pub created_at: i64,
+    /// Distinct neighbours over structural edges (links, tags, properties, block refs).
+    pub degree: u32,
+    /// Distinct pages referencing this one.
+    pub backlinks: u32,
+    /// Community (Louvain), numbered by size: 0 is the largest.
+    pub cluster: u32,
+    /// Node index of the tag this page uses most, if any.
+    pub primary_tag: Option<u32>,
+}
+
+/// The whole page-level graph, edges as parallel arrays (cheap to move across the FFI).
+/// Edges are directed source → target, except synapses (stored once, `source < target`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GraphData {
+    pub nodes: Vec<GraphNode>,
+    pub sources: Vec<u32>,
+    pub targets: Vec<u32>,
+    /// See [`edge_kind`].
+    pub kinds: Vec<u8>,
+    /// Number of references (structural edges) or synapse strength.
+    pub weights: Vec<f32>,
+    /// Op-log sequence the data was built at.
+    pub seq: i64,
+}
+
+/// One batch of layout iterations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayoutFrame {
+    /// `x0, y0, x1, y1, ...`
+    pub positions: Vec<f32>,
+    /// Remaining "temperature"; the layout is settled when it reaches 0.
+    pub alpha: f32,
+}

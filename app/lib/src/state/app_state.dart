@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../backend/graph_backend.dart';
+import '../graph/network_canvas.dart';
 import 'write_queue.dart';
 
 sealed class AppRoute {
@@ -17,6 +18,26 @@ class TimelineRoute extends AppRoute {
 
 class AllPagesRoute extends AppRoute {
   const AllPagesRoute();
+}
+
+enum GraphMode {
+  network('Network', Icons.hub_outlined),
+  local('Local', Icons.adjust_rounded),
+  brain('Synapses', Icons.bolt_outlined),
+  clusters('Clusters', Icons.bubble_chart_outlined),
+  tree('Namespaces', Icons.account_tree_outlined),
+  timeline('Timeline', Icons.timeline_rounded);
+
+  const GraphMode(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+/// The graph view in a given mode, optionally focused on a page.
+class GraphRoute extends AppRoute {
+  const GraphRoute(this.mode, {this.focusId});
+  final GraphMode mode;
+  final String? focusId;
 }
 
 /// A page, by id or (for links that may not exist yet) by title.
@@ -48,6 +69,9 @@ class AppState extends ChangeNotifier {
   final _forward = <AppRoute>[];
   ThemeMode themeMode = ThemeMode.system;
   final List<PageBrief> recent = [];
+
+  /// Node positions shared by the graph views (stable layouts across modes and filters).
+  final graphPositions = PositionCache();
 
   /// Last page shown (for synapse reinforcement on navigation).
   String? _lastPageId;

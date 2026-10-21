@@ -8,7 +8,7 @@ import 'all_pages_view.dart';
 import 'journals_view.dart';
 import 'page_screen.dart';
 import 'quick_switcher.dart';
-import 'timeline_view.dart';
+import 'graph_view.dart';
 
 /// App frame: sidebar (navigation, recents, theme), top bar and the current view.
 class Shell extends StatefulWidget {
@@ -51,6 +51,12 @@ class _ShellState extends State<Shell> {
           shift: true,
         ): () =>
             app.go(const JournalsRoute()),
+        const SingleActivator(
+          LogicalKeyboardKey.keyG,
+          control: true,
+          shift: true,
+        ): () =>
+            app.go(const GraphRoute(GraphMode.network)),
         const SingleActivator(
           LogicalKeyboardKey.keyT,
           control: true,
@@ -111,7 +117,13 @@ class _ShellState extends State<Shell> {
                             key: ValueKey((route, app.generation)),
                             child: switch (route) {
                               JournalsRoute() => const JournalsView(),
-                              TimelineRoute() => const TimelineView(),
+                              TimelineRoute() => const GraphView(
+                                mode: GraphMode.timeline,
+                              ),
+                              GraphRoute() => GraphView(
+                                mode: route.mode,
+                                focusId: route.focusId,
+                              ),
                               AllPagesRoute() => const AllPagesView(),
                               PageTarget() => PageScreen(target: route),
                             },
@@ -256,6 +268,12 @@ class _Sidebar extends StatelessWidget {
               label: 'Journals',
               selected: route is JournalsRoute,
               onTap: () => go(const JournalsRoute()),
+            ),
+            _NavItem(
+              icon: Icons.hub_outlined,
+              label: 'Graph',
+              selected: route is GraphRoute,
+              onTap: () => go(const GraphRoute(GraphMode.network)),
             ),
             _NavItem(
               icon: Icons.timeline_rounded,

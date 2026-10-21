@@ -7,6 +7,7 @@ import '../state/outline_controller.dart';
 import '../theme/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
+import 'graph_view.dart';
 import 'journals_view.dart';
 
 /// A single page: title, aliases, outline, linked references and related notes.
@@ -108,8 +109,15 @@ class _PageScreenState extends State<PageScreen> {
                   SliverToBoxAdapter(
                     child: _LinkedReferences(groups: _backlinks),
                   ),
-                  if (!wide)
+                  if (!wide) ...[
                     SliverToBoxAdapter(child: RelatedPanel(related: _related)),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: LocalGraphPanel(pageId: view.page.id),
+                      ),
+                    ),
+                  ],
                   const SliverToBoxAdapter(child: SizedBox(height: 120)),
                 ],
               ),
@@ -128,7 +136,14 @@ class _PageScreenState extends State<PageScreen> {
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 44, 20, 40),
-                child: RelatedPanel(related: _related, compact: true),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LocalGraphPanel(pageId: view.page.id),
+                    const SizedBox(height: 32),
+                    RelatedPanel(related: _related, compact: true),
+                  ],
+                ),
               ),
             ),
           ],

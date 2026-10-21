@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
+import '../graph/graph_model.dart';
 import '../rust/api/dto.dart';
 import '../rust/api/graph.dart';
+import '../rust/api/layout.dart';
 
 export '../rust/api/dto.dart';
 
@@ -49,6 +53,39 @@ abstract class GraphBackend {
   /// Local path of an `asset://<hash>` blob, if present.
   String? assetPath(String hash);
   Future<AssetDto> putAssetFile(String path, {String? mime});
+
+  /// The whole page-level graph (cached by the core until the graph changes).
+  Future<GraphData> graphData();
+
+  /// A force layout over `nodeCount` nodes and the given (local) edges.
+  LayoutEngine createLayout(
+    int nodeCount,
+    Uint32List sources,
+    Uint32List targets,
+    Float32List weights, {
+    Float32List? initial,
+  });
+}
+
+class _FfiLayout implements LayoutEngine {
+  _FfiLayout(this._l);
+  final ForceLayout _l;
+
+  @override
+  Future<(Float32List, double)> step(int iterations) async {
+    final f = await _l.step(iterations: iterations);
+    return (f.positions, f.alpha);
+  }
+
+  @override
+  Future<void> pin(int index, double x, double y) =>
+      _l.pin(index: index, x: x, y: y);
+  @override
+  Future<void> unpin(int index) => _l.unpin(index: index);
+  @override
+  Future<void> reheat(double alpha) => _l.reheat(alpha: alpha);
+  @override
+  void dispose() => _l.dispose();
 }
 
 class FfiGraphBackend implements GraphBackend {
@@ -145,4 +182,24 @@ class FfiGraphBackend implements GraphBackend {
   @override
   Future<AssetDto> putAssetFile(String path, {String? mime}) =>
       _g.putAssetFile(path: path, mime: mime);
+
+  @override
+  Future<GraphData> graphData() => _g.graphData();
+
+  @override
+  LayoutEngine createLayout(
+    int nodeCount,
+    Uint32List sources,
+    Uint32List targets,
+    Float32List weights, {
+    Float32List? initial,
+  }) => _FfiLayout(
+    ForceLayout(
+      nodeCount: nodeCount,
+      sources: sources,
+      targets: targets,
+      weights: weights,
+      initial: initial,
+    ),
+  );
 }
