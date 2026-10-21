@@ -14,8 +14,12 @@
   switcher, shell), `theme/`.
 
 ## Toolchain
-- Flutter stable (3.47+) on `PATH`, Rust stable, `cargo install flutter_rust_bridge_codegen
-  --version 2.13.0 --locked`.
+- Flutter stable (3.47+) on `PATH`, Rust stable via rustup, `cargo install
+  flutter_rust_bridge_codegen --version 2.13.0 --locked`.
+- rustup's `~/.cargo/bin` must come **before** `/usr/bin` in `PATH`. Fedora's packaged `cargo`
+  (rust 1.99) cannot reuse artifacts built by rustup's toolchain (1.97) and cargokit picks up
+  whichever `cargo` is first: `export PATH="$HOME/.cargo/bin:$PATH"` (check with
+  `cargo --version`), or remove the distro `cargo`/`rust` packages.
 - Linux desktop: `clang cmake ninja-build gtk3-devel` (Fedora) / `clang cmake ninja-build
   libgtk-3-dev` (Debian/Ubuntu).
 - Android: Android SDK + NDK (cargokit installs the Rust targets with rustup).

@@ -5,14 +5,17 @@ use anyhow::{Context, Result, anyhow, bail};
 use chrono::NaiveDate;
 use flutter_rust_bridge::frb;
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use synapse_core::{Graph, NewPage, Page, PageId, journal_title};
 use uuid::Uuid;
 
 /// An open graph. Opaque to Dart; every call locks the graph for its duration, so calls are
 /// short and coarse-grained. The app serialises writes on its side to keep their order.
+///
+/// The graph is held as `Arc<Mutex<Graph>>` (the core `Graph` is `Send` but not `Sync`), the
+/// same shape `synapse-sync`'s `SyncClient` takes, so a sync client can share it.
 pub struct SynapseGraph {
-    graph: Mutex<Graph>,
+    graph: Arc<Mutex<Graph>>,
 }
 
 impl SynapseGraph {
@@ -20,8 +23,14 @@ impl SynapseGraph {
     pub fn open(dir: String) -> Result<SynapseGraph> {
         let graph = Graph::open(&dir).with_context(|| format!("opening graph at {dir}"))?;
         Ok(SynapseGraph {
-            graph: Mutex::new(graph),
+            graph: Arc::new(Mutex::new(graph)),
         })
+    }
+
+    /// The shared graph, for Rust-side services such as the sync client.
+    #[frb(ignore)]
+    pub fn shared(&self) -> Arc<Mutex<Graph>> {
+        Arc::clone(&self.graph)
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Graph> {
