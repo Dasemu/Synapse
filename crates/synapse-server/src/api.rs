@@ -82,25 +82,43 @@ pub async fn push_ops(
         ));
     }
     let h = graph_for(&s, &who, &id, false).await?;
-    let (applied, last_seq) = h
+    let max_future_ms = s.max_clock_skew.as_millis() as i64;
+    let (applied, last_seq, rejected) = h
         .run(move |g| {
-            let mut applied = 0u32;
-            for w in &req.ops {
-                if hlc_actor(&w.hlc).is_none() || synapse_core::hlc::decode(&w.hlc).is_none() {
-                    return Err(synapse_core::Error::Invalid(format!("bad hlc {:?}", w.hlc)));
+            let (mut applied, mut rejected) = (0u32, Vec::new());
+            let now = g.now_ms();
+            for (i, w) in req.ops.iter().enumerate() {
+                let reject = |reason: String| Rejection {
+                    index: i as u32,
+                    reason,
+                };
+                if let Err(reason) = validate_op(&w.hlc, &w.op, now, max_future_ms) {
+                    rejected.push(reject(reason));
+                    continue;
                 }
-                if g.apply_remote(&w.hlc, &w.op)? {
-                    applied += 1;
+                match g.apply_remote(&w.hlc, &w.op) {
+                    Ok(true) => applied += 1,
+                    Ok(false) => {}
+                    // Unappliable op: refuse it, keep the rest of the batch.
+                    Err(e) if is_poison(&e) => rejected.push(reject(e.to_string())),
+                    Err(e) => return Err(e),
                 }
             }
-            Ok((applied, g.last_seq()?))
+            Ok((applied, g.last_seq()?, rejected))
         })
         .await?;
     if applied > 0 {
         h.publish_seq(last_seq);
     }
+    if !rejected.is_empty() {
+        tracing::warn!(graph = %id, principal = %who.name, rejected = rejected.len(), first = %rejected[0].reason, "push: ops rejected");
+    }
     tracing::info!(graph = %id, principal = %who.name, applied, "push");
-    Ok(Json(PushResponse { applied, last_seq }))
+    Ok(Json(PushResponse {
+        applied,
+        last_seq,
+        rejected,
+    }))
 }
 
 #[derive(Deserialize)]

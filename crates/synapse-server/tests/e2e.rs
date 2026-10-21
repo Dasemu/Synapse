@@ -22,12 +22,16 @@ impl TestServer {
             auth_tokens: vec![TOKEN.into()],
             update_token: None,
             update_script: "/nonexistent".into(),
+            max_clock_skew: Duration::from_secs(600),
         };
         let server = synapse_server::start(&cfg).await.unwrap();
         Self { server, _dir: dir }
     }
     fn url(&self) -> String {
         format!("http://{}", self.server.addr)
+    }
+    fn graph_dir(&self, graph: &str) -> std::path::PathBuf {
+        self._dir.path().join("data").join(graph)
     }
     fn remote_cfg(&self, graph: &str, token: &str) -> RemoteConfig {
         RemoteConfig::new(self.url(), graph, token)
@@ -385,4 +389,146 @@ async fn background_loop_delivers_realtime_via_sse() {
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+fn put_asset(d: &Device, len: u32) -> String {
+    let data: Vec<u8> = (0..len).map(|i| (i % 253) as u8).collect();
+    d.g()
+        .put_asset_reader(&data[..], Some("a.bin"), None)
+        .unwrap()
+        .hash
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_local_blob_does_not_block_later_ops() {
+    let srv = TestServer::start().await;
+    let a = device(&srv, "main");
+    let hash = put_asset(&a, 10_000);
+    std::fs::remove_file(a.g().blobs().path_of(&hash)).unwrap();
+    {
+        let g = a.g();
+        let p = g.create_page(NewPage::titled("After")).unwrap();
+        g.insert_block(p.id, Placement::LastChildOf(None), "still pushed")
+            .unwrap();
+    }
+    a.client.sync_once().await.expect("cycle succeeds");
+    let st = a.client.state();
+    assert_eq!(st.status, SyncStatus::Idle);
+    assert_eq!(st.skipped_assets, 1);
+    assert_eq!(st.pending_ops, 0);
+    let thin = Remote::new(srv.remote_cfg("main", TOKEN)).unwrap();
+    assert!(thin.page_by_title("After").await.unwrap().is_some());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_remote_blob_does_not_wedge_the_cycle() {
+    let srv = TestServer::start().await;
+    let a = device(&srv, "main");
+    let b = device(&srv, "main");
+    let hash = put_asset(&a, 10_000);
+    {
+        let g = a.g();
+        let p = g.create_page(NewPage::titled("Doc")).unwrap();
+        g.insert_block(p.id, Placement::LastChildOf(None), "text")
+            .unwrap();
+    }
+    a.client.sync_once().await.unwrap();
+    // The server loses the blob (disk cleanup, manual deletion...).
+    let blob = srv
+        .graph_dir("main")
+        .join("blobs")
+        .join(&hash[..2])
+        .join(&hash[2..]);
+    std::fs::remove_file(blob).unwrap();
+    b.client
+        .sync_once()
+        .await
+        .expect("cycle succeeds despite the 404");
+    let st = b.client.state();
+    assert_eq!(st.status, SyncStatus::Idle);
+    assert_eq!(st.failed_blobs, 1);
+    assert_eq!(texts(&b, "Doc"), vec!["text"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn server_rejects_bad_ops_but_keeps_the_rest() {
+    use synapse_sync::protocol::WireOp;
+    let srv = TestServer::start().await;
+    let remote = Remote::new(srv.remote_cfg("main", TOKEN)).unwrap();
+    remote.ensure_graph().await.unwrap();
+    let id = synapse_core::new_id();
+    let op = synapse_core::Op::DeleteBlock { id };
+    let bad_asset = synapse_core::Op::PutAsset {
+        asset: synapse_core::Asset {
+            hash: "../../etc/passwd".into(),
+            size: 1,
+            mime: None,
+            original_name: None,
+            created_at: 0,
+        },
+    };
+    let ok_hlc = format!("{:013}-00000-peer", chrono::Utc::now().timestamp_millis());
+    let far = chrono::Utc::now().timestamp_millis() + 3_600_000;
+    let resp = remote
+        .push(vec![
+            WireOp {
+                hlc: ok_hlc.clone(),
+                op: op.clone(),
+            },
+            WireOp {
+                hlc: ok_hlc.clone(),
+                op: bad_asset,
+            },
+            WireOp {
+                hlc: format!("{far:013}-00000-peer"),
+                op: op.clone(),
+            },
+            WireOp {
+                hlc: "garbage".into(),
+                op,
+            },
+        ])
+        .await
+        .unwrap();
+    assert_eq!(resp.applied, 1);
+    let idx: Vec<u32> = resp.rejected.iter().map(|r| r.index).collect();
+    assert_eq!(idx, vec![1, 2, 3], "{:?}", resp.rejected);
+    assert!(resp.rejected[1].reason.contains("future"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn poison_op_in_server_log_does_not_wedge_pull() {
+    let srv = TestServer::start().await;
+    let a = device(&srv, "main");
+    a.client.sync_once().await.unwrap(); // creates the server graph
+    // Plant ops straight into the server log, bypassing push validation: an asset with a
+    // hostile hash (core may reject it as `Invalid`, which the client quarantines; older core
+    // applies it, which the client must then ignore) followed by a normal page.
+    {
+        let g = Graph::open(srv.graph_dir("main")).unwrap();
+        let bad = serde_json::json!({"type": "put_asset", "asset": {
+            "hash": "../../evil", "size": 1, "mime": null, "original_name": null, "created_at": 0}});
+        let ms = chrono::Utc::now().timestamp_millis();
+        g.conn()
+            .execute(
+                "INSERT INTO ops(hlc, payload) VALUES (?1, ?2)",
+                [
+                    format!("{ms:013}-00000-other").as_str(),
+                    bad.to_string().as_str(),
+                ],
+            )
+            .unwrap();
+    }
+    let c = device(&srv, "main");
+    {
+        let g = c.g();
+        let p = g.create_page(NewPage::titled("After poison")).unwrap();
+        g.insert_block(p.id, Placement::LastChildOf(None), "x")
+            .unwrap();
+    }
+    c.client.sync_once().await.unwrap();
+    let b = device(&srv, "main");
+    b.client.sync_once().await.expect("pull is not wedged");
+    assert_eq!(b.client.state().status, SyncStatus::Idle);
+    assert_eq!(texts(&b, "After poison"), vec!["x"]);
 }
