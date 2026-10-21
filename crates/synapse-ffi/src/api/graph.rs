@@ -126,7 +126,7 @@ impl SynapseGraph {
     pub fn journals(&self, before: Option<String>, limit: u32) -> Result<Vec<PageData>> {
         let g = self.lock();
         let mut out = Vec::new();
-        let mut cursor = match before {
+        let cursor = match before {
             None => {
                 let today = g.today_journal()?;
                 let date = today.journal_date;
@@ -135,14 +135,10 @@ impl SynapseGraph {
             }
             Some(b) => Some(parse_date(&b)?),
         };
-        while (out.len() as u32) < limit {
-            let Some(d) = cursor else { break };
-            let Some(prev) = g.journal_neighbors(d)?.prev else {
-                break;
-            };
-            let page = g.journal(prev)?;
-            out.push(page_view(&g, &page)?);
-            cursor = Some(prev);
+        if (out.len() as u32) < limit {
+            for page in g.journals_before(cursor, limit - out.len() as u32)? {
+                out.push(page_view(&g, &page)?);
+            }
         }
         Ok(out)
     }

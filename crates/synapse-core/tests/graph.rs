@@ -186,3 +186,42 @@ fn assets_are_deduplicated() {
     assert_eq!(a, b);
     assert!(g.blobs().contains(&a.hash));
 }
+
+#[test]
+fn transactions_nest_and_roll_back() {
+    let (_d, g) = graph();
+    let r: synapse_core::Result<()> = g.transaction(|g| {
+        g.create_page(NewPage::titled("Kept?"))?;
+        Err(synapse_core::Error::Invalid("abort".into()))
+    });
+    assert!(r.is_err());
+    assert!(g.page_by_title("Kept?").unwrap().is_none());
+    g.transaction(|g| {
+        let p = g.create_page(NewPage::titled("Outer"))?;
+        g.insert_block(p.id, Placement::LastChildOf(None), "inner tx")?;
+        Ok(())
+    })
+    .unwrap();
+    assert!(g.page_by_title("Outer").unwrap().is_some());
+}
+
+#[test]
+fn journals_before_pages_backwards() {
+    let (_d, g) = graph();
+    for d in [1, 3, 7] {
+        g.journal(day(2026, 10, d)).unwrap();
+    }
+    let titles = |v: Vec<synapse_core::Page>| {
+        v.into_iter()
+            .map(|p| p.journal_date.unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        titles(g.journals_before(None, 2).unwrap()),
+        vec![day(2026, 10, 7), day(2026, 10, 3)]
+    );
+    assert_eq!(
+        titles(g.journals_before(Some(day(2026, 10, 3)), 5).unwrap()),
+        vec![day(2026, 10, 1)]
+    );
+}

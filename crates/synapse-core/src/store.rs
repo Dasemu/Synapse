@@ -78,6 +78,23 @@ impl Graph {
         })
     }
 
+    /// Runs `f` atomically. Calls nest (SQLite savepoints), so callers such as importers can
+    /// group many graph operations into one transaction.
+    pub fn transaction<T>(&self, f: impl FnOnce(&Graph) -> Result<T>) -> Result<T> {
+        let tx = self.tx()?;
+        let out = f(self)?;
+        tx.commit()?;
+        Ok(out)
+    }
+
+    fn tx(&self) -> Result<Tx<'_>> {
+        self.conn.execute_batch("SAVEPOINT graph")?;
+        Ok(Tx {
+            conn: &self.conn,
+            done: false,
+        })
+    }
+
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -154,7 +171,7 @@ impl Graph {
 
     /// Creates a page. Its origin defaults to today's journal (pages are born in journals).
     pub fn create_page(&self, new: NewPage) -> Result<Page> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let page = self.create_page_tx(new)?;
         tx.commit()?;
         Ok(page)
@@ -182,6 +199,16 @@ impl Graph {
         };
         self.write_page(&page, &self.tick())?;
         Ok(page)
+    }
+
+    /// Writes a fully specified page as-is, keeping its timestamps (importers, restore).
+    pub fn put_page(&self, page: &Page) -> Result<()> {
+        let tx = self.tx()?;
+        if let Some(o) = page.origin_journal {
+            self.ensure_journal_tx(o)?;
+        }
+        self.write_page(page, &self.tick())?;
+        tx.commit()
     }
 
     /// Returns the page with this title, creating it (born in `origin`) if missing.
@@ -235,7 +262,7 @@ impl Graph {
 
     /// Renames a page and rewrites `[[Old]]` / `#Old` in every referencing block.
     pub fn rename_page(&self, id: PageId, new_title: &str) -> Result<Page> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let mut page = self
             .get_page(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
@@ -277,7 +304,7 @@ impl Graph {
 
     /// Deletes a page and all its blocks.
     pub fn delete_page(&self, id: PageId) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let ids: Vec<String> = {
             let mut st = self
                 .conn
@@ -318,7 +345,7 @@ impl Graph {
 
     /// The journal page for `date`, created if missing.
     pub fn journal(&self, date: NaiveDate) -> Result<Page> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let p = self.ensure_journal_tx(date)?;
         tx.commit()?;
         Ok(p)
@@ -367,6 +394,16 @@ impl Graph {
             prev: prev.and_then(|s| parse_day(&s)),
             next: next.and_then(|s| parse_day(&s)),
         })
+    }
+
+    /// Up to `limit` journals strictly before `before` (or the newest ones), newest first.
+    pub fn journals_before(&self, before: Option<NaiveDate>, limit: u32) -> Result<Vec<Page>> {
+        let mut st = self.conn.prepare_cached(&format!(
+            "SELECT {PAGE_COLS} FROM pages WHERE journal_date IS NOT NULL AND (?1 IS NULL OR journal_date < ?1)
+             ORDER BY journal_date DESC LIMIT ?2"
+        ))?;
+        let rows = st.query_map(params![before.map(journal_title), limit], page_row)?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Journals in `[from, to]`, newest first.
@@ -476,7 +513,7 @@ impl Graph {
 
     /// Inserts a new block with `content` and indexes its refs.
     pub fn insert_block(&self, page: PageId, at: Placement, content: &str) -> Result<Block> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let (parent_id, position) = self.resolve_placement(page, at)?;
         let now = self.now_ms();
         let block = Block {
@@ -498,7 +535,7 @@ impl Graph {
     /// Writes a fully specified block (importer). Pages referenced by it are created, born in
     /// the block's journal when it lives in one. Does not record edit activity.
     pub fn put_block(&self, block: &Block) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         self.write_block(block, &self.tick())?;
         self.ensure_ref_pages(block)?;
         tx.commit()?;
@@ -506,7 +543,7 @@ impl Graph {
     }
 
     pub fn update_block(&self, id: BlockId, content: &str) -> Result<Block> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let mut b = self
             .get_block(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
@@ -520,7 +557,7 @@ impl Graph {
     }
 
     pub fn set_block_properties(&self, id: BlockId, properties: Properties) -> Result<Block> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let mut b = self
             .get_block(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
@@ -541,7 +578,7 @@ impl Graph {
 
     /// Moves a block (with its subtree) to a new place, possibly on another page.
     pub fn move_block(&self, id: BlockId, page: PageId, at: Placement) -> Result<Block> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let mut b = self
             .get_block(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
@@ -575,7 +612,7 @@ impl Graph {
 
     /// Deletes a block and its subtree.
     pub fn delete_block(&self, id: BlockId) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let b = self
             .get_block(id)?
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
@@ -891,7 +928,7 @@ impl Graph {
     /// Returns whether it changed local state. Applied ops are re-logged locally.
     pub fn apply_remote(&self, hlc: &str, op: &Op) -> Result<bool> {
         self.clock.observe(hlc);
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = self.tx()?;
         let newer = |table: &str, id: &str| -> Result<bool> {
             let local: Option<String> = self
                 .conn
@@ -1127,6 +1164,28 @@ impl Graph {
                 .execute("DELETE FROM aliases WHERE alias_key=?1", [title_key(alias)])?,
         };
         Ok(())
+    }
+}
+
+/// Savepoint guard: rolled back on drop unless committed.
+struct Tx<'a> {
+    conn: &'a Connection,
+    done: bool,
+}
+
+impl Tx<'_> {
+    fn commit(mut self) -> Result<()> {
+        self.conn.execute_batch("RELEASE graph")?;
+        self.done = true;
+        Ok(())
+    }
+}
+
+impl Drop for Tx<'_> {
+    fn drop(&mut self) {
+        if !self.done {
+            let _ = self.conn.execute_batch("ROLLBACK TO graph; RELEASE graph");
+        }
     }
 }
 

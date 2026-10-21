@@ -182,12 +182,9 @@ pub fn import_logseq(
         }
     }
 
-    // Every core write commits on its own; without fsyncs that is cheap. A crash mid-import
-    // only needs a re-import (idempotent), so durability per commit is not required.
-    let _ = graph.conn().pragma_update(None, "synchronous", "OFF");
-    let result = write_all(graph, opts, &docs, &origin, &mut report, &mut progress);
-    let _ = graph.conn().pragma_update(None, "synchronous", "NORMAL");
-    result?;
+    // One transaction for the whole write phase: much faster, and a failed import leaves the
+    // graph untouched.
+    graph.transaction(|g| write_all(g, opts, &docs, &origin, &mut report, &mut progress))?;
     Ok(report)
 }
 
