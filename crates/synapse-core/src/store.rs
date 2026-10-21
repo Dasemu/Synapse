@@ -43,7 +43,12 @@ impl Graph {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "OFF")?;
+        // Large transactions (imports, restores) spill a 2 MB default cache to disk and write
+        // savepoint sub-journals to temp files; keep both in memory (32 MB cap).
+        conn.pragma_update(None, "cache_size", -32_768)?;
+        conn.pragma_update(None, "temp_store", "MEMORY")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.set_prepared_statement_cache_capacity(128);
         conn.execute_batch(schema::SCHEMA)?;
         schema::migrate(&conn)?;
         let actor: String = match conn
@@ -81,18 +86,51 @@ impl Graph {
     }
 
     /// Runs `f` atomically. Calls nest (SQLite savepoints), so callers such as importers can
-    /// group many graph operations into one transaction.
+    /// group many graph operations into one transaction and roll back an inner one.
+    ///
+    /// Inside a `transaction`, single graph operations do not open their own savepoint (that
+    /// would cost one per call on bulk imports); if one fails, return the error so the
+    /// enclosing `transaction` rolls back, or wrap it in its own `transaction`.
     pub fn transaction<T>(&self, f: impl FnOnce(&Graph) -> Result<T>) -> Result<T> {
-        let tx = self.tx()?;
+        let tx = self.savepoint()?;
         let out = f(self)?;
         tx.commit()?;
         Ok(out)
     }
 
-    fn tx(&self) -> Result<Tx<'_>> {
+    /// `execute` through the statement cache (hot paths run millions of times on imports).
+    fn exec<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize> {
+        self.conn.prepare_cached(sql)?.execute(params)
+    }
+
+    /// `query_row` through the statement cache.
+    fn row<T, P: rusqlite::Params>(
+        &self,
+        sql: &str,
+        params: P,
+        f: impl FnOnce(&Row<'_>) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
+        self.conn.prepare_cached(sql)?.query_row(params, f)
+    }
+
+    fn savepoint(&self) -> Result<Tx<'_>> {
         self.conn.execute_batch("SAVEPOINT graph")?;
         Ok(Tx {
             conn: &self.conn,
+            active: true,
+            done: false,
+        })
+    }
+
+    /// Atomic scope for one graph operation: a savepoint at top level, a no-op when an
+    /// enclosing transaction already provides atomicity.
+    fn tx(&self) -> Result<Tx<'_>> {
+        if self.conn.is_autocommit() {
+            return self.savepoint();
+        }
+        Ok(Tx {
+            conn: &self.conn,
+            active: false,
             done: false,
         })
     }
@@ -134,8 +172,7 @@ impl Graph {
 
     pub fn get_page(&self, id: PageId) -> Result<Option<Page>> {
         Ok(self
-            .conn
-            .query_row(
+            .row(
                 &format!("SELECT {PAGE_COLS} FROM pages WHERE id=?1"),
                 [id.to_string()],
                 page_row,
@@ -147,8 +184,7 @@ impl Graph {
     pub fn page_by_title(&self, title: &str) -> Result<Option<Page>> {
         let key = title_key(title);
         let page = self
-            .conn
-            .query_row(
+            .row(
                 &format!("SELECT {PAGE_COLS} FROM pages WHERE title_key=?1"),
                 [&key],
                 page_row,
@@ -158,8 +194,7 @@ impl Graph {
             return Ok(page);
         }
         let id: Option<String> = self
-            .conn
-            .query_row(
+            .row(
                 "SELECT page_id FROM aliases WHERE alias_key=?1",
                 [&key],
                 |r| r.get(0),
@@ -410,12 +445,12 @@ impl Graph {
     /// Previous and next existing journals around `date` (the episodic chain).
     pub fn journal_neighbors(&self, date: NaiveDate) -> Result<JournalNeighbors> {
         let d = journal_title(date);
-        let prev: Option<String> = self.conn.query_row(
+        let prev: Option<String> = self.row(
             "SELECT max(journal_date) FROM pages WHERE journal_date < ?1",
             [&d],
             |r| r.get(0),
         )?;
-        let next: Option<String> = self.conn.query_row(
+        let next: Option<String> = self.row(
             "SELECT min(journal_date) FROM pages WHERE journal_date > ?1",
             [&d],
             |r| r.get(0),
@@ -503,8 +538,7 @@ impl Graph {
 
     pub fn get_block(&self, id: BlockId) -> Result<Option<Block>> {
         Ok(self
-            .conn
-            .query_row(
+            .row(
                 &format!("SELECT {BLOCK_COLS} FROM blocks WHERE id=?1"),
                 [id.to_string()],
                 block_row,
@@ -749,7 +783,7 @@ impl Graph {
                 if let Some(p) = parent {
                     sib(p)?;
                 }
-                let max: Option<String> = self.conn.query_row(
+                let max: Option<String> = self.row(
                     &format!("SELECT max(position) FROM blocks WHERE {parent_sql}"),
                     params![page.to_string(), parent.map(|p| p.to_string())],
                     |r| r.get(0),
@@ -758,7 +792,7 @@ impl Graph {
             }
             Placement::After(s) => {
                 let s = sib(s)?;
-                let next: Option<String> = self.conn.query_row(
+                let next: Option<String> = self.row(
                     &format!(
                         "SELECT min(position) FROM blocks WHERE {parent_sql} AND position > ?3"
                     ),
@@ -773,7 +807,7 @@ impl Graph {
             }
             Placement::Before(s) => {
                 let s = sib(s)?;
-                let prev: Option<String> = self.conn.query_row(
+                let prev: Option<String> = self.row(
                     &format!(
                         "SELECT max(position) FROM blocks WHERE {parent_sql} AND position < ?3"
                     ),
@@ -847,13 +881,12 @@ impl Graph {
     fn touch_page(&self, page: PageId) -> Result<()> {
         let now = self.now_ms();
         let day = journal_title(day_of(now));
-        self.conn.execute(
+        self.exec(
             "UPDATE pages SET updated_at=?2 WHERE id=?1",
             params![page.to_string(), now],
         )?;
         let is_journal: bool = self
-            .conn
-            .query_row(
+            .row(
                 "SELECT journal_date IS NOT NULL FROM pages WHERE id=?1",
                 [page.to_string()],
                 |r| r.get(0),
@@ -862,7 +895,7 @@ impl Graph {
             .unwrap_or(true);
         if !is_journal {
             self.ensure_journal_tx(day_of(now))?;
-            self.conn.execute(
+            self.exec(
                 "INSERT INTO page_activity(page_id, day, edits) VALUES (?1, ?2, 1)
                  ON CONFLICT(page_id, day) DO UPDATE SET edits = edits + 1",
                 params![page.to_string(), day],
@@ -911,8 +944,7 @@ impl Graph {
 
     pub fn asset(&self, hash: &str) -> Result<Option<Asset>> {
         Ok(self
-            .conn
-            .query_row(
+            .row(
                 "SELECT hash, size, mime, original_name, created_at FROM assets WHERE hash=?1",
                 [hash],
                 |r| {
@@ -976,9 +1008,7 @@ impl Graph {
     }
 
     pub fn last_seq(&self) -> Result<i64> {
-        Ok(self
-            .conn
-            .query_row("SELECT coalesce(max(seq), 0) FROM ops", [], |r| r.get(0))?)
+        Ok(self.row("SELECT coalesce(max(seq), 0) FROM ops", [], |r| r.get(0))?)
     }
 
     /// Applies an op from another replica with last-writer-wins per entity.
@@ -988,14 +1018,12 @@ impl Graph {
         let tx = self.tx()?;
         let newer = |table: &str, id: &str| -> Result<bool> {
             let local: Option<String> = self
-                .conn
-                .query_row(&format!("SELECT hlc FROM {table} WHERE id=?1"), [id], |r| {
+                .row(&format!("SELECT hlc FROM {table} WHERE id=?1"), [id], |r| {
                     r.get(0)
                 })
                 .optional()?;
             let tomb: Option<String> = self
-                .conn
-                .query_row("SELECT hlc FROM tombstones WHERE id=?1", [id], |r| r.get(0))
+                .row("SELECT hlc FROM tombstones WHERE id=?1", [id], |r| r.get(0))
                 .optional()?;
             Ok(local.is_none_or(|l| hlc > l.as_str()) && tomb.is_none_or(|t| hlc > t.as_str()))
         };
@@ -1025,7 +1053,7 @@ impl Graph {
                         }
                     }
                     // A page title beats a colliding alias.
-                    self.conn.execute(
+                    self.exec(
                         "DELETE FROM aliases WHERE alias_key=?1 AND page_id != ?2",
                         params![title_key(&page.title), page.id.to_string()],
                     )?;
@@ -1060,8 +1088,7 @@ impl Graph {
             Op::SetAlias { alias, page } => {
                 let key = title_key(alias);
                 let local: Option<String> = self
-                    .conn
-                    .query_row(
+                    .row(
                         "SELECT hlc FROM aliases WHERE alias_key=?1
                          UNION ALL SELECT hlc FROM tombstones WHERE id=?2",
                         params![key, format!("alias:{key}")],
@@ -1088,7 +1115,7 @@ impl Graph {
     }
 
     fn log(&self, hlc: &str, op: &Op) -> Result<()> {
-        self.conn.execute(
+        self.exec(
             "INSERT INTO ops(hlc, payload) VALUES (?1, ?2)",
             params![hlc, serde_json::to_string(op)?],
         )?;
@@ -1101,7 +1128,7 @@ impl Graph {
     }
 
     fn write_page_row(&self, p: &Page, hlc: &str) -> Result<()> {
-        self.conn.execute(
+        self.exec(
             "INSERT INTO pages(id, title, title_key, journal_date, origin_journal, properties, created_at, updated_at, hlc)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET title=?2, title_key=?3, journal_date=?4, origin_journal=?5,
@@ -1129,28 +1156,28 @@ impl Graph {
     fn remove_page_row_raw(&self, id: PageId, hlc: &str) -> Result<()> {
         let s = id.to_string();
         // Cascade: blocks inserted concurrently on another replica must not linger orphaned.
-        self.conn.execute(
+        self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) SELECT id, ?2 FROM blocks WHERE page_id=?1",
             params![s, hlc],
         )?;
-        self.conn.execute(
+        self.exec(
             "DELETE FROM refs WHERE block_id IN (SELECT id FROM blocks WHERE page_id=?1)",
             [&s],
         )?;
-        self.conn.execute(
+        self.exec(
             "DELETE FROM block_refs WHERE block_id IN (SELECT id FROM blocks WHERE page_id=?1)",
             [&s],
         )?;
         self.conn
             .execute("DELETE FROM blocks WHERE page_id=?1", [&s])?;
-        self.conn.execute("DELETE FROM pages WHERE id=?1", [&s])?;
+        self.exec("DELETE FROM pages WHERE id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM aliases WHERE page_id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM page_activity WHERE page_id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM synapses WHERE a=?1 OR b=?1", [&s])?;
-        self.conn.execute(
+        self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
             params![s, hlc],
         )?;
@@ -1169,7 +1196,7 @@ impl Graph {
 
     fn write_block_row(&self, b: &Block, hlc: &str) -> Result<()> {
         let id = b.id.to_string();
-        self.conn.execute(
+        self.exec(
             "INSERT INTO blocks(id, page_id, parent_id, position, content, properties, collapsed, created_at, updated_at, hlc)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id) DO UPDATE SET page_id=?2, parent_id=?3, position=?4, content=?5,
@@ -1193,7 +1220,7 @@ impl Graph {
             .execute("DELETE FROM block_refs WHERE block_id=?1", [&id])?;
         let refs = extract_refs(&b.content);
         for (title, kind) in &refs.pages {
-            self.conn.execute(
+            self.exec(
                 "INSERT OR IGNORE INTO refs(block_id, target_key, kind) VALUES (?1, ?2, ?3)",
                 params![id, title_key(title), kind.as_str()],
             )?;
@@ -1206,7 +1233,7 @@ impl Graph {
             )
             .pages
             {
-                self.conn.execute(
+                self.exec(
                     "INSERT OR IGNORE INTO refs(block_id, target_key, kind) VALUES (?1, ?2, 'property')",
                     params![id, title_key(&title)],
                 )?;
@@ -1214,7 +1241,7 @@ impl Graph {
         }
         for (list, embed) in [(&refs.blocks, false), (&refs.embeds, true)] {
             for t in list {
-                self.conn.execute(
+                self.exec(
                     "INSERT OR IGNORE INTO block_refs(block_id, target_block, embed) VALUES (?1, ?2, ?3)",
                     params![id, t.to_string(), embed],
                 )?;
@@ -1230,12 +1257,12 @@ impl Graph {
 
     fn remove_block_row_raw(&self, id: BlockId, hlc: &str) -> Result<()> {
         let s = id.to_string();
-        self.conn.execute("DELETE FROM blocks WHERE id=?1", [&s])?;
+        self.exec("DELETE FROM blocks WHERE id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM refs WHERE block_id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM block_refs WHERE block_id=?1", [&s])?;
-        self.conn.execute(
+        self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
             params![s, hlc],
         )?;
@@ -1243,7 +1270,7 @@ impl Graph {
     }
 
     fn write_asset(&self, a: &Asset) -> Result<()> {
-        self.conn.execute(
+        self.exec(
             "INSERT OR IGNORE INTO assets(hash, size, mime, original_name, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![a.hash, a.size as i64, a.mime, a.original_name, a.created_at],
         )?;
@@ -1254,11 +1281,11 @@ impl Graph {
         let key = title_key(alias);
         match page {
             Some(p) => {
-                self.conn.execute(
+                self.exec(
                     "INSERT OR REPLACE INTO aliases(alias_key, alias, page_id, hlc) VALUES (?1, ?2, ?3, ?4)",
                     params![key, alias.trim(), p.to_string(), hlc],
                 )?;
-                self.conn.execute(
+                self.exec(
                     "DELETE FROM tombstones WHERE id=?1",
                     [format!("alias:{key}")],
                 )?;
@@ -1266,7 +1293,7 @@ impl Graph {
             None => {
                 self.conn
                     .execute("DELETE FROM aliases WHERE alias_key=?1", [&key])?;
-                self.conn.execute(
+                self.exec(
                     "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
                     params![format!("alias:{key}"), hlc],
                 )?;
@@ -1278,8 +1305,7 @@ impl Graph {
     /// Page whose own title (not alias) matches, case-insensitively.
     fn page_by_exact_title(&self, title: &str) -> Result<Option<Page>> {
         Ok(self
-            .conn
-            .query_row(
+            .row(
                 &format!("SELECT {PAGE_COLS} FROM pages WHERE title_key=?1"),
                 [title_key(title)],
                 page_row,
@@ -1305,12 +1331,16 @@ impl Graph {
 /// Savepoint guard: rolled back on drop unless committed.
 struct Tx<'a> {
     conn: &'a Connection,
+    /// Whether this guard opened a savepoint (false when nested in a transaction).
+    active: bool,
     done: bool,
 }
 
 impl Tx<'_> {
     fn commit(mut self) -> Result<()> {
-        self.conn.execute_batch("RELEASE graph")?;
+        if self.active {
+            self.conn.execute_batch("RELEASE graph")?;
+        }
         self.done = true;
         Ok(())
     }
@@ -1318,7 +1348,7 @@ impl Tx<'_> {
 
 impl Drop for Tx<'_> {
     fn drop(&mut self) {
-        if !self.done {
+        if self.active && !self.done {
             let _ = self.conn.execute_batch("ROLLBACK TO graph; RELEASE graph");
         }
     }
