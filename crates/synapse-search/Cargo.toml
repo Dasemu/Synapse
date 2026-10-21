@@ -1,0 +1,20 @@
+[package]
+name = "synapse-search"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Full-text, vector and hybrid search plus auto-link suggestions for Synapse graphs"
+
+[dependencies]
+synapse-core.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+# Full-text engine (pure Rust, builds for Android). Only the default-free feature set we need.
+tantivy = { version = "0.25", default-features = false, features = ["mmap", "lz4-compression"] }
+# Multi-pattern matching of page titles inside block text.
+aho-corasick = "1"
+
+[dev-dependencies]
+tempfile = "3"
