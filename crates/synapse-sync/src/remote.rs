@@ -186,10 +186,23 @@ impl Remote {
     /// has it and resuming a partial upload. The file is streamed, never loaded in memory.
     pub async fn upload_blob(&self, hash: &str, path: &Path) -> Result<()> {
         let size = tokio::fs::metadata(path).await?.len();
-        for _ in 0..3 {
+        // Each round resumes from what the server holds; a 202 (body ended short) or a 409
+        // (stale offset) just means "ask again". Success is only a HEAD that finds the blob.
+        let mut stalled = 0;
+        let mut last_offset = None;
+        loop {
             let Some(offset) = self.blob_upload_offset(hash).await? else {
                 return Ok(());
             };
+            if last_offset.is_some_and(|l| offset <= l) {
+                stalled += 1;
+                if stalled >= 3 {
+                    return Err(Error::Protocol(format!(
+                        "blob {hash}: upload makes no progress at offset {offset}"
+                    )));
+                }
+            }
+            last_offset = Some(offset);
             let offset = if offset > size { 0 } else { offset };
             let mut file = tokio::fs::File::open(path).await?;
             file.seek(std::io::SeekFrom::Start(offset)).await?;
@@ -205,15 +218,13 @@ impl Remote {
                 .body(body)
                 .send()
                 .await?;
-            if resp.status() == StatusCode::CONFLICT {
-                continue; // offset out of date: HEAD again
+            match resp.status() {
+                StatusCode::CONFLICT | StatusCode::ACCEPTED => continue,
+                _ => {
+                    Self::check(resp).await?;
+                }
             }
-            Self::check(resp).await?;
-            return Ok(());
         }
-        Err(Error::Protocol(format!(
-            "blob {hash}: upload offset keeps changing"
-        )))
     }
 
     /// Downloads blob `hash` into `dest`, streaming through `part` (resumed if it exists), and

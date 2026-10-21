@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -10,6 +11,8 @@ pub struct Config {
     /// Token for `/admin/update`; the endpoint is disabled when unset.
     pub update_token: Option<String>,
     pub update_script: PathBuf,
+    /// Ops whose HLC is further ahead of the server clock than this are rejected.
+    pub max_clock_skew: Duration,
 }
 
 pub const MIN_TOKEN_LEN: usize = 16;
@@ -36,6 +39,13 @@ impl Config {
             update_script: var("SYNAPSE_UPDATE_SCRIPT")
                 .unwrap_or_else(|| "/opt/synapse/scripts/update.sh".into())
                 .into(),
+            max_clock_skew: Duration::from_secs(
+                60 * var("SYNAPSE_MAX_CLOCK_SKEW_MINUTES")
+                    .map(|v| v.parse::<u64>())
+                    .transpose()
+                    .map_err(|e| format!("SYNAPSE_MAX_CLOCK_SKEW_MINUTES: {e}"))?
+                    .unwrap_or(10),
+            ),
         };
         cfg.validate()?;
         Ok(cfg)

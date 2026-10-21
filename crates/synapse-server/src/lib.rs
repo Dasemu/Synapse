@@ -28,6 +28,7 @@ pub struct AppState {
     pub(crate) data_dir: Arc<std::path::PathBuf>,
     pub(crate) updater: Arc<admin::Updater>,
     pub(crate) shutdown: Arc<Notify>,
+    pub(crate) max_clock_skew: std::time::Duration,
 }
 
 impl AppState {
@@ -44,6 +45,7 @@ impl AppState {
             data_dir: Arc::new(cfg.data_dir.clone()),
             updater: Arc::new(admin::Updater::default()),
             shutdown: Arc::new(Notify::new()),
+            max_clock_skew: cfg.max_clock_skew,
         })
     }
 }

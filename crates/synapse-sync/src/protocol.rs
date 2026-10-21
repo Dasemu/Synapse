@@ -38,6 +38,17 @@ pub struct PushResponse {
     /// Ops that changed server state (the rest lost LWW or were already known).
     pub applied: u32,
     pub last_seq: i64,
+    /// Ops refused (invalid, or failing to apply). They are skipped, never stored; the rest of
+    /// the batch is processed normally so one bad op cannot wedge a device.
+    #[serde(default)]
+    pub rejected: Vec<Rejection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rejection {
+    /// Index of the op in the pushed batch.
+    pub index: u32,
+    pub reason: String,
 }
 
 /// `GET /v1/graphs/{id}/ops?since=&limit=&exclude_actor=`
@@ -103,6 +114,37 @@ pub fn is_valid_hash(h: &str) -> bool {
     h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// Structural checks for an op received from a peer, before it touches the graph.
+/// `max_future_ms` bounds how far ahead of `now_ms` its HLC may be (clock-skew guard).
+pub fn validate_op(hlc: &str, op: &Op, now_ms: i64, max_future_ms: i64) -> Result<(), String> {
+    let (ms, _) = synapse_core::hlc::decode(hlc).ok_or("malformed hlc")?;
+    if hlc_actor(hlc).is_none() {
+        return Err("hlc has no actor".into());
+    }
+    if ms > now_ms.saturating_add(max_future_ms) {
+        return Err(format!(
+            "hlc is {} s in the future (limit {} s)",
+            (ms - now_ms) / 1000,
+            max_future_ms / 1000
+        ));
+    }
+    if let Op::PutAsset { asset } = op
+        && !is_valid_hash(&asset.hash)
+    {
+        return Err("asset hash must be 64 lowercase hex chars".into());
+    }
+    Ok(())
+}
+
+/// Errors that make one op permanently unappliable (as opposed to transient storage errors).
+pub fn is_poison(e: &synapse_core::Error) -> bool {
+    use synapse_core::Error as E;
+    matches!(
+        e,
+        E::Invalid(_) | E::Json(_) | E::Conflict(_) | E::NotFound(_)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +158,21 @@ mod tests {
         assert!(!is_valid_graph_id(""));
         assert!(is_valid_hash(&"a".repeat(64)));
         assert!(!is_valid_hash("ab/../"));
+        let op = Op::DeleteBlock {
+            id: synapse_core::new_id(),
+        };
+        assert!(validate_op("0000000001000-00000-a", &op, 1000, 0).is_ok());
+        assert!(validate_op("0000000999000-00000-a", &op, 1000, 60_000).is_err());
+        assert!(validate_op("junk", &op, 1000, 0).is_err());
+        let bad = Op::PutAsset {
+            asset: synapse_core::Asset {
+                hash: "../x".into(),
+                size: 1,
+                mime: None,
+                original_name: None,
+                created_at: 0,
+            },
+        };
+        assert!(validate_op("0000000001000-00000-a", &bad, 1000, 0).is_err());
     }
 }

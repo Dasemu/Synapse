@@ -1,10 +1,10 @@
 use crate::error::{Error, Result};
-use crate::protocol::{SyncEvent, WireOp, hlc_actor};
+use crate::protocol::{SyncEvent, WireOp, hlc_actor, is_poison};
 use crate::remote::{Remote, RemoteConfig};
 use crate::state::{self, Cursors, SyncState, SyncStatus};
 use futures_util::StreamExt;
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 use synapse_core::{Graph, Op};
@@ -58,6 +58,16 @@ struct Inner {
     wake: Notify,
     /// Some synced assets may lack their blob locally.
     blobs_dirty: AtomicBool,
+    quarantined: AtomicU64,
+}
+
+/// Per-cycle counters.
+#[derive(Debug, Default)]
+struct Cycle {
+    pushed: u64,
+    pulled: u64,
+    skipped_assets: u64,
+    failed_blobs: u64,
 }
 
 /// Replicates a local [`Graph`] with a Synapse server. Cheap to clone.
@@ -82,6 +92,7 @@ impl SyncClient {
             dirty: AtomicBool::new(true),
             wake: Notify::new(),
             blobs_dirty: AtomicBool::new(true),
+            quarantined: AtomicU64::new(0),
         });
         Ok(Self { inner })
     }
@@ -140,7 +151,7 @@ impl SyncClient {
             .await
             .unwrap_or(0);
         match &res {
-            Ok((pushed, pulled)) => {
+            Ok(c) => {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_millis() as i64)
@@ -150,8 +161,11 @@ impl SyncClient {
                     s.message = None;
                     s.pending_ops = pending;
                     s.last_sync_ms = Some(now);
-                    s.last_pushed = *pushed;
-                    s.last_pulled = *pulled;
+                    s.last_pushed = c.pushed;
+                    s.last_pulled = c.pulled;
+                    s.skipped_assets = c.skipped_assets;
+                    s.failed_blobs = c.failed_blobs;
+                    s.quarantined_ops = self.inner.quarantined.load(Ordering::SeqCst);
                 });
             }
             Err(e) => {
@@ -165,13 +179,14 @@ impl SyncClient {
                     s.status = status;
                     s.message = Some(e.to_string());
                     s.pending_ops = pending;
+                    s.quarantined_ops = self.inner.quarantined.load(Ordering::SeqCst);
                 });
             }
         }
         res.map(|_| ())
     }
 
-    async fn run_cycle(&self) -> Result<(u64, u64)> {
+    async fn run_cycle(&self) -> Result<Cycle> {
         let remote = &self.inner.remote;
         let info = remote.ensure_graph().await?;
         let key = remote.key();
@@ -180,26 +195,30 @@ impl SyncClient {
             .with_graph(move |g| Ok(state::load(g, &key, &server_id)?))
             .await?;
 
-        let pushed = self.push_all(&mut cur).await?;
+        let mut stats = Cycle::default();
+        self.push_all(&mut cur, &mut stats).await?;
         let (pulled, got_assets) = self.pull_all(&mut cur, &info.server_id).await?;
+        stats.pulled = pulled;
         if got_assets {
             self.inner.blobs_dirty.store(true, Ordering::SeqCst);
         }
         if self.inner.cfg.blob_policy == BlobPolicy::Eager
             && self.inner.blobs_dirty.load(Ordering::SeqCst)
         {
-            self.fetch_missing_blobs().await?;
-            self.inner.blobs_dirty.store(false, Ordering::SeqCst);
+            stats.failed_blobs = self.fetch_missing_blobs().await?;
+            // Failed blobs are retried on the next cycle.
+            self.inner
+                .blobs_dirty
+                .store(stats.failed_blobs > 0, Ordering::SeqCst);
         }
-        Ok((pushed, pulled))
+        Ok(stats)
     }
 
     /// Pushes ops originated by this replica. Ops that were *applied from the server* are
     /// re-logged locally by the core, but carry another actor in their HLC, so they are skipped
     /// here: that is what prevents echoing them back.
-    async fn push_all(&self, cur: &mut Cursors) -> Result<u64> {
+    async fn push_all(&self, cur: &mut Cursors, stats: &mut Cycle) -> Result<()> {
         let limit = self.inner.cfg.batch_size;
-        let mut total = 0;
         loop {
             let after = cur.pushed_seq;
             let (batch, scanned_to, scanned) = self
@@ -220,10 +239,13 @@ impl SyncClient {
                 })
                 .await?;
             if scanned == 0 {
-                return Ok(total);
+                return Ok(());
             }
+            let mut batch = batch;
             if !batch.is_empty() {
-                // Blobs first, so the server never knows an asset it cannot serve.
+                // Blobs first, so the server never knows an asset it cannot serve. An asset
+                // whose blob is missing locally can never be uploaded: skip its op (and warn)
+                // instead of blocking every later op of this device.
                 let hashes: BTreeSet<String> = batch
                     .iter()
                     .filter_map(|w| match &w.op {
@@ -231,17 +253,38 @@ impl SyncClient {
                         _ => None,
                     })
                     .collect();
+                let mut missing = BTreeSet::new();
                 for h in hashes {
-                    self.upload_blob(&h).await?;
+                    if !self.upload_blob(&h).await? {
+                        missing.insert(h);
+                    }
                 }
-                total += batch.len() as u64;
-                self.inner.remote.push(batch).await?;
+                if !missing.is_empty() {
+                    let before = batch.len();
+                    batch.retain(|w| match &w.op {
+                        Op::PutAsset { asset } => !missing.contains(&asset.hash),
+                        _ => true,
+                    });
+                    stats.skipped_assets += (before - batch.len()) as u64;
+                }
+                if !batch.is_empty() {
+                    stats.pushed += batch.len() as u64;
+                    let resp = self.inner.remote.push(batch).await?;
+                    if !resp.rejected.is_empty() {
+                        self.inner
+                            .quarantined
+                            .fetch_add(resp.rejected.len() as u64, Ordering::SeqCst);
+                        for r in &resp.rejected {
+                            warn!(index = r.index, reason = %r.reason, "server rejected a local op");
+                        }
+                    }
+                }
             }
             self.with_graph(move |g| Ok(state::save_pushed(g, scanned_to)?))
                 .await?;
             cur.pushed_seq = scanned_to;
             if (scanned as u32) < limit {
-                return Ok(total);
+                return Ok(());
             }
         }
     }
@@ -262,23 +305,39 @@ impl SyncClient {
             }
             let next = resp.next_cursor.max(cur.pull_cursor);
             let me2 = me.clone();
-            let (applied, assets) = self
+            let (applied, assets, quarantined) = self
                 .with_graph(move |g| {
-                    let (mut applied, mut assets) = (0u64, false);
+                    let (mut applied, mut assets, mut quarantined) = (0u64, false, 0u64);
                     for rec in resp.ops {
                         // Defence in depth: never re-apply our own ops.
                         if hlc_actor(&rec.hlc) == Some(me2.as_str()) {
                             continue;
                         }
-                        if g.apply_remote(&rec.hlc, &rec.op)? {
-                            applied += 1;
-                            assets |= matches!(rec.op, Op::PutAsset { .. });
+                        match g.apply_remote(&rec.hlc, &rec.op) {
+                            Ok(true) => {
+                                applied += 1;
+                                assets |= matches!(rec.op, Op::PutAsset { .. });
+                            }
+                            Ok(false) => {}
+                            // An op that can never apply must not wedge the pull forever:
+                            // park it and move on. Storage errors stay fatal (retried).
+                            Err(e) if is_poison(&e) => {
+                                warn!(seq = rec.seq, hlc = %rec.hlc, error = %e, "quarantined remote op");
+                                let payload = serde_json::to_string(&rec.op)
+                                    .map_err(synapse_core::Error::from)?;
+                                state::quarantine(g, rec.seq, &rec.hlc, &payload, &e.to_string())?;
+                                quarantined += 1;
+                            }
+                            Err(e) => return Err(e.into()),
                         }
                     }
                     state::save_pulled(g, next)?;
-                    Ok((applied, assets))
+                    Ok((applied, assets, quarantined))
                 })
                 .await?;
+            self.inner
+                .quarantined
+                .fetch_add(quarantined, Ordering::SeqCst);
             cur.pull_cursor = next;
             applied_total += applied;
             got_assets |= assets;
@@ -290,15 +349,16 @@ impl SyncClient {
 
     // ----------------------------------------------------------------- blobs
 
-    async fn upload_blob(&self, hash: &str) -> Result<()> {
+    /// Uploads the blob of a local asset. `Ok(false)` if the blob is missing locally.
+    async fn upload_blob(&self, hash: &str) -> Result<bool> {
         let h = hash.to_string();
         let path = self.with_graph(move |g| Ok(g.blobs().path_of(&h))).await?;
         if !path.exists() {
-            return Err(Error::Protocol(format!(
-                "asset {hash} is registered but its blob is missing locally"
-            )));
+            warn!(%hash, "asset registered but its blob is missing locally; not pushing it");
+            return Ok(false);
         }
-        self.inner.remote.upload_blob(hash, &path).await
+        self.inner.remote.upload_blob(hash, &path).await?;
+        Ok(true)
     }
 
     /// Downloads blob `hash` if it is not stored locally yet (resumes partial downloads).
@@ -332,7 +392,10 @@ impl SyncClient {
         Err(last.unwrap())
     }
 
-    async fn fetch_missing_blobs(&self) -> Result<()> {
+    /// Downloads every asset blob we lack. A blob that fails (e.g. 404) is logged and left
+    /// for the next cycle; the others still download. Returns how many failed. Connectivity
+    /// errors abort the cycle since every other blob would fail too.
+    async fn fetch_missing_blobs(&self) -> Result<u64> {
         let missing = self
             .with_graph(|g| {
                 let mut st = g.conn().prepare("SELECT hash FROM assets")?;
@@ -341,15 +404,29 @@ impl SyncClient {
                     .collect::<std::result::Result<Vec<_>, _>>()?;
                 Ok(hashes
                     .into_iter()
-                    .filter(|h| h.len() > 2 && !g.blobs().contains(h))
+                    .filter(|h| {
+                        let valid = crate::protocol::is_valid_hash(h);
+                        if !valid {
+                            warn!(hash = %h, "ignoring asset with an invalid blob hash");
+                        }
+                        valid && !g.blobs().contains(h)
+                    })
                     .collect::<Vec<_>>())
             })
             .await?;
+        let mut failed = 0;
         for h in missing {
             debug!(hash = %h, "downloading blob");
-            self.ensure_blob(&h).await?;
+            match self.ensure_blob(&h).await {
+                Ok(()) => {}
+                Err(e) if e.is_offline() || matches!(e, Error::Unauthorized) => return Err(e),
+                Err(e) => {
+                    warn!(hash = %h, error = %e, "blob download failed; will retry next cycle");
+                    failed += 1;
+                }
+            }
         }
-        Ok(())
+        Ok(failed)
     }
 
     // ------------------------------------------------------------ background

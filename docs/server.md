@@ -12,6 +12,7 @@ See `.env.example`.
 | `SYNAPSE_DATA_DIR` | yes | Server graphs live in `<dir>/<graph_id>/` (`synapse.db` + `blobs/`) |
 | `SYNAPSE_AUTH_TOKEN` | yes | Bearer token(s), comma separated, ≥ 16 chars. Compared in constant time |
 | `SYNAPSE_BIND` | no | Listen address, default `127.0.0.1:7878` |
+| `SYNAPSE_MAX_CLOCK_SKEW_MINUTES` | no | Reject pushed ops whose HLC is further ahead of the server clock (default 10) |
 | `SYNAPSE_UPDATE_TOKEN` | no | Enables `/admin/update`; separate from the sync tokens |
 | `SYNAPSE_UPDATE_SCRIPT` | no | Default `/opt/synapse/scripts/update.sh` |
 | `SYNAPSE_LOG_FORMAT` | no | `text` (default) or `json` |

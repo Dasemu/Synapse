@@ -79,9 +79,31 @@ sync on SSE hint, when ops are pending or when due; on failure exponential backo
 with jitter); "offline" (connect/timeout errors) never loses edits, they stay pending. Call
 `trigger()` after local edits to sync without waiting for the poll.
 
-The graph is shared as `Arc<Mutex<Graph>>`; the client locks it only for short DB steps. In the
-app, `synapse_ffi::api::graph::SynapseGraph::shared()` returns that same `Arc` to build a
-`SyncClient` next to the FFI handle.
+### Graph handle (FFI integration)
+`SyncClient::new(graph: Arc<Mutex<Graph>>, cfg)` — the expected handle type is
+`Arc<Mutex<synapse_core::Graph>>` (std `Mutex`). `synapse-ffi` holds its graph as that same
+`Arc` (`SynapseGraph::shared()` returns it) so UI edits and sync share one HLC clock and one
+connection. The client locks it only for short database
+steps (never across network calls) and runs them on `spawn_blocking`; it needs a tokio
+runtime (`start()` spawns onto the current one). After local edits call `trigger()`.
+
+### Robustness
+- **Invalid ops**: the server validates every pushed op (`protocol::validate_op`: well-formed
+  HLC, `PutAsset.hash` = 64 lowercase hex) and rejects ops whose HLC is more than
+  `SYNAPSE_MAX_CLOCK_SKEW_MINUTES` (default 10) ahead of the server clock. Rejected ops are
+  not stored; they are listed in `PushResponse.rejected` (`{index, reason}`) and the rest of the
+  batch is still applied. Ops that fail to apply with a non-transient error (`Invalid`, `Json`,
+  `Conflict`, `NotFound`) are rejected the same way; storage errors fail the request (retry).
+- **Quarantine (client)**: a pulled op that can never apply is logged, stored in table
+  `sync_quarantine` (`server_seq, hlc, payload, reason`) and skipped, so the cursor advances.
+  `SyncState.quarantined_ops` counts these plus ops the server rejected (per session).
+- **Missing local blob**: the asset's `PutAsset` op is not pushed (warning,
+  `SyncState.skipped_assets`) and later ops still flow.
+- **Failed blob downloads** (e.g. 404): logged, counted in `SyncState.failed_blobs`, retried
+  next cycle; other blobs and the op sync are unaffected. Connectivity/auth errors still abort
+  the cycle.
+- **Uploads** only complete when the server reports the blob stored (`HEAD` 200); `202`/`409`
+  responses make the client resume until done.
 
 ## Limits / not in v1
 - Per-user tokens and per-graph ACLs: `auth::Principal` already carries a graph allow-list;

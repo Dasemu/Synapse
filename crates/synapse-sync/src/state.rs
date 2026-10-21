@@ -27,6 +27,13 @@ pub struct SyncState {
     /// Ops pushed / pulled(applied) in the last successful cycle.
     pub last_pushed: u64,
     pub last_pulled: u64,
+    /// Ops refused by the server or skipped locally because they can never apply (this
+    /// session). Details are in the log and, for pulled ops, in table `sync_quarantine`.
+    pub quarantined_ops: u64,
+    /// Local assets whose blob is missing: their `PutAsset` op was not pushed.
+    pub skipped_assets: u64,
+    /// Blobs that could not be downloaded in the last cycle (retried next cycle).
+    pub failed_blobs: u64,
 }
 
 impl Default for SyncState {
@@ -38,6 +45,9 @@ impl Default for SyncState {
             last_sync_ms: None,
             last_pushed: 0,
             last_pulled: 0,
+            quarantined_ops: 0,
+            skipped_assets: 0,
+            failed_blobs: 0,
         }
     }
 }
@@ -52,8 +62,30 @@ pub struct Cursors {
 
 pub(crate) fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS sync_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS sync_quarantine (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             server_seq INTEGER NOT NULL,
+             hlc TEXT NOT NULL,
+             payload TEXT NOT NULL,
+             reason TEXT NOT NULL
+         );",
     )
+}
+
+/// Records a pulled op that can never be applied, so it is skipped instead of blocking sync.
+pub(crate) fn quarantine(
+    g: &Graph,
+    server_seq: i64,
+    hlc: &str,
+    payload: &str,
+    reason: &str,
+) -> rusqlite::Result<()> {
+    g.conn().execute(
+        "INSERT INTO sync_quarantine(server_seq, hlc, payload, reason) VALUES (?1, ?2, ?3, ?4)",
+        params![server_seq, hlc, payload, reason],
+    )?;
+    Ok(())
 }
 
 fn get(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
