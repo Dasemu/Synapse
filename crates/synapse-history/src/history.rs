@@ -79,6 +79,7 @@ pub struct History {
     opts: HistoryOptions,
     /// `(last seen graph seq, time we saw it change)` for idle detection.
     observed: Option<(i64, i64)>,
+    pub(crate) fault: std::cell::Cell<Option<usize>>,
 }
 
 impl History {
@@ -95,7 +96,14 @@ impl History {
             dir,
             opts,
             observed: None,
+            fault: Default::default(),
         })
+    }
+
+    /// Test hook: make the next restore fail after `n` block writes/deletes.
+    #[doc(hidden)]
+    pub fn inject_restore_fault(&self, n: Option<usize>) {
+        self.fault.set(n);
     }
 
     pub fn dir(&self) -> &Path {

@@ -297,3 +297,47 @@ fn journals_and_assets() {
     assert!(files.contains(&asset.hash) && files.contains("image/png"));
     let _ = NewPage::default();
 }
+
+fn dump(g: &Graph) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    for p in g.list_pages(true, 1000, 0).unwrap() {
+        let blocks = g
+            .page_tree(p.id)
+            .unwrap()
+            .into_iter()
+            .map(|(d, b)| format!("{d}:{}:{}", b.id, b.content))
+            .collect();
+        out.push((p.title, blocks));
+    }
+    out.sort();
+    out
+}
+
+#[test]
+fn failed_restore_leaves_graph_unchanged() {
+    let (_d, g, mut h) = setup();
+    let a = add(&g, "Doc", &["one", "two", "three"]);
+    add(&g, "Gone", &["bye", "bye2"]);
+    let s1 = h.snapshot(&g, T0).unwrap().unwrap();
+    at(&g, T0 + 1000);
+    let b = g.page_tree(a.id).unwrap()[1].1.id;
+    g.update_block(b, "edited").unwrap();
+    g.delete_page(g.page_by_title("Gone").unwrap().unwrap().id)
+        .unwrap();
+    add(&g, "Fresh", &["new"]);
+    h.snapshot(&g, T0 + 2000).unwrap();
+    let before = dump(&g);
+    let seq = g.last_seq().unwrap();
+
+    for n in [0, 1, 3] {
+        h.inject_restore_fault(Some(n));
+        assert!(h.restore_graph(&g, &s1.id, T0 + 3000).is_err());
+        assert_eq!(dump(&g), before, "graph restore, fault after {n}");
+        assert_eq!(g.last_seq().unwrap(), seq, "no ops leaked");
+        assert!(h.restore_page(&g, "Doc", &s1.id, T0 + 3000).is_err() || n == 3);
+        assert_eq!(dump(&g), before, "page restore, fault after {n}");
+    }
+    h.inject_restore_fault(None);
+    h.restore_graph(&g, &s1.id, T0 + 4000).unwrap();
+    assert!(g.page_by_title("Gone").unwrap().is_some());
+}
