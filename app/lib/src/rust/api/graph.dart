@@ -9,6 +9,7 @@ import 'dto.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `asset_dto`, `lock`, `outline`, `page_view`, `parse_date`, `parse_day`, `parse_id`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `shared`
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>>
 abstract class SynapseGraph implements RustOpaqueInterface {

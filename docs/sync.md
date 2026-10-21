@@ -79,7 +79,9 @@ sync on SSE hint, when ops are pending or when due; on failure exponential backo
 with jitter); "offline" (connect/timeout errors) never loses edits, they stay pending. Call
 `trigger()` after local edits to sync without waiting for the poll.
 
-The graph is shared as `Arc<Mutex<Graph>>`; the client locks it only for short DB steps.
+The graph is shared as `Arc<Mutex<Graph>>`; the client locks it only for short DB steps. In the
+app, `synapse_ffi::api::graph::SynapseGraph::shared()` returns that same `Arc` to build a
+`SyncClient` next to the FFI handle.
 
 ## Limits / not in v1
 - Per-user tokens and per-graph ACLs: `auth::Principal` already carries a graph allow-list;
