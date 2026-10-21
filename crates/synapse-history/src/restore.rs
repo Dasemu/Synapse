@@ -5,6 +5,7 @@ use crate::Result;
 use crate::export;
 use crate::history::{History, SnapshotInfo};
 use crate::parse::{ParsedPage, parse_page};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use synapse_core::position::between;
 use synapse_core::{Block, BlockId, Graph, NewPage, Page, new_id};
@@ -17,6 +18,36 @@ pub struct RestoreReport {
     pub removed: usize,
     /// Snapshot of the pre-restore state, taken so the restore itself is undoable.
     pub safety_snapshot: Option<SnapshotInfo>,
+}
+
+/// Test hook: fail after this many block writes/deletes.
+type Fault<'a> = &'a Cell<Option<usize>>;
+
+fn tick(fault: Fault) -> Result<()> {
+    if let Some(n) = fault.get() {
+        if n == 0 {
+            return Err(crate::Error::NotFound("injected fault".into()));
+        }
+        fault.set(Some(n - 1));
+    }
+    Ok(())
+}
+
+/// Runs `f` in one graph transaction: any error rolls every change back.
+fn atomic<T>(graph: &Graph, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    let mut failure = None;
+    let out = graph.transaction(|_| match f() {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            failure = Some(e);
+            Err(synapse_core::Error::Invalid("restore aborted".into()))
+        }
+    });
+    match (out, failure) {
+        (Ok(v), _) => Ok(v),
+        (Err(_), Some(e)) => Err(e),
+        (Err(e), None) => Err(e.into()),
+    }
 }
 
 struct Plan {
@@ -130,8 +161,9 @@ fn same(a: &Block, b: &Block) -> bool {
         && a.collapsed == b.collapsed
 }
 
-fn apply_deletes(graph: &Graph, plan: &Plan) -> Result<()> {
+fn apply_deletes(graph: &Graph, plan: &Plan, fault: Fault) -> Result<()> {
     for id in &plan.delete {
+        tick(fault)?;
         // Deleting a parent already removed its subtree.
         if graph.get_block(*id)?.is_some() {
             graph.delete_block(*id)?;
@@ -141,12 +173,13 @@ fn apply_deletes(graph: &Graph, plan: &Plan) -> Result<()> {
 }
 
 /// Writes changed blocks; returns whether anything was written.
-fn apply_puts(graph: &Graph, plan: &Plan) -> Result<bool> {
+fn apply_puts(graph: &Graph, plan: &Plan, fault: Fault) -> Result<bool> {
     let mut wrote = false;
     for b in &plan.blocks {
         if graph.get_block(b.id)?.is_some_and(|cur| same(&cur, b)) {
             continue;
         }
+        tick(fault)?;
         graph.put_block(b)?;
         wrote = true;
     }
@@ -189,22 +222,26 @@ impl History {
             safety_snapshot: safety,
             ..Default::default()
         };
-        match text {
-            Some(text) => {
-                let p = plan(graph, title, &parse_page(&text), false)?;
-                apply_deletes(graph, &p)?;
-                apply_puts(graph, &p)?;
-                report.restored = 1;
-            }
-            None => {
-                let page = graph
-                    .page_by_title(title)?
-                    .ok_or_else(|| Self::not_found(title))?;
-                if clear_or_delete(graph, &page)? {
-                    report.removed = 1;
+        let fault = &self.fault;
+        atomic(graph, || {
+            match text {
+                Some(text) => {
+                    let p = plan(graph, title, &parse_page(&text), false)?;
+                    apply_deletes(graph, &p, fault)?;
+                    apply_puts(graph, &p, fault)?;
+                    report.restored = 1;
+                }
+                None => {
+                    let page = graph
+                        .page_by_title(title)?
+                        .ok_or_else(|| Self::not_found(title))?;
+                    if clear_or_delete(graph, &page)? {
+                        report.removed = 1;
+                    }
                 }
             }
-        }
+            Ok(())
+        })?;
         Ok(report)
     }
 
@@ -221,44 +258,49 @@ impl History {
             safety_snapshot: safety,
             ..Default::default()
         };
-        let mut plans = Vec::new();
-        let mut wanted: HashSet<String> = HashSet::new();
-        for (path, oid) in &files {
-            let Some(title) = export::title_from_path(path) else {
-                continue;
-            };
-            wanted.insert(synapse_core::title_key(&title));
-            let text = self.read_blob(*oid)?;
-            plans.push(plan(graph, &title, &parse_page(&text), true)?);
-        }
-        // Delete first so blocks moved between pages can be re-created where they belong.
-        for p in &plans {
-            apply_deletes(graph, p)?;
-        }
-        for p in &plans {
-            if apply_puts(graph, p)? {
-                report.restored += 1;
+        let fault = &self.fault;
+        let this = &*self;
+        atomic(graph, || {
+            let mut plans = Vec::new();
+            let mut wanted: HashSet<String> = HashSet::new();
+            for (path, oid) in &files {
+                let Some(title) = export::title_from_path(path) else {
+                    continue;
+                };
+                wanted.insert(synapse_core::title_key(&title));
+                let text = this.read_blob(*oid)?;
+                plans.push(plan(graph, &title, &parse_page(&text), true)?);
             }
-        }
-        let mut offset = 0;
-        let mut extra = Vec::new();
-        loop {
-            let batch = graph.list_pages(true, 500, offset)?;
-            if batch.is_empty() {
-                break;
+            // Delete first so blocks moved between pages can be re-created where they belong.
+            for p in &plans {
+                apply_deletes(graph, p, fault)?;
             }
-            offset += batch.len() as u32;
-            extra.extend(
-                batch
-                    .into_iter()
-                    .filter(|p| !wanted.contains(&synapse_core::title_key(&p.title))),
-            );
-        }
-        for page in extra {
-            if clear_or_delete(graph, &page)? {
-                report.removed += 1;
+            for p in &plans {
+                if apply_puts(graph, p, fault)? {
+                    report.restored += 1;
+                }
             }
-        }
+            let mut offset = 0;
+            let mut extra = Vec::new();
+            loop {
+                let batch = graph.list_pages(true, 500, offset)?;
+                if batch.is_empty() {
+                    break;
+                }
+                offset += batch.len() as u32;
+                extra.extend(
+                    batch
+                        .into_iter()
+                        .filter(|p| !wanted.contains(&synapse_core::title_key(&p.title))),
+                );
+            }
+            for page in extra {
+                if clear_or_delete(graph, &page)? {
+                    report.removed += 1;
+                }
+            }
+            Ok(())
+        })?;
         Ok(report)
     }
 }
