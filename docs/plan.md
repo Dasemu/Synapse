@@ -1,7 +1,7 @@
 # Synapse plan
 
 ## Goals
-A Logseq-like outliner that fixes what Logseq/Obsidian lack: native performance on Android,
+An outliner for linked notes and journals that fixes what Logseq/Obsidian lack: native performance on Android,
 Linux and Windows, a real database instead of re-parsing Markdown on every start, heavy assets
 handled properly, built-in sync (self-hosted) and backup, semantic search and AI, and a
 "brain-like" model where connections have strength, memory is episodic (journals) and

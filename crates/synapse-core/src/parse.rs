@@ -1,4 +1,4 @@
-//! Extracts references from Logseq-flavoured Markdown block content.
+//! Extracts references from Synapse outline Markdown block content.
 
 use crate::model::RefKind;
 use uuid::Uuid;

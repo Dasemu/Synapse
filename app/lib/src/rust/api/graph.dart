@@ -134,7 +134,7 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   Future<PageData> openPage({required String title});
 
   /// Shift-Tab: the block moves right after its parent, adopting its following siblings as
-  /// children so it keeps its visual place (Logseq's default outdenting).
+  /// children so it keeps its visual place (direct outdenting).
   Future<List<BlockDto>> outdentBlock({required String id});
 
   /// Current outline of a page.

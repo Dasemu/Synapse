@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 pub type PageId = Uuid;
 pub type BlockId = Uuid;
-/// Free-form properties (`key:: value` in Logseq).
+/// Free-form properties (`key:: value` in block Markdown).
 pub type Properties = serde_json::Map<String, serde_json::Value>;
 
 pub fn new_id() -> Uuid {
@@ -97,7 +97,7 @@ pub struct Block {
     pub parent_id: Option<BlockId>,
     /// Fractional index among siblings (see [`crate::position`]).
     pub position: String,
-    /// Logseq-flavoured Markdown (rich text source of truth).
+    /// Synapse outline Markdown (rich text source of truth).
     pub content: String,
     pub properties: Properties,
     pub collapsed: bool,

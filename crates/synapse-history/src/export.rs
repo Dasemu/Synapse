@@ -1,4 +1,4 @@
-//! Deterministic Logseq-compatible Markdown export of pages.
+//! Deterministic Markdown export of pages.
 //!
 //! Layout: `pages/<encoded title>.md`, `journals/YYYY_MM_DD.md`, `assets.json`.
 //! A page file starts with page properties (`key:: value`, aliases as `alias:: a, b`),
@@ -26,7 +26,7 @@ pub const TAGS_PROP: &str = "synapse-tags";
 /// Page property with the type names (`synapse-types:: persona, lugar`).
 pub const TYPES_PROP: &str = "synapse-types";
 
-/// Encodes a page title as a file name (Logseq "triple-lowbar" format: `/` becomes `___`,
+/// Encodes a page title as a file name ("triple-lowbar" format: `/` becomes `___`,
 /// characters illegal on Windows and `%` are percent-encoded).
 pub fn encode_title(title: &str) -> String {
     let mut out = String::with_capacity(title.len());

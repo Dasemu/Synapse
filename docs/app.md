@@ -53,7 +53,7 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
 ## Editor
 - Blocks render Markdown when idle and become raw-Markdown text fields when focused.
 - Keys: Enter split (at start: new block above), Shift+Enter newline, Tab/Shift+Tab
-  indent/outdent (Logseq's direct outdenting), Backspace at start merges into the previous
+  indent/outdent (direct outdenting), Backspace at start merges into the previous
   block, Delete at end pulls the next one in, ↑/↓/←/→ cross block edges, Alt+Shift+↑/↓ move
   among siblings, Ctrl+↑/↓ collapse/expand, Ctrl+Enter cycles TODO/DONE, Esc leaves editing.
 - `[[`, `((` auto-pair; `[[`, `#` and `((` open autocomplete (↑/↓, Enter/Tab, Esc).

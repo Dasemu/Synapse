@@ -67,7 +67,7 @@ impl SynapseGraph {
     }
 
     /// Shift-Tab: the block moves right after its parent, adopting its following siblings as
-    /// children so it keeps its visual place (Logseq's default outdenting).
+    /// children so it keeps its visual place (direct outdenting).
     pub fn outdent_block(&self, id: String) -> Result<Vec<BlockDto>> {
         let g = self.lock();
         let b = get(&g, parse_id(&id)?)?;

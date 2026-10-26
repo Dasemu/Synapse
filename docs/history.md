@@ -1,11 +1,11 @@
 # History (`synapse-history`)
 
 Automatic git-like backup of a graph. A bare git repository at `<graph>/history/` holds a
-deterministic, Logseq-compatible Markdown export; every snapshot is a commit. Plain `git`
+deterministic Markdown export; every snapshot is a commit. Plain `git`
 works on it (`git --git-dir=<graph>/history log`, `clone`, ...).
 
 ## Export format
-- `pages/<title>.md`: title encoded Logseq-style (`/` → `___`, `% < > : " \ | ? *` and control
+- `pages/<title>.md`: title encoded (`/` → `___`, `% < > : " \ | ? *` and control
   chars percent-encoded). `journals/YYYY_MM_DD.md` for journals.
 - File = page properties (`key:: value`, aliases as `alias:: a, b`), then one `- ` bullet per
   block, nested with tabs; extra content lines and block properties are indented under the

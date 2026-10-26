@@ -366,7 +366,7 @@ pub struct TaskSuggestion {
 }
 
 impl TaskSuggestion {
-    /// Logseq block content: `TODO [#A] text` plus a `DEADLINE:` line when there is a due date.
+    /// Synapse block content: `TODO [#A] text` plus a `DEADLINE:` line when there is a due date.
     pub fn to_block_content(&self) -> String {
         let mut s = String::from("TODO ");
         if let Some(p) = self.priority {

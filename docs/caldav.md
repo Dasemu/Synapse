@@ -22,7 +22,7 @@ with `If-Match` (or `If-None-Match: *` for creation) and `DELETE` with `If-Match
 rustls with the bundled webpki roots (self-signed servers are not supported yet).
 
 ## Mapping
-| Logseq block | VTODO |
+| Synapse block | VTODO |
 |---|---|
 | `TODO`/`LATER` | `STATUS:NEEDS-ACTION` |
 | `DOING`/`NOW` | `IN-PROCESS` |

@@ -96,7 +96,7 @@ final _uuid = RegExp(
 );
 final _property = RegExp(r'^([A-Za-z0-9_\-]+):: ?(.*)$');
 
-/// Renders Logseq-flavoured Markdown of one block into a single [InlineSpan] tree.
+/// Renders Synapse outline Markdown of one block into a single [InlineSpan] tree.
 class BlockRenderer {
   BlockRenderer(this.ctx);
 
