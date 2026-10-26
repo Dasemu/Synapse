@@ -134,6 +134,16 @@ Tokens: `paper surface ink muted faint line accent accent-soft ref done code-bg 
 `#rrggbbaa`, `rgb()/rgba()` or `hsl()/hsla()`. Tokens not listed keep their current value;
 comments, selectors and unknown properties are ignored (unknown `--vars` are reported).
 
+## Modules
+Settings > Modules lists installed modules (enable switch, Remove with an option to delete
+their synced data), modules bundled in `assets/modules/` (Install) and "Install from file…"
+(`file_selector`). Every install shows the module's permissions for consent. Enabled modules
+add their views to the sidebar under Tags & types (`ModuleRoute`, saved with the tabs) and
+render their `{{name args}}` macros inside blocks (`ModuleMacro` chips through
+`RenderContext.macro`; unclaimed macros stay text). `ModulesController` (in `AppState`) sends
+`tick` requests, `suspend` when a phone app is paused, and applies effects (clipboard with
+delayed clearing, snack bars, opening a view). Format and API: `docs/modules.md`.
+
 ## Types and tags
 Both are plain names with no page, shown as one row of pills under the title.
 - **Type** (what a note is): at most one per page (persona, lugar, empresa, software, sueño,

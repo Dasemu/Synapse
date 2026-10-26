@@ -4,6 +4,7 @@
 app/ (Flutter, Dart)  ──FFI──▶  synapse-ffi  ──▶  synapse-core  ◀── synapse-search
                                      │                 ▲   ▲        synapse-import
                                      │                 │   └─────── synapse-history
+                                     ├──▶ synapse-modules (WASM sandbox, host crypto)
                                      ├──▶ synapse-ai ──┘ (Embedder) synapse-caldav
                                      └──▶ synapse-sync ──HTTP──▶ synapse-server (axum)
 ```
@@ -64,6 +65,14 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
 - Known limitations: replicas still on the old schema may overwrite tags with stale values (LWW per page), and `rename_tag` is a bulk page edit, so concurrent edits on another replica can undo part of it.
 - Exports use `synapse-tags::` and `synapse-type::` (see `history.md`); type definitions go
   to `types.json`.
+
+## Modules (`synapse-core::module_data`, `synapse-modules`)
+Sandboxed WebAssembly extensions (`docs/modules.md`). The core only knows their data:
+`module_data(module, key, value, hlc)` (schema v9), one synced op `PutModuleData` per entry
+(LWW, NULL value = tombstone), never interpreted by the core. `synapse-modules` runs modules
+(wasmi, fuel and memory limits), checks permissions on every host call, keeps keys for the
+`crypto` host functions, and manages installation (`<graph>/modules/`, per device). The FFI
+exposes install/list/enable/uninstall and JSON requests; the app renders their UI trees.
 
 ## Hubs and namespaces (`synapse-core::structure`)
 Two orthogonal ways to organise pages.
