@@ -79,7 +79,21 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   structure wins if they ever disagree.
 - App shortcuts (defaults, all rebindable in Settings): Ctrl+K quick switcher, Ctrl+Shift+J
   journals, Ctrl+Shift+G graph, Ctrl+Shift+T timeline, Ctrl+\ sidebar, Ctrl+Shift+\ graph
-  sidebar, Ctrl+, settings, Alt+←/→ back/forward.
+  sidebar, Ctrl+, settings, Alt+←/→ back/forward, Ctrl+T new tab, Ctrl+W close tab,
+  Ctrl+Tab / Ctrl+Shift+Tab next/previous tab.
+
+## Tabs
+- `AppState` holds a list of `AppTab`s; each has its own route and back/forward history, and
+  `go`/`back`/`forward`/`canGoBack` act on the active one. The strip (`views/tab_strip.dart`)
+  sits under the top bar: × on hover or on the active tab, middle-click closes, drag reorders,
+  "+" opens a Journals tab; closing the last tab leaves one Journals tab. Below 760 px the strip
+  is replaced by a tab-count button in the top bar that opens a bottom sheet.
+- Ctrl/Cmd+click (or middle-click) on a page link or block ref in the editor, on sidebar
+  entries, All pages rows and quick switcher results opens in a new tab
+  (`AppState.navigate` / `openInNewTab`).
+- Open tabs (route type and page id/title, graph mode) and the active index are saved under
+  `tabs` in the settings JSON and restored on start; history is not persisted. Deleting a page
+  (`AppState.pagesDeleted`) sends tabs showing it back (or to Journals) and drops it from recents.
 
 ## Settings, themes and key bindings
 - Top-bar gear icon, next to the theme toggle (Ctrl+,): theme cards and the shortcut list. Click a shortcut, press the new
@@ -157,6 +171,10 @@ Both are plain names with no page, shown as one row of pills under the title.
   related pages; on narrow windows they appear below the content.
 - All pages lists notes only (hubs are folders, not pages) and can be sorted by edited,
   created or title, ascending or descending.
+- "New page" asks for a title (empty or duplicate titles are refused inline, with "Open it"
+  for an existing page). Each row has a `⋯` menu (also on right-click or long-press) with
+  "Open in new tab" and "Delete…"; "Select" switches to checkboxes with a bulk "Delete (N)".
+  Deletion always asks for confirmation and runs `deletePage` per page.
 
 ## Graph view
 One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:

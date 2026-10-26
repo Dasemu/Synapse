@@ -317,8 +317,10 @@ class _BlockViewState extends State<BlockView> {
       base: blockTextStyle(context),
       refs: app.refs,
       assetPath: app.backend.assetPath,
-      onPage: app.openTitle,
-      onBlockRef: (r) => app.openId(r.pageId),
+      onPage: (t) => app.navigate(PageTarget(title: t)),
+      onBlockRef: (r) => app.navigate(PageTarget(id: r.pageId)),
+      onPageNewTab: app.openTitleInNewTab,
+      onBlockRefNewTab: (r) => app.openIdInNewTab(r.pageId),
       onUrl: openUrl,
       onToggleTodo: () => widget.controller.cycleTodo(widget.node),
       maxWidth: width,
@@ -708,6 +710,8 @@ class _BlockEditorState extends State<BlockEditor> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.tab) {
+      // Ctrl+Tab switches app tabs (handled by the shell shortcuts).
+      if (ctrl) return KeyEventResult.ignored;
       if (shift) {
         c.outdent(n, caret: caret);
       } else {

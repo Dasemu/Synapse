@@ -12,6 +12,7 @@ import 'hubs_tree.dart';
 import 'quick_switcher.dart';
 import 'graph_view.dart';
 import 'settings_view.dart';
+import 'tab_strip.dart';
 import 'tag_view.dart';
 
 /// App frame: sidebar (navigation, hubs, recents), top bar (history, search, theme,
@@ -54,6 +55,10 @@ class _ShellState extends State<Shell> {
       AppAction.settings: () => app.go(const SettingsRoute()),
       AppAction.back: app.back,
       AppAction.forward: app.forward,
+      AppAction.newTab: app.newTab,
+      AppAction.closeTab: app.closeTab,
+      AppAction.nextTab: app.nextTab,
+      AppAction.previousTab: app.previousTab,
     };
     return CallbackShortcuts(
       bindings: {
@@ -95,13 +100,15 @@ class _ShellState extends State<Shell> {
                     child: Column(
                       children: [
                         _TopBar(
+                          narrow: narrow,
                           onMenu: () => narrow
                               ? _scaffold.currentState?.openDrawer()
                               : setState(() => _sidebar = !_sidebar),
                         ),
+                        if (!narrow) const TabStrip(),
                         Expanded(
                           child: KeyedSubtree(
-                            key: ValueKey((route, app.generation)),
+                            key: ValueKey((app.tab.uid, route, app.generation)),
                             child: switch (route) {
                               JournalsRoute() => const JournalsView(),
                               TimelineRoute() => const GraphView(
@@ -132,8 +139,9 @@ class _ShellState extends State<Shell> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onMenu});
+  const _TopBar({required this.onMenu, required this.narrow});
   final VoidCallback onMenu;
+  final bool narrow;
 
   @override
   Widget build(BuildContext context) {
@@ -169,8 +177,9 @@ class _TopBar extends StatelessWidget {
             app.canGoForward ? app.forward : null,
           ),
           const Spacer(),
+          if (narrow) const TabCountButton(),
           // Phones: an icon instead of the pill keeps the bar from overflowing.
-          if (MediaQuery.sizeOf(context).width < 480)
+          if (MediaQuery.sizeOf(context).width < 600)
             icon(
               Icons.search_rounded,
               'Search (${app.keymap.of(AppAction.quickSwitcher).label})',
@@ -242,8 +251,14 @@ class _Sidebar extends StatelessWidget {
     final app = AppScope.of(context);
     final colors = context.colors;
     final route = app.route;
+    // Ctrl/Cmd-click opens in a new tab, middle-click always does.
     void go(AppRoute r) {
-      app.go(r);
+      app.navigate(r);
+      onNavigate();
+    }
+
+    void newTab(AppRoute r) {
+      app.openInNewTab(r);
       onNavigate();
     }
 
@@ -279,18 +294,21 @@ class _Sidebar extends StatelessWidget {
               label: 'Journals',
               selected: route is JournalsRoute,
               onTap: () => go(const JournalsRoute()),
+              onMiddle: () => newTab(const JournalsRoute()),
             ),
             _NavItem(
               icon: Icons.hub_outlined,
               label: 'Graph',
               selected: route is GraphRoute,
               onTap: () => go(const GraphRoute(GraphMode.network)),
+              onMiddle: () => newTab(const GraphRoute(GraphMode.network)),
             ),
             _NavItem(
               icon: Icons.description_outlined,
               label: 'All pages',
               selected: route is AllPagesRoute,
               onTap: () => go(const AllPagesRoute()),
+              onMiddle: () => newTab(const AllPagesRoute()),
             ),
             const SizedBox(height: 22),
             Expanded(
@@ -314,6 +332,7 @@ class _Sidebar extends StatelessWidget {
                       selected: route is PageTarget && route.id == p.id,
                       dense: true,
                       onTap: () => go(PageTarget(id: p.id)),
+                      onMiddle: () => newTab(PageTarget(id: p.id)),
                     ),
                 ],
               ),
@@ -331,12 +350,14 @@ class _NavItem extends StatefulWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.onMiddle,
     this.dense = false,
   });
   final IconData? icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onMiddle;
   final bool dense;
 
   @override
@@ -356,6 +377,9 @@ class _NavItemState extends State<_NavItem> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        onTertiaryTapUp: widget.onMiddle == null
+            ? null
+            : (_) => widget.onMiddle!(),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
           padding: EdgeInsets.symmetric(

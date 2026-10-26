@@ -57,14 +57,20 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
     });
   }
 
-  void _open(int i) {
+  /// Ctrl/Cmd held (or `newTab`, for middle-click) opens the result in a new tab.
+  void _open(int i, {bool newTab = false}) {
     final app = AppScope.read(context);
+    final query = _query;
     Navigator.of(context).pop();
+    final AppRoute route;
     if (i < _hits.length) {
-      app.openId(_hits[i].pageId);
-    } else if (_query.isNotEmpty) {
-      app.openTitle(_query);
+      route = PageTarget(id: _hits[i].pageId);
+    } else if (query.isNotEmpty) {
+      route = PageTarget(title: query);
+    } else {
+      return;
     }
+    newTab ? app.openInNewTab(route) : app.navigate(route);
   }
 
   KeyEventResult _key(FocusNode _, KeyEvent e) {
@@ -137,6 +143,7 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
                       _Item(
                         selected: i == _selected,
                         onTap: () => _open(i),
+                        onMiddle: () => _open(i, newTab: true),
                         icon: i < _hits.length
                             ? Icons.description_outlined
                             : Icons.add_rounded,
@@ -164,10 +171,12 @@ class _Item extends StatelessWidget {
     required this.onTap,
     required this.icon,
     required this.title,
+    required this.onMiddle,
     this.detail,
   });
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onMiddle;
   final IconData icon;
   final String title;
   final String? detail;
@@ -179,6 +188,7 @@ class _Item extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
+        onTertiaryTapUp: (_) => onMiddle(),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
