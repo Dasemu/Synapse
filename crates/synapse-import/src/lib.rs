@@ -39,9 +39,22 @@ pub enum ExistingPages {
     Skip,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ImportOptions {
     pub existing: ExistingPages,
+    /// Skip the files of Logseq's organisational pages (`contents`, `card`, `favorites`,
+    /// `hls__*`; see [`is_skipped_legacy`]) and drop the empty stubs their refs would create
+    /// in this import. Other built-in names (`TODO`, `NOW`, ...) are imported normally.
+    pub skip_legacy_pages: bool,
+}
+
+impl Default for ImportOptions {
+    fn default() -> Self {
+        Self {
+            existing: ExistingPages::default(),
+            skip_legacy_pages: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +91,8 @@ pub struct Report {
     pub unchanged: usize,
     /// `.org` files imported as raw blocks (relative paths).
     pub org_files: Vec<String>,
+    /// Legacy organisational pages left out (relative paths), see `skip_legacy_pages`.
+    pub skipped_legacy: Vec<String>,
     pub warnings: Vec<String>,
 }
 
@@ -163,7 +178,16 @@ pub fn import_logseq(
             .collect();
         docs.extend(parsed);
     }
-    let docs = dedupe(docs, &mut report.warnings);
+    let mut docs = dedupe(docs, &mut report.warnings);
+    if opts.skip_legacy_pages {
+        docs.retain(|d| {
+            let legacy = d.journal.is_none() && is_skipped_legacy(&d.title);
+            if legacy {
+                report.skipped_legacy.push(d.rel.clone());
+            }
+            !legacy
+        });
+    }
 
     // ---- origin journals: earliest journal referencing each page (aliases resolved)
     let mut alias_to_key: HashMap<String, String> = HashMap::new();
@@ -187,8 +211,50 @@ pub fn import_logseq(
     // One transaction for the whole write phase: much faster, and a failed import leaves the
     // graph untouched.
     track::init(graph)?;
-    graph.transaction(|g| write_all(g, opts, &docs, &origin, &mut report, &mut progress))?;
+    graph.transaction(|g| {
+        let before: HashSet<PageId> = if opts.skip_legacy_pages {
+            page_ids(g)?
+        } else {
+            HashSet::new()
+        };
+        write_all(g, opts, &docs, &origin, &mut report, &mut progress)?;
+        if opts.skip_legacy_pages {
+            drop_legacy_stubs(g, &before)?;
+        }
+        Ok(())
+    })?;
     Ok(report)
+}
+
+/// Logseq files the importer leaves out when `skip_legacy_pages` is set: `contents`, `card`,
+/// `favorites` and PDF highlight pages (`hls__*`).
+pub fn is_skipped_legacy(title: &str) -> bool {
+    let key = title_key(title);
+    key.starts_with("hls__") || ["contents", "card", "favorites"].contains(&key.as_str())
+}
+
+fn page_ids(g: &Graph) -> Result<HashSet<PageId>> {
+    Ok(g.list_pages(false, u32::MAX, 0)?
+        .into_iter()
+        .map(|p| p.id)
+        .collect())
+}
+
+/// Refs to `[[contents]]`, `[[card]]`, ... make core create empty stub pages; remove the ones
+/// this import created (pages that existed before are never touched).
+fn drop_legacy_stubs(g: &Graph, before: &HashSet<PageId>) -> Result<()> {
+    let stubs: Vec<PageId> = g
+        .list_pages(false, u32::MAX, 0)?
+        .into_iter()
+        .filter(|p| !before.contains(&p.id) && is_skipped_legacy(&p.title))
+        .map(|p| p.id)
+        .collect();
+    for id in stubs {
+        if g.page_tree(id)?.is_empty() {
+            g.delete_page(id)?;
+        }
+    }
+    Ok(())
 }
 
 fn write_all(
@@ -218,6 +284,13 @@ fn write_all(
         let d = &docs[i];
         let o = origin.get(&d.key).copied();
         match graph.transaction(|g| ensure_page(g, d, o)) {
+            // Hubs are Synapse-only pages without blocks: a re-import never writes them.
+            Ok((pid, true)) if graph.get_page(pid)?.is_some_and(|p| p.is_hub()) => {
+                report.warnings.push(format!(
+                    "{}: {:?} is a hub in Synapse, skipped",
+                    d.rel, d.title
+                ));
+            }
             Ok(r) => {
                 ids.insert(i, r);
             }

@@ -100,13 +100,7 @@ void main() {
     }
     await shot(tester, 'app-network');
 
-    for (final mode in [
-      'Local',
-      'Synapses',
-      'Clusters',
-      'Namespaces',
-      'Timeline',
-    ]) {
+    for (final mode in ['Synapses', 'Clusters', 'Tree', 'Timeline']) {
       await tester.tap(find.text(mode).last);
       await wait(tester, const Duration(seconds: 3));
       expect(tester.takeException(), isNull);

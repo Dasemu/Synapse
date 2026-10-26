@@ -8,7 +8,7 @@ use crate::parse::{ParsedPage, parse_page};
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use synapse_core::position::between;
-use synapse_core::{Block, BlockId, Graph, NewPage, Page, new_id};
+use synapse_core::{Block, BlockId, Graph, NewPage, Page, PageId, PageKind, new_id};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RestoreReport {
@@ -51,6 +51,14 @@ fn atomic<T>(graph: &Graph, f: impl FnOnce() -> Result<T>) -> Result<T> {
 }
 
 struct Plan {
+    page: PageId,
+    is_hub: bool,
+    is_tag: bool,
+    description: String,
+    /// Titles of the hubs the page belongs to.
+    hubs: Vec<String>,
+    tags: Vec<String>,
+    types: Vec<String>,
     blocks: Vec<Block>,
     delete: Vec<BlockId>,
 }
@@ -67,8 +75,20 @@ fn find_or_create(graph: &Graph, title: &str) -> Result<Page> {
 
 /// Matches parsed blocks to existing ones and decides what to write and delete.
 fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<Plan> {
-    let page = find_or_create(graph, title)?;
+    let mut page = find_or_create(graph, title)?;
     let now = graph.now_ms();
+    // A hub cannot hold blocks: turn it back into a note before any block is written.
+    if page.is_hub() && !parsed.is_hub {
+        page.kind = PageKind::Note;
+        page.updated_at = now;
+        graph.put_page(&page)?;
+        // Like `convert_to_note`: members leave it, so it never regains them by surprise.
+        for m in graph.hub_members(page.id)? {
+            graph.remove_from_hub(m, page.id)?;
+        }
+    }
+    // A hub file has no blocks; any left over in the page are deleted.
+    let parsed_blocks: &[_] = if parsed.is_hub { &[] } else { &parsed.blocks };
 
     if page.properties != parsed.properties {
         graph.set_page_properties(page.id, parsed.properties.clone())?;
@@ -89,9 +109,9 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
         .collect();
     let by_id: HashMap<BlockId, &Block> = existing.iter().map(|b| (b.id, b)).collect();
     let mut claimed: HashSet<BlockId> = HashSet::new();
-    let mut ids: Vec<Option<BlockId>> = vec![None; parsed.blocks.len()];
+    let mut ids: Vec<Option<BlockId>> = vec![None; parsed_blocks.len()];
 
-    for (i, pb) in parsed.blocks.iter().enumerate() {
+    for (i, pb) in parsed_blocks.iter().enumerate() {
         let Some(id) = pb.id else { continue };
         let usable = by_id.contains_key(&id)
             || match graph.get_block(id)? {
@@ -102,7 +122,7 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
             ids[i] = Some(id);
         }
     }
-    for (i, pb) in parsed.blocks.iter().enumerate() {
+    for (i, pb) in parsed_blocks.iter().enumerate() {
         if ids[i].is_some() {
             continue;
         }
@@ -115,10 +135,10 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
     }
 
     // Build the tree: parents from depth, positions kept when still ordered.
-    let mut blocks: Vec<Block> = Vec::with_capacity(parsed.blocks.len());
+    let mut blocks: Vec<Block> = Vec::with_capacity(parsed_blocks.len());
     let mut stack: Vec<BlockId> = Vec::new();
     let mut last_pos: HashMap<Option<BlockId>, String> = HashMap::new();
-    for (i, pb) in parsed.blocks.iter().enumerate() {
+    for (i, pb) in parsed_blocks.iter().enumerate() {
         let id = ids[i].unwrap();
         stack.truncate(pb.depth);
         let parent = stack.last().copied();
@@ -149,7 +169,17 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
         .filter(|b| !claimed.contains(&b.id))
         .map(|b| b.id)
         .collect();
-    Ok(Plan { blocks, delete })
+    Ok(Plan {
+        page: page.id,
+        is_hub: parsed.is_hub,
+        is_tag: parsed.is_tag,
+        description: parsed.description.clone(),
+        hubs: parsed.hubs.clone(),
+        tags: parsed.tags.clone(),
+        types: parsed.types.clone(),
+        blocks,
+        delete,
+    })
 }
 
 fn same(a: &Block, b: &Block) -> bool {
@@ -184,6 +214,72 @@ fn apply_puts(graph: &Graph, plan: &Plan, fault: Fault) -> Result<bool> {
         wrote = true;
     }
     Ok(wrote || !plan.delete.is_empty())
+}
+
+/// Sets kind and description once the page's blocks are gone; returns whether it changed.
+fn apply_kind(graph: &Graph, plan: &Plan) -> Result<bool> {
+    let Some(mut page) = graph.get_page(plan.page)? else {
+        return Ok(false);
+    };
+    let kind = if plan.is_hub {
+        PageKind::Hub
+    } else if plan.is_tag {
+        PageKind::Tag
+    } else {
+        PageKind::Note
+    };
+    if page.kind == kind
+        && page.description == plan.description
+        && page.tags == plan.tags
+        && page.types == plan.types
+    {
+        return Ok(false);
+    }
+    page.kind = kind;
+    page.tags = plan.tags.clone();
+    page.types = plan.types.clone();
+    page.description = plan.description.clone();
+    page.updated_at = graph.now_ms();
+    graph.put_page(&page)?;
+    Ok(true)
+}
+
+/// Puts the page back in the hubs named by the snapshot (once every page has its kind).
+/// Hubs that no longer exist or would now be invalid (e.g. a cycle) are skipped.
+fn apply_hubs(graph: &Graph, plan: &Plan) -> Result<bool> {
+    let Some(page) = graph.get_page(plan.page)? else {
+        return Ok(false);
+    };
+    let mut wanted = Vec::new();
+    for t in &plan.hubs {
+        if let Some(h) = graph.page_by_title(t)?
+            && h.is_hub()
+            && !wanted.contains(&h.id)
+        {
+            wanted.push(h.id);
+        }
+    }
+    wanted.truncate(1);
+    if page.hubs == wanted {
+        return Ok(false);
+    }
+    if skip_invalid(graph.set_page_hubs(page.id, wanted.clone()))?.is_none() {
+        graph.set_page_hubs(page.id, Vec::new())?;
+        for h in wanted {
+            skip_invalid(graph.add_to_hub(page.id, h))?;
+        }
+    }
+    Ok(true)
+}
+
+/// Rule violations (cycles, pages that are no longer hubs) become `None`; storage errors
+/// still abort the restore.
+fn skip_invalid<T>(r: synapse_core::Result<T>) -> Result<Option<T>> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(synapse_core::Error::Invalid(_) | synapse_core::Error::NotFound(_)) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn clear_or_delete(graph: &Graph, page: &Page) -> Result<bool> {
@@ -223,12 +319,19 @@ impl History {
             ..Default::default()
         };
         let fault = &self.fault;
+        let this = &*self;
         atomic(graph, || {
             match text {
                 Some(text) => {
-                    let p = plan(graph, title, &parse_page(&text), false)?;
+                    let parsed = parse_page(&text);
+                    let p = plan(graph, title, &parsed, false)?;
                     apply_deletes(graph, &p, fault)?;
                     apply_puts(graph, &p, fault)?;
+                    apply_kind(graph, &p)?;
+                    apply_hubs(graph, &p)?;
+                    if parsed.is_hub {
+                        this.rejoin_members(graph, commit, title, p.page)?;
+                    }
                     report.restored = 1;
                 }
                 None => {
@@ -243,6 +346,38 @@ impl History {
             Ok(())
         })?;
         Ok(report)
+    }
+
+    /// Membership lives on the members: after restoring a hub alone, puts back the existing
+    /// pages that were in it at `commit` (other memberships are left alone).
+    fn rejoin_members(
+        &self,
+        graph: &Graph,
+        commit: gix::ObjectId,
+        title: &str,
+        hub: PageId,
+    ) -> Result<()> {
+        let key = synapse_core::title_key(title);
+        for (path, oid) in &self.snapshot_files(&commit.to_string())? {
+            let Some(member) = export::title_from_path(path) else {
+                continue;
+            };
+            let parsed = parse_page(&self.read_blob(*oid)?);
+            if !parsed
+                .hubs
+                .iter()
+                .any(|h| synapse_core::title_key(h) == key)
+            {
+                continue;
+            }
+            if let Some(m) = graph.page_by_title(&member)?
+                && m.id != hub
+            {
+                // Skipped when it would now be invalid (e.g. a cycle).
+                skip_invalid(graph.add_to_hub(m.id, hub))?;
+            }
+        }
+        Ok(())
     }
 
     /// Restores every page to its state at `rev`; pages created since are removed.
@@ -275,11 +410,17 @@ impl History {
             for p in &plans {
                 apply_deletes(graph, p, fault)?;
             }
-            for p in &plans {
-                if apply_puts(graph, p, fault)? {
-                    report.restored += 1;
-                }
+            let mut changed = vec![false; plans.len()];
+            for (i, p) in plans.iter().enumerate() {
+                changed[i] = apply_puts(graph, p, fault)?;
             }
+            for (i, p) in plans.iter().enumerate() {
+                changed[i] |= apply_kind(graph, p)?;
+            }
+            for (i, p) in plans.iter().enumerate() {
+                changed[i] |= apply_hubs(graph, p)?;
+            }
+            report.restored += changed.iter().filter(|c| **c).count();
             let mut offset = 0;
             let mut extra = Vec::new();
             loop {

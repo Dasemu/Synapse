@@ -1,4 +1,5 @@
-//! tantivy-backed full-text index: one document per block and one per page (title + aliases).
+//! tantivy-backed full-text index: one document per block and one per page (title + aliases,
+//! plus the description of hubs as content).
 
 use crate::error::Result;
 use crate::{Filter, JournalFilter, Scope};
@@ -184,6 +185,7 @@ impl FullText {
         id: Uuid,
         title: &str,
         aliases: &[String],
+        description: &str,
         day: i64,
         journal: bool,
     ) -> Result<()> {
@@ -195,6 +197,9 @@ impl FullText {
         d.add_text(self.f.title, title);
         for a in aliases {
             d.add_text(self.f.title, a);
+        }
+        if !description.is_empty() {
+            d.add_text(self.f.content, description);
         }
         d.add_i64(self.f.day, day);
         d.add_u64(self.f.journal, journal as u64);

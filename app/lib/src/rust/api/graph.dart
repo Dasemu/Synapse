@@ -15,6 +15,14 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 abstract class SynapseGraph implements RustOpaqueInterface {
   Future<void> addAlias({required String pageId, required String alias});
 
+  Future<PageDto> addPageTag({required String pageId, required String tag});
+
+  Future<PageDto> addPageType({required String pageId, required String ty});
+
+  /// Puts a page in a hub (no-op when it already is). Fails for journals, non-hub targets,
+  /// the hub itself and memberships that would create a cycle.
+  Future<void> addToHub({required String pageId, required String hubId});
+
   Future<List<String>> aliases({required String pageId});
 
   /// Local file path of an asset (for `asset://<hash>` images), if present.
@@ -25,6 +33,32 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   /// Target of a `((block ref))`.
   Future<BlockRefDto?> blockRef({required String id});
+
+  /// Turns a note into a hub in one transaction: renames it to `title` (links rewritten),
+  /// moves its outline to a new note `keep_outline_as` (or deletes it when `None`; a blank title is an error), sets the
+  /// description and adds `member_ids` (invalid members are skipped).
+  Future<PageDto> convertToHub({
+    required String pageId,
+    required String title,
+    required String description,
+    required List<String> memberIds,
+    String? keepOutlineAs,
+  });
+
+  /// Turns a hub back into a note: description, then one `[[Member]]` block per member.
+  Future<PageDto> convertToNote({required String pageId});
+
+  /// Creates an empty hub. Fails when the title is taken.
+  Future<PageDto> createHub({
+    required String title,
+    required String description,
+  });
+
+  /// Creates a note in the hub, starting from a copy of the hub's template.
+  Future<PageDto> createPageFromTemplate({
+    required String hubId,
+    required String title,
+  });
 
   /// Deletes a block and its subtree.
   Future<List<BlockDto>> deleteBlock({required String id});
@@ -37,6 +71,16 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// The whole page-level graph (journals included; the UI filters). Cached until the
   /// graph changes.
   Future<GraphData> graphData();
+
+  /// Defaults for converting a note into a hub.
+  Future<HubPreviewDto> hubConversionPreview({required String pageId});
+
+  /// Id of the hub's template page (created empty when missing). Open it like any note to
+  /// edit the outline new notes of the hub start from.
+  Future<String> hubTemplate({required String hubId});
+
+  /// Every hub with its members, and the root hubs.
+  Future<HubsDto> hubs();
 
   /// Tab: the block becomes the last child of its previous sibling (no-op for a first child).
   Future<List<BlockDto>> indentBlock({required String id});
@@ -55,6 +99,12 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Journals feed, newest first. With `before = None` it starts at today (creating today's
   /// journal); otherwise at the newest journal strictly before `before`.
   Future<List<PageData>> journals({String? before, required int limit});
+
+  /// Pages that are probably leftovers of Logseq: its built-ins and pages with
+  /// `type:: system`. Only the organisational files (`contents`, `card`, `favorites`,
+  /// `hls__*`) and empty pages are preselected, and never a hub: a built-in title such as
+  /// `todo` may hold real content.
+  Future<List<LegacyCandidate>> legacyCandidates();
 
   /// Pages ordered by last update, most recent first.
   Future<List<PageDto>> listPages({
@@ -95,6 +145,15 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Page by title or alias, without creating it.
   Future<PageData?> pageByTitle({required String title});
 
+  /// Hub and namespace context of a page.
+  Future<PageStructure> pageStructure({required String pageId});
+
+  /// Pages carrying a tag, most recently updated first.
+  Future<List<PageBrief>> pagesWithTag({required String tag});
+
+  /// Deletes pages and their blocks in one transaction. Returns how many existed.
+  Future<int> purgePages({required List<String> ids});
+
   /// Stores in-memory bytes (clipboard, Android content URIs).
   Future<AssetDto> putAssetBytes({
     required List<int> bytes,
@@ -116,6 +175,13 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<void> removeAlias({required String alias});
 
+  /// Takes a page out of a hub (no-op when it is not in it).
+  Future<void> removeFromHub({required String pageId, required String hubId});
+
+  Future<PageDto> removePageTag({required String pageId, required String tag});
+
+  Future<PageDto> removePageType({required String pageId, required String ty});
+
   Future<PageDto> renamePage({required String id, required String newTitle});
 
   /// Blocks whose text contains `query` (for `((` autocomplete), most recent first.
@@ -133,11 +199,35 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<void> setCollapsed({required String id, required bool collapsed});
 
+  Future<PageDto> setHubDescription({
+    required String hubId,
+    required String description,
+  });
+
+  /// Replaces the tags of a page (each title gets a tag page if it has none). Journals,
+  /// templates and tag pages cannot be tagged.
+  Future<PageDto> setPageTags({
+    required String pageId,
+    required List<String> tags,
+  });
+
+  /// Replaces the types of a page. Journals and templates cannot be typed.
+  Future<PageDto> setPageTypes({
+    required String pageId,
+    required List<String> types,
+  });
+
+  /// Every tag page with its number of pages, most used first.
+  Future<List<TagDto>> tagCatalog();
+
   /// Timeline data for `[from, to]` (oldest first) with titles of every page it mentions.
   Future<TimelineDto> timeline({required String from, required String to});
 
   /// Today's date (graph clock) as `YYYY-MM-DD`.
   String today();
+
+  /// Types in use (most used first) followed by the seeded suggestions not used yet.
+  Future<List<TagDto>> typeCatalog();
 
   /// Replaces a block's Markdown (the debounced save while typing).
   Future<void> updateBlock({required String id, required String content});

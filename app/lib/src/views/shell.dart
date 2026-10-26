@@ -1,14 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../state/app_state.dart';
+import '../state/keymap.dart';
 import '../theme/theme.dart';
 import '../widgets/dates.dart';
 import 'all_pages_view.dart';
 import 'journals_view.dart';
 import 'page_screen.dart';
+import 'hubs_tree.dart';
 import 'quick_switcher.dart';
 import 'graph_view.dart';
+import 'settings_view.dart';
 
 /// App frame: sidebar (navigation, recents, theme), top bar and the current view.
 class Shell extends StatefulWidget {
@@ -39,39 +42,21 @@ class _ShellState extends State<Shell> {
         );
       });
     }
+    final actions = <AppAction, VoidCallback>{
+      AppAction.quickSwitcher: () => showQuickSwitcher(context),
+      AppAction.journals: () => app.go(const JournalsRoute()),
+      AppAction.graph: () => app.go(const GraphRoute(GraphMode.network)),
+      AppAction.timeline: () => app.go(const TimelineRoute()),
+      AppAction.sidebar: () => setState(() => _sidebar = !_sidebar),
+      AppAction.pageSidebar: app.togglePageSidebar,
+      AppAction.settings: () => app.go(const SettingsRoute()),
+      AppAction.back: app.back,
+      AppAction.forward: app.forward,
+    };
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
-            showQuickSwitcher(context),
-        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
-            showQuickSwitcher(context),
-        const SingleActivator(
-          LogicalKeyboardKey.keyJ,
-          control: true,
-          shift: true,
-        ): () =>
-            app.go(const JournalsRoute()),
-        const SingleActivator(
-          LogicalKeyboardKey.keyG,
-          control: true,
-          shift: true,
-        ): () =>
-            app.go(const GraphRoute(GraphMode.network)),
-        const SingleActivator(
-          LogicalKeyboardKey.keyT,
-          control: true,
-          shift: true,
-        ): () =>
-            app.go(const TimelineRoute()),
-        const SingleActivator(
-          LogicalKeyboardKey.backslash,
-          control: true,
-        ): () =>
-            setState(() => _sidebar = !_sidebar),
-        const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
-            app.back,
-        const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
-            app.forward,
+        for (final e in actions.entries)
+          ...Map.fromEntries(activators(app.keymap.of(e.key), e.value)),
       },
       child: Focus(
         autofocus: true,
@@ -125,6 +110,7 @@ class _ShellState extends State<Shell> {
                                 focusId: route.focusId,
                               ),
                               AllPagesRoute() => const AllPagesView(),
+                              SettingsRoute() => const SettingsView(),
                               PageTarget() => PageScreen(target: route),
                             },
                           ),
@@ -164,15 +150,19 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          icon(Icons.menu_rounded, 'Toggle sidebar (Ctrl+\\)', onMenu),
+          icon(
+            Icons.menu_rounded,
+            'Toggle sidebar (${app.keymap.of(AppAction.sidebar).label})',
+            onMenu,
+          ),
           icon(
             Icons.arrow_back_rounded,
-            'Back (Alt+←)',
+            'Back (${app.keymap.of(AppAction.back).label})',
             app.canGoBack ? app.back : null,
           ),
           icon(
             Icons.arrow_forward_rounded,
-            'Forward (Alt+→)',
+            'Forward (${app.keymap.of(AppAction.forward).label})',
             app.canGoForward ? app.forward : null,
           ),
           const Spacer(),
@@ -214,7 +204,10 @@ class _SearchPill extends StatelessWidget {
             const SizedBox(width: 8),
             Text('Search', style: TextStyle(fontSize: 13, color: colors.muted)),
             const SizedBox(width: 18),
-            Text('Ctrl K', style: TextStyle(fontSize: 11, color: colors.faint)),
+            Text(
+              AppScope.of(context).keymap.of(AppAction.quickSwitcher).label,
+              style: TextStyle(fontSize: 11, color: colors.faint),
+            ),
           ],
         ),
       ),
@@ -276,30 +269,33 @@ class _Sidebar extends StatelessWidget {
               onTap: () => go(const GraphRoute(GraphMode.network)),
             ),
             _NavItem(
-              icon: Icons.timeline_rounded,
-              label: 'Timeline',
-              selected: route is TimelineRoute,
-              onTap: () => go(const TimelineRoute()),
-            ),
-            _NavItem(
               icon: Icons.description_outlined,
               label: 'All pages',
               selected: route is AllPagesRoute,
               onTap: () => go(const AllPagesRoute()),
             ),
-            const SizedBox(height: 22),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'RECENT',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
+            _NavItem(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              selected: route is SettingsRoute,
+              onTap: () => go(const SettingsRoute()),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 22),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
+                  HubsSection(
+                    selectedId: route is PageTarget ? route.id : null,
+                    onOpen: (id) => go(PageTarget(id: id)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                    child: Text(
+                      'RECENT',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
                   for (final p in app.recent)
                     _NavItem(
                       label: p.isJournal ? longDate(p.title) : p.title,
@@ -418,3 +414,29 @@ class _Logo extends CustomPainter {
   @override
   bool shouldRepaint(_Logo old) => old.color != color;
 }
+
+/// The shortcut activators for `combo` (Ctrl also answers to Cmd on macOS).
+List<MapEntry<ShortcutActivator, VoidCallback>> activators(
+  Combo combo,
+  VoidCallback run,
+) => [
+  MapEntry(
+    SingleActivator(
+      combo.key,
+      control: combo.ctrl,
+      shift: combo.shift,
+      alt: combo.alt,
+    ),
+    run,
+  ),
+  if (combo.ctrl && defaultTargetPlatform == TargetPlatform.macOS)
+    MapEntry(
+      SingleActivator(
+        combo.key,
+        meta: true,
+        shift: combo.shift,
+        alt: combo.alt,
+      ),
+      run,
+    ),
+];

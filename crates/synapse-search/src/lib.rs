@@ -318,7 +318,8 @@ impl Search {
                     Some(d) => (day_of_date(d), true),
                     None => (day_of_ms(p.updated_at), false),
                 };
-                self.ft.upsert_page(id, &p.title, &aliases, day, journal)?;
+                self.ft
+                    .upsert_page(id, &p.title, &aliases, &p.description, day, journal)?;
             }
             None => {
                 self.ft.delete(id);
@@ -350,7 +351,8 @@ impl Search {
                     Some(d) => (day_of_date(d), true),
                     None => (day_of_ms(p.updated_at), false),
                 };
-                self.ft.upsert_page(p.id, &p.title, &al, day, journal)?;
+                self.ft
+                    .upsert_page(p.id, &p.title, &al, &p.description, day, journal)?;
             }
         }
         Ok(())

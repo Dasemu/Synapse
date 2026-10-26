@@ -21,8 +21,7 @@ pub fn journal_id(date: NaiveDate) -> PageId {
     Uuid::new_v5(&JOURNAL_NS, journal_title(date).as_bytes())
 }
 
-const PAGE_COLS: &str =
-    "id, title, journal_date, origin_journal, properties, created_at, updated_at";
+const PAGE_COLS: &str = "id, title, journal_date, origin_journal, properties, created_at, updated_at, kind, description, hubs, tags, types";
 const BLOCK_COLS: &str =
     "id, page_id, parent_id, position, content, properties, collapsed, created_at, updated_at";
 
@@ -76,13 +75,15 @@ impl Graph {
             clock.observe(&last);
         }
         let blobs = BlobStore::open(dir.join("blobs"))?;
-        Ok(Self {
+        let graph = Self {
             conn,
             blobs,
             clock,
             dir,
             now_override: Cell::new(None),
-        })
+        };
+        graph.repair_tag_pages()?;
+        Ok(graph)
     }
 
     /// Runs `f` atomically. Calls nest (SQLite savepoints), so callers such as importers can
@@ -99,12 +100,16 @@ impl Graph {
     }
 
     /// `execute` through the statement cache (hot paths run millions of times on imports).
-    fn exec<P: rusqlite::Params>(&self, sql: &str, params: P) -> rusqlite::Result<usize> {
+    pub(crate) fn exec<P: rusqlite::Params>(
+        &self,
+        sql: &str,
+        params: P,
+    ) -> rusqlite::Result<usize> {
         self.conn.prepare_cached(sql)?.execute(params)
     }
 
     /// `query_row` through the statement cache.
-    fn row<T, P: rusqlite::Params>(
+    pub(crate) fn row<T, P: rusqlite::Params>(
         &self,
         sql: &str,
         params: P,
@@ -124,7 +129,7 @@ impl Graph {
 
     /// Atomic scope for one graph operation: a savepoint at top level, a no-op when an
     /// enclosing transaction already provides atomicity.
-    fn tx(&self) -> Result<Tx<'_>> {
+    pub(crate) fn tx(&self) -> Result<Tx<'_>> {
         if self.conn.is_autocommit() {
             return self.savepoint();
         }
@@ -214,7 +219,16 @@ impl Graph {
         Ok(page)
     }
 
-    fn create_page_tx(&self, new: NewPage) -> Result<Page> {
+    pub(crate) fn create_page_tx(&self, new: NewPage) -> Result<Page> {
+        self.create_page_kind_tx(new, PageKind::Note, String::new())
+    }
+
+    pub(crate) fn create_page_kind_tx(
+        &self,
+        new: NewPage,
+        kind: PageKind,
+        description: String,
+    ) -> Result<Page> {
         let title = new.title.trim().to_string();
         if title.is_empty() {
             return Err(Error::Invalid("empty page title".into()));
@@ -238,6 +252,11 @@ impl Graph {
             properties: new.properties,
             created_at: new.created_at.unwrap_or(now),
             updated_at: new.updated_at.unwrap_or(now),
+            kind,
+            description,
+            hubs: Vec::new(),
+            tags: Vec::new(),
+            types: Vec::new(),
         };
         self.write_page(&page, &self.tick())?;
         Ok(page)
@@ -270,10 +289,11 @@ impl Graph {
 
     /// Pages ordered by last update (most recent first).
     pub fn list_pages(&self, include_journals: bool, limit: u32, offset: u32) -> Result<Vec<Page>> {
+        // Templates are reached through their hub, never listed as pages.
         let filter = if include_journals {
-            ""
+            "WHERE kind != 'template'"
         } else {
-            "WHERE journal_date IS NULL"
+            "WHERE journal_date IS NULL AND kind != 'template'"
         };
         let mut st = self.conn.prepare_cached(&format!(
             "SELECT {PAGE_COLS} FROM pages {filter} ORDER BY updated_at DESC LIMIT ?1 OFFSET ?2"
@@ -338,9 +358,12 @@ impl Graph {
             st.query_map([&old_key], |r| r.get(0))?
                 .collect::<std::result::Result<_, _>>()?
         };
-        page.title = new_title.to_string();
+        let old_title = std::mem::replace(&mut page.title, new_title.to_string());
         page.updated_at = self.now_ms();
         self.write_page(&page, &self.tick())?;
+        if page.is_tag() {
+            self.retitle_tag(&old_title, new_title)?;
+        }
         for bid in referencing {
             if let Some(mut b) = self.get_block(parse_id(&bid)?)? {
                 let rewritten = parse::rewrite_refs(&b.content, &old_key, new_title);
@@ -365,9 +388,34 @@ impl Graph {
         Ok(page)
     }
 
-    /// Deletes a page and all its blocks.
+    /// Deletes a page and all its blocks; when it is a hub, its members leave it.
     pub fn delete_page(&self, id: PageId) -> Result<()> {
         let tx = self.tx()?;
+        if let Some(p) = self.get_page(id)? {
+            if p.is_template() {
+                return Err(Error::Invalid(
+                    "a template cannot be deleted on its own; it goes with its hub".into(),
+                ));
+            }
+            if p.is_hub() {
+                for t in self.hub_template_ids(id)? {
+                    self.delete_page_rows(t)?;
+                }
+            }
+        }
+        self.delete_page_rows(id)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn delete_page_rows(&self, id: PageId) -> Result<()> {
+        // Members of a deleted hub leave it (each member page is rewritten and logged).
+        self.drop_hub_from_members(id)?;
+        if let Some(p) = self.get_page(id)?
+            && p.is_tag()
+        {
+            self.drop_tag_from_members(&p.title)?;
+        }
         let ids: Vec<String> = {
             let mut st = self
                 .conn
@@ -379,7 +427,6 @@ impl Graph {
             self.remove_block_row(parse_id(&b)?, &self.tick())?;
         }
         self.remove_page_row(id, &self.tick())?;
-        tx.commit()?;
         Ok(())
     }
 
@@ -437,6 +484,11 @@ impl Graph {
             properties: Properties::new(),
             created_at: ms,
             updated_at: ms,
+            kind: PageKind::Note,
+            description: String::new(),
+            hubs: Vec::new(),
+            tags: Vec::new(),
+            types: Vec::new(),
         };
         self.write_page(&page, &self.tick())?;
         Ok(page)
@@ -593,6 +645,7 @@ impl Graph {
 
     /// Inserts a new block with `content` and indexes its refs.
     pub fn insert_block(&self, page: PageId, at: Placement, content: &str) -> Result<Block> {
+        self.ensure_not_hub(page)?;
         let tx = self.tx()?;
         let (parent_id, position) = self.resolve_placement(page, at)?;
         let now = self.now_ms();
@@ -615,6 +668,7 @@ impl Graph {
     /// Writes a fully specified block (importer). Pages referenced by it are created, born in
     /// the block's journal when it lives in one. Does not record edit activity.
     pub fn put_block(&self, block: &Block) -> Result<()> {
+        self.ensure_not_hub(block.page_id)?;
         let tx = self.tx()?;
         self.write_block(block, &self.tick())?;
         self.ensure_ref_pages(block)?;
@@ -660,6 +714,7 @@ impl Graph {
 
     /// Moves a block (with its subtree) to a new place, possibly on another page.
     pub fn move_block(&self, id: BlockId, page: PageId, at: Placement) -> Result<Block> {
+        self.ensure_not_hub(page)?;
         let tx = self.tx()?;
         let mut b = self
             .get_block(id)?
@@ -709,6 +764,21 @@ impl Graph {
         }
         self.touch_page(b.page_id)?;
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Hubs have no outline: block writes into them are refused.
+    fn ensure_not_hub(&self, page: PageId) -> Result<()> {
+        let kind: Option<String> = self
+            .row(
+                "SELECT kind FROM pages WHERE id=?1",
+                [page.to_string()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if kind.as_deref() == Some(PageKind::Hub.as_str()) {
+            return Err(Error::Invalid("hubs have no blocks".into()));
+        }
         Ok(())
     }
 
@@ -878,7 +948,7 @@ impl Graph {
     }
 
     /// Bumps `updated_at` and records today's activity for a page.
-    fn touch_page(&self, page: PageId) -> Result<()> {
+    pub(crate) fn touch_page(&self, page: PageId) -> Result<()> {
         let now = self.now_ms();
         let day = journal_title(day_of(now));
         self.exec(
@@ -1110,11 +1180,11 @@ impl Graph {
 
     // ----------------------------------------------------------- raw writes
 
-    fn tick(&self) -> String {
+    pub(crate) fn tick(&self) -> String {
         self.clock.tick(self.now_ms())
     }
 
-    fn log(&self, hlc: &str, op: &Op) -> Result<()> {
+    pub(crate) fn log(&self, hlc: &str, op: &Op) -> Result<()> {
         self.exec(
             "INSERT INTO ops(hlc, payload) VALUES (?1, ?2)",
             params![hlc, serde_json::to_string(op)?],
@@ -1122,17 +1192,17 @@ impl Graph {
         Ok(())
     }
 
-    fn write_page(&self, page: &Page, hlc: &str) -> Result<()> {
+    pub(crate) fn write_page(&self, page: &Page, hlc: &str) -> Result<()> {
         self.write_page_row(page, hlc)?;
         self.log(hlc, &Op::UpsertPage { page: page.clone() })
     }
 
     fn write_page_row(&self, p: &Page, hlc: &str) -> Result<()> {
         self.exec(
-            "INSERT INTO pages(id, title, title_key, journal_date, origin_journal, properties, created_at, updated_at, hlc)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "INSERT INTO pages(id, title, title_key, journal_date, origin_journal, properties, created_at, updated_at, hlc, kind, description, hubs, tags, types)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(id) DO UPDATE SET title=?2, title_key=?3, journal_date=?4, origin_journal=?5,
-               properties=?6, created_at=?7, updated_at=?8, hlc=?9",
+               properties=?6, created_at=?7, updated_at=?8, hlc=?9, kind=?10, description=?11, hubs=?12, tags=?13, types=?14",
             params![
                 p.id.to_string(),
                 p.title,
@@ -1142,9 +1212,30 @@ impl Graph {
                 serde_json::to_string(&p.properties)?,
                 p.created_at,
                 p.updated_at,
-                hlc
+                hlc,
+                p.kind.as_str(),
+                p.description,
+                serde_json::to_string(&p.hubs)?,
+                serde_json::to_string(&p.tags)?,
+                serde_json::to_string(&p.types)?
             ],
         )?;
+        let id = p.id.to_string();
+        self.exec("DELETE FROM page_tags WHERE page_id=?1", [&id])?;
+        for t in &p.tags {
+            self.exec(
+                "INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)",
+                params![id, title_key(t)],
+            )?;
+        }
+        self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&id])?;
+        // A page belongs to one hub: only the first entry counts (older replicas may sync more).
+        for h in p.hubs.iter().take(1) {
+            self.exec(
+                "INSERT OR IGNORE INTO page_hubs(page_id, hub_id) VALUES (?1, ?2)",
+                params![id, h.to_string()],
+            )?;
+        }
         Ok(())
     }
 
@@ -1177,6 +1268,10 @@ impl Graph {
             .execute("DELETE FROM page_activity WHERE page_id=?1", [&s])?;
         self.conn
             .execute("DELETE FROM synapses WHERE a=?1 OR b=?1", [&s])?;
+        // Only the page's own memberships: rows naming it as a hub mirror other pages'
+        // `hubs` and dangle until those pages are rewritten.
+        self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&s])?;
+        self.exec("DELETE FROM page_tags WHERE page_id=?1", [&s])?;
         self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
             params![s, hlc],
@@ -1329,7 +1424,7 @@ impl Graph {
 }
 
 /// Savepoint guard: rolled back on drop unless committed.
-struct Tx<'a> {
+pub(crate) struct Tx<'a> {
     conn: &'a Connection,
     /// Whether this guard opened a savepoint (false when nested in a transaction).
     active: bool,
@@ -1337,7 +1432,7 @@ struct Tx<'a> {
 }
 
 impl Tx<'_> {
-    fn commit(mut self) -> Result<()> {
+    pub(crate) fn commit(mut self) -> Result<()> {
         if self.active {
             self.conn.execute_batch("RELEASE graph")?;
         }
@@ -1397,6 +1492,11 @@ fn page_row(r: &Row) -> rusqlite::Result<Page> {
         properties: props(r.get(4)?),
         created_at: r.get(5)?,
         updated_at: r.get(6)?,
+        kind: PageKind::parse(&r.get::<_, String>(7)?),
+        description: r.get(8)?,
+        hubs: serde_json::from_str(&r.get::<_, String>(9)?).unwrap_or_default(),
+        tags: serde_json::from_str(&r.get::<_, String>(10)?).unwrap_or_default(),
+        types: serde_json::from_str(&r.get::<_, String>(11)?).unwrap_or_default(),
     })
 }
 

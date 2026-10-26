@@ -22,12 +22,15 @@ class GraphView extends StatefulWidget {
   const GraphView({super.key, this.mode = GraphMode.network, this.focusId});
   final GraphMode mode;
 
-  /// Page to focus in the local and synapse modes.
+  /// Page to focus in the synapse mode.
   final String? focusId;
 
   @override
   State<GraphView> createState() => _GraphViewState();
 }
+
+/// How the clusters mode groups pages.
+enum ClusterBy { hubs, tags, communities }
 
 class _GraphViewState extends State<GraphView> {
   late GraphMode _mode = widget.mode;
@@ -35,10 +38,9 @@ class _GraphViewState extends State<GraphView> {
   Object? _error;
   GraphFilter _filter = const GraphFilter();
   ColorBy _colorBy = ColorBy.cluster;
-  int _depth = 2;
 
-  /// Journals are context for a neighbourhood, so the local mode shows them by default.
-  bool _localJournals = true;
+  /// Clusters mode grouping; null = hubs when the graph has any, else communities.
+  ClusterBy? _clusterBy;
   int? _focus;
   BrainOverlay? _brain;
   SubGraph? _sub;
@@ -82,6 +84,10 @@ class _GraphViewState extends State<GraphView> {
     }
   }
 
+  ClusterBy get _grouping =>
+      _clusterBy ??
+      ((_model?.hasHubs ?? false) ? ClusterBy.hubs : ClusterBy.communities);
+
   void _setMode(GraphMode m) {
     setState(() => _mode = m);
     _rebuildSub();
@@ -102,16 +108,18 @@ class _GraphViewState extends State<GraphView> {
     if (m == null) return;
     switch (_mode) {
       case GraphMode.network || GraphMode.clusters:
-        setState(() => _sub = m.subgraph(_filter.apply(m), _filter.kinds));
-      case GraphMode.local:
-        final f = _focus;
-        if (f == null) return;
-        final kinds = _filter.kinds;
-        final hood = m.neighbourhood(f, _depth, kinds);
-        final nodes = hood.keys
-            .where((i) => i == f || _localJournals || !m.isJournal(i))
-            .toList();
-        setState(() => _sub = m.subgraph(nodes, kinds));
+        final nodes = _filter.apply(m);
+        // Hub grouping: layout-only springs to the home hub so folders cluster spatially.
+        final springs = _mode != GraphMode.clusters
+            ? const <(int, int, double)>[]
+            : switch (_grouping) {
+                ClusterBy.hubs => m.hubSprings(nodes),
+                ClusterBy.tags => m.tagSprings(nodes),
+                ClusterBy.communities => const <(int, int, double)>[],
+              };
+        setState(
+          () => _sub = m.subgraph(nodes, _filter.kinds, springs: springs),
+        );
       case GraphMode.brain:
         final f = _focus;
         if (f == null) return;
@@ -348,39 +356,25 @@ class _GraphViewState extends State<GraphView> {
               items: const {
                 ColorBy.cluster: 'Colour: cluster',
                 ColorBy.tag: 'Colour: tag',
+                ColorBy.hub: 'Colour: hub',
                 ColorBy.none: 'Colour: none',
               },
               onChanged: (c) => setState(() => _colorBy = c ?? ColorBy.cluster),
             ),
-        ];
-      case GraphMode.local:
-        return [
-          search,
-          _Labeled(
-            'Depth $_depth',
-            SizedBox(
-              width: 120,
-              child: Slider(
-                key: const ValueKey('depth'),
-                value: _depth.toDouble(),
-                min: 1,
-                max: 3,
-                divisions: 2,
-                onChanged: (v) {
-                  setState(() => _depth = v.round());
-                  _rebuildSub();
-                },
-              ),
-            ),
-          ),
-          chip('Journals', _localJournals, (v) {
-            setState(() => _localJournals = v);
-            _rebuildSub();
-          }),
-          if (_focus != null)
-            _FocusLink(
-              title: m.node(_focus!).title,
-              onTap: () => _open(_focus!),
+          if (_mode == GraphMode.clusters)
+            _Dropdown<ClusterBy>(
+              key: const ValueKey('cluster-group'),
+              value: _grouping,
+              hint: 'Group',
+              items: const {
+                ClusterBy.hubs: 'Group: hubs',
+                ClusterBy.tags: 'Group: tags',
+                ClusterBy.communities: 'Group: communities',
+              },
+              onChanged: (v) {
+                _clusterBy = v;
+                _rebuildSub();
+              },
             ),
         ];
       case GraphMode.brain:
@@ -426,11 +420,17 @@ class _GraphViewState extends State<GraphView> {
         ),
       );
     }
-    if (_mode == GraphMode.tree) return TreeCanvas(model: m, onTap: _open);
+    if (_mode == GraphMode.tree) {
+      return TreeCanvas(
+        model: m,
+        onTap: _open,
+        name: AppScope.read(context).backend.graphName,
+      );
+    }
     final sub = _sub;
     if (sub == null) return const SizedBox.shrink();
     final app = AppScope.read(context);
-    final explore = _mode == GraphMode.local || _mode == GraphMode.brain;
+    final explore = _mode == GraphMode.brain;
     return Stack(
       children: [
         Positioned.fill(
@@ -438,7 +438,13 @@ class _GraphViewState extends State<GraphView> {
             key: ValueKey(_mode),
             sub: sub,
             cache: app.graphPositions,
-            colorBy: _mode == GraphMode.clusters ? ColorBy.cluster : _colorBy,
+            colorBy: _mode == GraphMode.clusters
+                ? switch (_grouping) {
+                    ClusterBy.hubs => ColorBy.hub,
+                    ClusterBy.tags => ColorBy.tagGroup,
+                    ClusterBy.communities => ColorBy.cluster,
+                  }
+                : _colorBy,
             hulls: _mode == GraphMode.clusters,
             focus: explore ? _focus : null,
             brain: _mode == GraphMode.brain ? _brain : null,
@@ -485,6 +491,7 @@ class _Labeled extends StatelessWidget {
 
 class _Dropdown<T> extends StatelessWidget {
   const _Dropdown({
+    super.key,
     required this.value,
     required this.hint,
     required this.items,
@@ -566,17 +573,39 @@ class _Legend extends StatelessWidget {
             ],
           ),
         );
+    Widget hubMark() => Padding(
+      padding: const EdgeInsets.only(right: 14),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 11,
+            height: 11,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colors.muted,
+              border: Border.all(color: colors.ink, width: 1.6),
+            ),
+          ),
+          const SizedBox(width: 5),
+          Text('Hub', style: TextStyle(fontSize: 11.5, color: colors.muted)),
+        ],
+      ),
+    );
     final items = mode == GraphMode.brain
         ? [
             line(palette[3], 'Synapse (thicker = stronger)', w: 3),
             line(colors.accent, 'Activation pulse', w: 3),
+            hubMark(),
           ]
         : [
             line(colors.muted, 'Link'),
             line(colors.accent, 'Tag'),
             line(palette[2], 'Property'),
             line(colors.ref, 'Block ref / embed'),
+            line(colors.ink, 'Contains (hub → note)', w: 1),
             line(colors.faint, 'Mention', dashed: true),
+            hubMark(),
           ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -679,6 +708,8 @@ class _LocalGraphPanelState extends State<LocalGraphPanel> {
       EdgeKind.blockRef,
       EdgeKind.embed,
       EdgeKind.mention,
+      EdgeKind.contains,
+      EdgeKind.tagged,
     };
     final hood = m.neighbourhood(f, _depth, kinds).keys.toList();
     setState(() => _sub = m.subgraph(hood, kinds));
@@ -721,15 +752,6 @@ class _LocalGraphPanelState extends State<LocalGraphPanel> {
                   ),
                 ),
               ),
-            IconButton(
-              tooltip: 'Open in graph view',
-              visualDensity: VisualDensity.compact,
-              iconSize: 15,
-              color: colors.muted,
-              icon: const Icon(Icons.open_in_full_rounded),
-              onPressed: () =>
-                  app.go(GraphRoute(GraphMode.local, focusId: widget.pageId)),
-            ),
           ],
         ),
         const SizedBox(height: 6),

@@ -4,6 +4,8 @@
 //! - `outline`: block editing (insert, update, move, indent/outdent, merge, delete).
 //! - `search`: title/block lookup (stopgap until `synapse-search` is wired).
 //! - `graph_view`: the whole page-level graph for the graph views (cached by op seq).
+//! - `structure`: hubs (folder-like pages), namespaces and the legacy page purge.
+//! - `tags`: free-form tags on pages (names, not pages) and their vocabulary.
 //! - `layout`: Barnes-Hut force-directed layout, stepped from Dart off the UI thread.
 //!
 //! Extension points for Phase 2 (one module each, methods on `SynapseGraph` or their own
@@ -17,3 +19,5 @@ pub mod graph_view;
 pub mod layout;
 pub mod outline;
 pub mod search;
+pub mod structure;
+pub mod tags;

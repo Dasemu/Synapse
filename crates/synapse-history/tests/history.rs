@@ -341,3 +341,108 @@ fn failed_restore_leaves_graph_unchanged() {
     h.restore_graph(&g, &s1.id, T0 + 4000).unwrap();
     assert!(g.page_by_title("Gone").unwrap().is_some());
 }
+
+#[test]
+fn tags_round_trip_through_snapshots() {
+    let (_d, g, mut h) = setup();
+    let note = add(&g, "Note", &["body"]);
+    g.add_page_tag(note.id, "tecnología").unwrap();
+    g.add_page_tag(note.id, "idea").unwrap();
+    g.add_page_type(note.id, "concepto").unwrap();
+    let s1 = h.snapshot(&g, T0 + 500).unwrap().unwrap();
+    let tag_md = h.page_at(&s1.id, "idea").unwrap().unwrap();
+    assert!(tag_md.contains("synapse-kind:: tag"), "{tag_md}");
+    let md = h.page_at(&s1.id, "Note").unwrap().unwrap();
+    assert!(
+        md.contains(r#"synapse-tags:: ["tecnología","idea"]"#),
+        "{md}"
+    );
+
+    at(&g, T0 + 1000);
+    g.set_page_tags(note.id, vec![]).unwrap();
+    g.set_page_types(note.id, vec![]).unwrap();
+    h.restore_graph(&g, &s1.id, T0 + 2000).unwrap();
+    assert_eq!(g.get_page(note.id).unwrap().unwrap().types, ["concepto"]);
+    assert!(g.page_by_title("idea").unwrap().unwrap().is_tag());
+    assert_eq!(
+        g.get_page(note.id).unwrap().unwrap().tags,
+        ["tecnología", "idea"]
+    );
+    assert_eq!(g.pages_with_tag("idea").unwrap(), [note.id]);
+}
+
+#[test]
+fn hubs_round_trip_kind_description_and_memberships() {
+    let (_d, g, mut h) = setup();
+    let top = g.create_hub("Top", "All my stuff,\nin one place").unwrap();
+    let sub = g.create_hub("Sub", "").unwrap();
+    let note = add(&g, "Note", &["body"]);
+    g.add_to_hub(sub.id, top.id).unwrap();
+    g.add_to_hub(note.id, sub.id).unwrap();
+    let s1 = h.snapshot(&g, T0).unwrap().unwrap();
+    let top_md = h.page_at(&s1.id, "Top").unwrap().unwrap();
+    assert!(top_md.contains("synapse-kind:: hub"), "{top_md}");
+    assert!(top_md.contains(r#"synapse-description:: "All my stuff,\nin one place""#));
+    let note_md = h.page_at(&s1.id, "Note").unwrap().unwrap();
+    assert!(note_md.contains(r#"synapse-hubs:: ["Sub"]"#), "{note_md}");
+
+    // Renaming a hub re-exports its members (they list hubs by title).
+    at(&g, T0 + 1000);
+    g.rename_page(sub.id, "Sub 2").unwrap();
+    let s2 = h.snapshot(&g, T0 + 1500).unwrap().unwrap();
+    let note_md = h.page_at(&s2.id, "Note").unwrap().unwrap();
+    assert!(note_md.contains(r#"synapse-hubs:: ["Sub 2"]"#), "{note_md}");
+
+    // Break everything, then restore the graph.
+    at(&g, T0 + 2000);
+    g.convert_to_note(top.id).unwrap();
+    g.remove_from_hub(note.id, sub.id).unwrap();
+    g.delete_page(sub.id).unwrap();
+    h.restore_graph(&g, &s1.id, T0 + 3000).unwrap();
+
+    let top = g.page_by_title("Top").unwrap().unwrap();
+    assert!(top.is_hub());
+    assert_eq!(top.description, "All my stuff,\nin one place");
+    assert!(
+        g.page_tree(top.id).unwrap().is_empty(),
+        "hubs have no blocks"
+    );
+    let sub = g.page_by_title("Sub").unwrap().expect("sub hub restored");
+    assert!(g.page_by_title("Sub 2").unwrap().is_none());
+    assert!(sub.is_hub());
+    assert_eq!(g.hub_members(top.id).unwrap(), vec![sub.id]);
+    assert_eq!(g.hub_members(sub.id).unwrap(), vec![note.id]);
+    assert_eq!(g.hubs_of(note.id).unwrap(), vec![sub.id]);
+    assert_eq!(g.page_tree(note.id).unwrap()[0].1.content, "body");
+
+    // A single page restore brings back its memberships too.
+    at(&g, T0 + 4000);
+    g.set_page_hubs(note.id, vec![]).unwrap();
+    h.restore_page(&g, "Note", &s1.id, T0 + 5000).unwrap();
+    assert_eq!(g.hubs_of(note.id).unwrap(), vec![sub.id]);
+
+    // Restoring a deleted hub alone brings its members back (they hold the membership).
+    at(&g, T0 + 5100);
+    g.delete_page(sub.id).unwrap();
+    let s3 = h.snapshot(&g, T0 + 5200).unwrap().unwrap();
+    let note_md = h.page_at(&s3.id, "Note").unwrap().unwrap();
+    assert!(!note_md.contains("synapse-hubs"), "{note_md}");
+    h.restore_page(&g, "Sub", &s1.id, T0 + 5300).unwrap();
+    let sub = g.page_by_title("Sub").unwrap().unwrap();
+    assert!(sub.is_hub());
+    assert_eq!(g.hub_members(sub.id).unwrap(), vec![note.id]);
+    assert_eq!(g.hubs_of(sub.id).unwrap(), vec![top.id]);
+
+    // The next snapshot matches the original export.
+    let s = h
+        .snapshot(&g, T0 + 6000)
+        .unwrap()
+        .unwrap_or_else(|| h.snapshots(1).unwrap().remove(0));
+    for title in ["Top", "Sub", "Note"] {
+        assert_eq!(
+            h.page_at(&s.id, title).unwrap(),
+            h.page_at(&s1.id, title).unwrap(),
+            "{title}"
+        );
+    }
+}

@@ -70,6 +70,52 @@ class SynapseColors extends ThemeExtension<SynapseColors> {
     highlight: Color(0x55B89B2E),
   );
 
+  /// "Sweet" (the KDE/GTK theme): deep indigo surfaces, magenta accent, mint for done tasks.
+  static const sweet = SynapseColors(
+    paper: Color(0xFF1B1D2B),
+    surface: Color(0xFF151722),
+    ink: Color(0xFFC9CDDA),
+    muted: Color(0xFF8E93AB),
+    faint: Color(0xFF555A78),
+    line: Color(0xFF2A2D42),
+    accent: Color(0xFFD05CE3),
+    accentSoft: Color(0x33D05CE3),
+    ref: Color(0xFFF2A65A),
+    done: Color(0xFF4DDBA7),
+    codeBg: Color(0xFF12141D),
+    highlight: Color(0x55D05CE3),
+  );
+
+  static const sweetLight = SynapseColors(
+    paper: Color(0xFFF8F6FB),
+    surface: Color(0xFFEFEBF5),
+    ink: Color(0xFF2B2D42),
+    muted: Color(0xFF6A6E88),
+    faint: Color(0xFFA8ABC0),
+    line: Color(0xFFE1DCEB),
+    accent: Color(0xFFB21FC2),
+    accentSoft: Color(0x1AB21FC2),
+    ref: Color(0xFFC77A1A),
+    done: Color(0xFF2FA37A),
+    codeBg: Color(0xFFEBE6F2),
+    highlight: Color(0x66F2C26B),
+  );
+
+  static const nord = SynapseColors(
+    paper: Color(0xFF2E3440),
+    surface: Color(0xFF272C36),
+    ink: Color(0xFFD8DEE9),
+    muted: Color(0xFF9AA5B8),
+    faint: Color(0xFF616E88),
+    line: Color(0xFF3B4252),
+    accent: Color(0xFF88C0D0),
+    accentSoft: Color(0x2288C0D0),
+    ref: Color(0xFFEBCB8B),
+    done: Color(0xFFA3BE8C),
+    codeBg: Color(0xFF242933),
+    highlight: Color(0x55EBCB8B),
+  );
+
   @override
   SynapseColors copyWith() => this;
 
@@ -107,10 +153,44 @@ extension SynapseThemeX on BuildContext {
   SynapseColors get colors => Theme.of(this).extension<SynapseColors>()!;
 }
 
-ThemeData buildTheme(Brightness brightness) {
-  final c = brightness == Brightness.light
-      ? SynapseColors.light
-      : SynapseColors.dark;
+/// A selectable palette. `auto` follows the system between Paper light and Paper dark.
+class AppTheme {
+  const AppTheme(this.id, this.label, this.brightness, this.colors);
+  final String id;
+  final String label;
+  final Brightness brightness;
+  final SynapseColors colors;
+}
+
+const autoThemeId = 'auto';
+
+const appThemes = [
+  AppTheme('paper', 'Paper', Brightness.light, SynapseColors.light),
+  AppTheme('paper-dark', 'Paper dark', Brightness.dark, SynapseColors.dark),
+  AppTheme('sweet', 'Sweet', Brightness.dark, SynapseColors.sweet),
+  AppTheme(
+    'sweet-light',
+    'Sweet light',
+    Brightness.light,
+    SynapseColors.sweetLight,
+  ),
+  AppTheme('nord', 'Nord', Brightness.dark, SynapseColors.nord),
+];
+
+/// The theme with `id`, or null for `auto` and unknown ids.
+AppTheme? themeById(String id) {
+  for (final t in appThemes) {
+    if (t.id == id) return t;
+  }
+  return null;
+}
+
+ThemeData buildTheme(Brightness brightness, {SynapseColors? colors}) {
+  final c =
+      colors ??
+      (brightness == Brightness.light
+          ? SynapseColors.light
+          : SynapseColors.dark);
   final scheme =
       ColorScheme.fromSeed(
         seedColor: c.accent,

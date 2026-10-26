@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../backend/graph_backend.dart';
 import '../graph/network_canvas.dart';
+import '../theme/theme.dart';
+import 'keymap.dart';
+import 'settings.dart';
 import 'write_queue.dart';
 
 sealed class AppRoute {
@@ -20,12 +23,15 @@ class AllPagesRoute extends AppRoute {
   const AllPagesRoute();
 }
 
+class SettingsRoute extends AppRoute {
+  const SettingsRoute();
+}
+
 enum GraphMode {
   network('Network', Icons.hub_outlined),
-  local('Local', Icons.adjust_rounded),
   brain('Synapses', Icons.bolt_outlined),
   clusters('Clusters', Icons.bubble_chart_outlined),
-  tree('Namespaces', Icons.account_tree_outlined),
+  tree('Tree', Icons.account_tree_outlined),
   timeline('Timeline', Icons.timeline_rounded);
 
   const GraphMode(this.label, this.icon);
@@ -54,10 +60,56 @@ class PageTarget extends AppRoute {
 /// page, so a framework (Riverpod, Bloc) would add a dependency and indirection without
 /// paying for itself; rebuilds are scoped with `ListenableBuilder`.
 class AppState extends ChangeNotifier {
-  AppState(this.backend, {WriteQueue? queue})
+  AppState(this.backend, {WriteQueue? queue, SettingsStore? settings})
     : refs = BlockRefCache(backend),
-      queue = queue ?? WriteQueue() {
+      queue = queue ?? WriteQueue(),
+      _settings = settings ?? MemorySettings() {
     this.queue.onError = _writeFailed;
+    final saved = _settings.load();
+    final id = saved['theme'];
+    if (id is String && (id == autoThemeId || themeById(id) != null)) {
+      themeId = id;
+    }
+    final keys = saved['keys'];
+    keymap = Keymap(
+      keys is Map
+          ? {for (final e in keys.entries) '${e.key}': '${e.value}'}
+          : {},
+    );
+  }
+
+  final SettingsStore _settings;
+
+  /// Key bindings (defaults plus the user's overrides).
+  late final Keymap keymap;
+
+  /// Selected theme id (`auto` follows the system).
+  String themeId = autoThemeId;
+
+  void _saveSettings() {
+    _settings.save({'theme': themeId, 'keys': keymap.toJson()});
+  }
+
+  void setTheme(String id) {
+    themeId = id;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// Binds `combo` to `action`; returns the action already using it (nothing changes then).
+  AppAction? bindKey(AppAction action, Combo combo) {
+    final owner = keymap.bind(action, combo);
+    if (owner == null) {
+      _saveSettings();
+      notifyListeners();
+    }
+    return owner;
+  }
+
+  void resetKey(AppAction? action) {
+    action == null ? keymap.resetAll() : keymap.reset(action);
+    _saveSettings();
+    notifyListeners();
   }
 
   final GraphBackend backend;
@@ -67,7 +119,6 @@ class AppState extends ChangeNotifier {
   AppRoute _route = const JournalsRoute();
   final _back = <AppRoute>[];
   final _forward = <AppRoute>[];
-  ThemeMode themeMode = ThemeMode.system;
   final List<PageBrief> recent = [];
 
   /// Node positions shared by the graph views (stable layouts across modes and filters).
@@ -78,6 +129,17 @@ class AppState extends ChangeNotifier {
 
   /// Bumped to make the current view reload from the core (failed writes, renames).
   int generation = 0;
+
+  /// Hubs expanded in the sidebar tree (kept here so it survives sidebar rebuilds).
+  final expandedHubs = <String>{};
+
+  /// Right sidebar of the page editor (local graph + related pages); collapsed by default.
+  bool pageSidebar = false;
+
+  void togglePageSidebar() {
+    pageSidebar = !pageSidebar;
+    notifyListeners();
+  }
 
   /// Last write error, shown once by the shell.
   String? writeError;
@@ -107,6 +169,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Points the current route and any history entry that opens `oldTitle` at the page `id`,
+  /// without pushing history (the page was renamed or converted, so its old title no longer
+  /// exists and opening it would create an empty duplicate).
+  void replaceWithId(String id, String oldTitle) {
+    final key = oldTitle.toLowerCase();
+    AppRoute fix(AppRoute r) =>
+        r is PageTarget && r.id == null && r.title!.toLowerCase() == key
+        ? PageTarget(id: id)
+        : r;
+    if (_route is PageTarget) _route = PageTarget(id: id);
+    for (final l in [_back, _forward]) {
+      for (var i = 0; i < l.length; i++) {
+        l[i] = fix(l[i]);
+      }
+    }
+    generation++;
+    notifyListeners();
+  }
+
   void back() {
     if (_back.isEmpty) return;
     _forward.add(_route);
@@ -132,15 +213,19 @@ class AppState extends ChangeNotifier {
       queue.run(() => backend.recordVisit(from, page.id)).ignore();
     }
     recent.removeWhere((p) => p.id == page.id);
-    recent.insert(
-      0,
-      PageBrief(
-        id: page.id,
-        title: page.title,
-        isJournal: page.journalDate != null,
-      ),
-    );
-    if (recent.length > 12) recent.removeLast();
+    // Hubs are folders, not pages: they never show up in recents.
+    if (!page.isHub) {
+      recent.insert(
+        0,
+        PageBrief(
+          id: page.id,
+          title: page.title,
+          isJournal: page.journalDate != null,
+          isHub: false,
+        ),
+      );
+      if (recent.length > 12) recent.removeLast();
+    }
     notifyListeners();
   }
 
@@ -148,8 +233,10 @@ class AppState extends ChangeNotifier {
   Future<void> loadRecent() async {
     final pages = await backend.listPages(limit: 8);
     for (final p in pages) {
-      if (!recent.any((r) => r.id == p.id)) {
-        recent.add(PageBrief(id: p.id, title: p.title, isJournal: false));
+      if (!p.isHub && !recent.any((r) => r.id == p.id)) {
+        recent.add(
+          PageBrief(id: p.id, title: p.title, isJournal: false, isHub: p.isHub),
+        );
       }
     }
     notifyListeners();
@@ -162,14 +249,15 @@ class AppState extends ChangeNotifier {
         id: id,
         title: title,
         isJournal: recent[i].isJournal,
+        isHub: recent[i].isHub,
       );
     }
     notifyListeners();
   }
 
+  /// Top-bar shortcut: flips between the light and dark Paper themes.
   void toggleTheme(Brightness current) {
-    themeMode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
-    notifyListeners();
+    setTheme(current == Brightness.dark ? 'paper' : 'paper-dark');
   }
 }
 

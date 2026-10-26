@@ -86,6 +86,9 @@ class BlockRefDtoLike {
   final String pageId;
 }
 
+/// Characters a backslash can escape in a block (Markdown's ASCII punctuation).
+const escapable = r'\\`*_{}[]()#+-.!~=|<>:"';
+
 final _marker = RegExp(r'^(TODO|DOING|NOW|LATER|DONE|CANCELED|CANCELLED) ');
 final _heading = RegExp(r'^(#{1,6}) ');
 final _uuid = RegExp(
@@ -245,6 +248,13 @@ class BlockRenderer {
 
     while (i < s.length) {
       final c = s[i];
+      // Backslash escape: `\*` shows a literal `*` and hides the backslash.
+      if (c == r'\' && i + 1 < s.length && escapable.contains(s[i + 1])) {
+        flush(i);
+        _text(s[i + 1], off + i + 1, style);
+        i = plain = i + 2;
+        continue;
+      }
       // `code`
       if (c == '`') {
         final j = s.indexOf('`', i + 1);

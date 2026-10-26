@@ -8,6 +8,7 @@ import 'src/app.dart';
 import 'src/backend/graph_backend.dart';
 import 'src/editor/block_row.dart' as editor;
 import 'src/rust/frb_generated.dart';
+import 'src/state/settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,5 +21,10 @@ Future<void> main() async {
       Platform.environment['SYNAPSE_GRAPH'] ??
       '${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}graph';
   final backend = await FfiGraphBackend.open(dir);
-  runApp(SynapseApp(backend: backend));
+  runApp(
+    SynapseApp(
+      backend: backend,
+      settings: FileSettings('$dir${Platform.pathSeparator}app-settings.json'),
+    ),
+  );
 }

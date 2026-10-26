@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -553305025;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 465538383;
 
 // Section: executor
 
@@ -362,6 +362,177 @@ fn wire__crate__api__graph__SynapseGraph_add_alias_impl(
         },
     )
 }
+fn wire__crate__api__graph__SynapseGraph_add_page_tag_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_add_page_tag",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_tag = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::add_page_tag(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_tag,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_add_page_type_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_add_page_type",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_ty = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::add_page_type(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_ty,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_add_to_hub_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_add_to_hub",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_hub_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::add_to_hub(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_hub_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_aliases_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -575,6 +746,238 @@ fn wire__crate__api__graph__SynapseGraph_block_ref_impl(
         },
     )
 }
+fn wire__crate__api__graph__SynapseGraph_convert_to_hub_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_convert_to_hub",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_title = <String>::sse_decode(&mut deserializer);
+            let api_description = <String>::sse_decode(&mut deserializer);
+            let api_member_ids = <Vec<String>>::sse_decode(&mut deserializer);
+            let api_keep_outline_as = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::convert_to_hub(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_title,
+                            api_description,
+                            api_member_ids,
+                            api_keep_outline_as,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_convert_to_note_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_convert_to_note",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::convert_to_note(
+                            &*api_that_guard,
+                            api_page_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_create_hub_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_create_hub",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_title = <String>::sse_decode(&mut deserializer);
+            let api_description = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::create_hub(
+                            &*api_that_guard,
+                            api_title,
+                            api_description,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_create_page_from_template_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_create_page_from_template",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_hub_id = <String>::sse_decode(&mut deserializer);
+            let api_title = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::create_page_from_template(
+                            &*api_that_guard,
+                            api_hub_id,
+                            api_title,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_delete_block_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -775,6 +1178,167 @@ fn wire__crate__api__graph__SynapseGraph_graph_data_impl(
                         let api_that_guard = api_that_guard.unwrap();
                         let output_ok =
                             crate::api::graph::SynapseGraph::graph_data(&*api_that_guard)?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_hub_conversion_preview_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_hub_conversion_preview",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::hub_conversion_preview(
+                            &*api_that_guard,
+                            api_page_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_hub_template_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_hub_template",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_hub_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::hub_template(
+                            &*api_that_guard,
+                            api_hub_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_hubs_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_hubs",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::hubs(&*api_that_guard)?;
                         std::result::Result::Ok(output_ok)
                     })(),
                 )
@@ -1054,6 +1618,58 @@ fn wire__crate__api__graph__SynapseGraph_journals_impl(
                             api_before,
                             api_limit,
                         )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_legacy_candidates_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_legacy_candidates",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::graph::SynapseGraph::legacy_candidates(&*api_that_guard)?;
                         std::result::Result::Ok(output_ok)
                     })(),
                 )
@@ -1544,6 +2160,171 @@ fn wire__crate__api__graph__SynapseGraph_page_by_title_impl(
         },
     )
 }
+fn wire__crate__api__graph__SynapseGraph_page_structure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_page_structure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::page_structure(
+                            &*api_that_guard,
+                            api_page_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_pages_with_tag_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_pages_with_tag",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_tag = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::pages_with_tag(
+                            &*api_that_guard,
+                            api_tag,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_purge_pages_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_purge_pages",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_ids = <Vec<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::purge_pages(
+                            &*api_that_guard,
+                            api_ids,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_put_asset_bytes_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1829,6 +2610,177 @@ fn wire__crate__api__graph__SynapseGraph_remove_alias_impl(
         },
     )
 }
+fn wire__crate__api__graph__SynapseGraph_remove_from_hub_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_remove_from_hub",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_hub_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::remove_from_hub(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_hub_id,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_remove_page_tag_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_remove_page_tag",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_tag = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::remove_page_tag(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_tag,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_remove_page_type_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_remove_page_type",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_ty = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::remove_page_type(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_ty,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_rename_page_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2057,6 +3009,229 @@ fn wire__crate__api__graph__SynapseGraph_set_collapsed_impl(
         },
     )
 }
+fn wire__crate__api__graph__SynapseGraph_set_hub_description_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_set_hub_description",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_hub_id = <String>::sse_decode(&mut deserializer);
+            let api_description = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::set_hub_description(
+                            &*api_that_guard,
+                            api_hub_id,
+                            api_description,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_set_page_tags_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_set_page_tags",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_tags = <Vec<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::set_page_tags(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_tags,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_set_page_types_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_set_page_types",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            let api_page_id = <String>::sse_decode(&mut deserializer);
+            let api_types = <Vec<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::graph::SynapseGraph::set_page_types(
+                            &*api_that_guard,
+                            api_page_id,
+                            api_types,
+                        )?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_tag_catalog_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_tag_catalog",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::graph::SynapseGraph::tag_catalog(&*api_that_guard)?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__graph__SynapseGraph_timeline_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2158,6 +3333,58 @@ fn wire__crate__api__graph__SynapseGraph_today_impl(
                     Ok::<_, ()>(crate::api::graph::SynapseGraph::today(&*api_that_guard))?;
                 std::result::Result::Ok(output_ok)
             })())
+        },
+    )
+}
+fn wire__crate__api__graph__SynapseGraph_type_catalog_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "SynapseGraph_type_catalog",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<SynapseGraph>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok =
+                            crate::api::graph::SynapseGraph::type_catalog(&*api_that_guard)?;
+                        std::result::Result::Ok(output_ok)
+                    })(),
+                )
+            }
         },
     )
 }
@@ -2426,6 +3653,9 @@ impl SseDecode for crate::api::dto::GraphNode {
         let mut var_backlinks = <u32>::sse_decode(deserializer);
         let mut var_cluster = <u32>::sse_decode(deserializer);
         let mut var_primaryTag = <Option<u32>>::sse_decode(deserializer);
+        let mut var_isHub = <bool>::sse_decode(deserializer);
+        let mut var_homeHub = <Option<u32>>::sse_decode(deserializer);
+        let mut var_tags = <Vec<String>>::sse_decode(deserializer);
         return crate::api::dto::GraphNode {
             id: var_id,
             title: var_title,
@@ -2436,6 +3666,61 @@ impl SseDecode for crate::api::dto::GraphNode {
             backlinks: var_backlinks,
             cluster: var_cluster,
             primary_tag: var_primaryTag,
+            is_hub: var_isHub,
+            home_hub: var_homeHub,
+            tags: var_tags,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::HubDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_description = <String>::sse_decode(deserializer);
+        let mut var_depth = <u32>::sse_decode(deserializer);
+        let mut var_members = <Vec<crate::api::dto::PageBrief>>::sse_decode(deserializer);
+        let mut var_subHubs = <Vec<String>>::sse_decode(deserializer);
+        return crate::api::dto::HubDto {
+            id: var_id,
+            title: var_title,
+            description: var_description,
+            depth: var_depth,
+            members: var_members,
+            sub_hubs: var_subHubs,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::HubPreviewDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_suggestedTitle = <String>::sse_decode(deserializer);
+        let mut var_suggestedDescription = <String>::sse_decode(deserializer);
+        let mut var_members = <Vec<crate::api::dto::PageBrief>>::sse_decode(deserializer);
+        let mut var_proseBlocks = <u32>::sse_decode(deserializer);
+        let mut var_blocks = <u32>::sse_decode(deserializer);
+        let mut var_suggestedNoteTitle = <String>::sse_decode(deserializer);
+        return crate::api::dto::HubPreviewDto {
+            suggested_title: var_suggestedTitle,
+            suggested_description: var_suggestedDescription,
+            members: var_members,
+            prose_blocks: var_proseBlocks,
+            blocks: var_blocks,
+            suggested_note_title: var_suggestedNoteTitle,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::HubsDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_hubs = <Vec<crate::api::dto::HubDto>>::sse_decode(deserializer);
+        let mut var_roots = <Vec<String>>::sse_decode(deserializer);
+        return crate::api::dto::HubsDto {
+            hubs: var_hubs,
+            roots: var_roots,
         };
     }
 }
@@ -2462,6 +3747,24 @@ impl SseDecode for crate::api::dto::LayoutFrame {
         return crate::api::dto::LayoutFrame {
             positions: var_positions,
             alpha: var_alpha,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::LegacyCandidate {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_reason = <String>::sse_decode(deserializer);
+        let mut var_blocks = <u32>::sse_decode(deserializer);
+        let mut var_preselected = <bool>::sse_decode(deserializer);
+        return crate::api::dto::LegacyCandidate {
+            id: var_id,
+            title: var_title,
+            reason: var_reason,
+            blocks: var_blocks,
+            preselected: var_preselected,
         };
     }
 }
@@ -2533,6 +3836,42 @@ impl SseDecode for Vec<crate::api::dto::GraphNode> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::dto::GraphNode>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::dto::HubDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::HubDto>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::dto::LegacyCandidate> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::LegacyCandidate>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::dto::NamespaceEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::NamespaceEntry>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2622,6 +3961,18 @@ impl SseDecode for Vec<crate::api::dto::RelatedDto> {
     }
 }
 
+impl SseDecode for Vec<crate::api::dto::TagDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::dto::TagDto>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::dto::TimelineDayDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2643,6 +3994,18 @@ impl SseDecode for Vec<crate::api::dto::TitleHit> {
             ans_.push(<crate::api::dto::TitleHit>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for crate::api::dto::NamespaceEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_title = <String>::sse_decode(deserializer);
+        let mut var_id = <Option<String>>::sse_decode(deserializer);
+        return crate::api::dto::NamespaceEntry {
+            title: var_title,
+            id: var_id,
+        };
     }
 }
 
@@ -2707,10 +4070,12 @@ impl SseDecode for crate::api::dto::PageBrief {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_title = <String>::sse_decode(deserializer);
         let mut var_isJournal = <bool>::sse_decode(deserializer);
+        let mut var_isHub = <bool>::sse_decode(deserializer);
         return crate::api::dto::PageBrief {
             id: var_id,
             title: var_title,
             is_journal: var_isJournal,
+            is_hub: var_isHub,
         };
     }
 }
@@ -2742,6 +4107,11 @@ impl SseDecode for crate::api::dto::PageDto {
         let mut var_originJournal = <Option<String>>::sse_decode(deserializer);
         let mut var_createdAt = <i64>::sse_decode(deserializer);
         let mut var_updatedAt = <i64>::sse_decode(deserializer);
+        let mut var_isHub = <bool>::sse_decode(deserializer);
+        let mut var_description = <String>::sse_decode(deserializer);
+        let mut var_tags = <Vec<String>>::sse_decode(deserializer);
+        let mut var_isTag = <bool>::sse_decode(deserializer);
+        let mut var_types = <Vec<String>>::sse_decode(deserializer);
         return crate::api::dto::PageDto {
             id: var_id,
             title: var_title,
@@ -2749,6 +4119,31 @@ impl SseDecode for crate::api::dto::PageDto {
             origin_journal: var_originJournal,
             created_at: var_createdAt,
             updated_at: var_updatedAt,
+            is_hub: var_isHub,
+            description: var_description,
+            tags: var_tags,
+            is_tag: var_isTag,
+            types: var_types,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::PageStructure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_isHub = <bool>::sse_decode(deserializer);
+        let mut var_description = <String>::sse_decode(deserializer);
+        let mut var_members = <Vec<crate::api::dto::PageBrief>>::sse_decode(deserializer);
+        let mut var_inHubs = <Vec<crate::api::dto::PageBrief>>::sse_decode(deserializer);
+        let mut var_nsPath = <Vec<crate::api::dto::NamespaceEntry>>::sse_decode(deserializer);
+        let mut var_nsChildren = <Vec<crate::api::dto::NamespaceEntry>>::sse_decode(deserializer);
+        return crate::api::dto::PageStructure {
+            is_hub: var_isHub,
+            description: var_description,
+            members: var_members,
+            in_hubs: var_inHubs,
+            ns_path: var_nsPath,
+            ns_children: var_nsChildren,
         };
     }
 }
@@ -2796,6 +4191,20 @@ impl SseDecode for crate::api::dto::RelatedDto {
         return crate::api::dto::RelatedDto {
             page: var_page,
             score: var_score,
+        };
+    }
+}
+
+impl SseDecode for crate::api::dto::TagDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_count = <u32>::sse_decode(deserializer);
+        let mut var_suggested = <bool>::sse_decode(deserializer);
+        return crate::api::dto::TagDto {
+            name: var_name,
+            count: var_count,
+            suggested: var_suggested,
         };
     }
 }
@@ -2891,133 +4300,254 @@ fn pde_ffi_dispatcher_primary_impl(
         6 => {
             wire__crate__api__graph__SynapseGraph_add_alias_impl(port, ptr, rust_vec_len, data_len)
         }
-        7 => wire__crate__api__graph__SynapseGraph_aliases_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__graph__SynapseGraph_add_page_tag_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        8 => wire__crate__api__graph__SynapseGraph_add_page_type_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
         9 => {
+            wire__crate__api__graph__SynapseGraph_add_to_hub_impl(port, ptr, rust_vec_len, data_len)
+        }
+        10 => wire__crate__api__graph__SynapseGraph_aliases_impl(port, ptr, rust_vec_len, data_len),
+        12 => {
             wire__crate__api__graph__SynapseGraph_backlinks_impl(port, ptr, rust_vec_len, data_len)
         }
-        10 => {
+        13 => {
             wire__crate__api__graph__SynapseGraph_block_ref_impl(port, ptr, rust_vec_len, data_len)
         }
-        11 => wire__crate__api__graph__SynapseGraph_delete_block_impl(
+        14 => wire__crate__api__graph__SynapseGraph_convert_to_hub_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__graph__SynapseGraph_delete_page_impl(
+        15 => wire__crate__api__graph__SynapseGraph_convert_to_note_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        14 => {
+        16 => {
+            wire__crate__api__graph__SynapseGraph_create_hub_impl(port, ptr, rust_vec_len, data_len)
+        }
+        17 => wire__crate__api__graph__SynapseGraph_create_page_from_template_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        18 => wire__crate__api__graph__SynapseGraph_delete_block_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        19 => wire__crate__api__graph__SynapseGraph_delete_page_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        21 => {
             wire__crate__api__graph__SynapseGraph_graph_data_impl(port, ptr, rust_vec_len, data_len)
         }
-        15 => wire__crate__api__graph__SynapseGraph_indent_block_impl(
+        22 => wire__crate__api__graph__SynapseGraph_hub_conversion_preview_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__crate__api__graph__SynapseGraph_insert_block_impl(
+        23 => wire__crate__api__graph__SynapseGraph_hub_template_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        17 => wire__crate__api__graph__SynapseGraph_journal_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__graph__SynapseGraph_journal_neighbors_impl(
+        24 => wire__crate__api__graph__SynapseGraph_hubs_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__graph__SynapseGraph_indent_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => {
+        26 => wire__crate__api__graph__SynapseGraph_insert_block_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        27 => wire__crate__api__graph__SynapseGraph_journal_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__graph__SynapseGraph_journal_neighbors_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        29 => {
             wire__crate__api__graph__SynapseGraph_journals_impl(port, ptr, rust_vec_len, data_len)
         }
-        20 => {
+        30 => wire__crate__api__graph__SynapseGraph_legacy_candidates_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        31 => {
             wire__crate__api__graph__SynapseGraph_list_pages_impl(port, ptr, rust_vec_len, data_len)
         }
-        21 => wire__crate__api__graph__SynapseGraph_merge_block_impl(
+        32 => wire__crate__api__graph__SynapseGraph_merge_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => {
+        33 => {
             wire__crate__api__graph__SynapseGraph_move_block_impl(port, ptr, rust_vec_len, data_len)
         }
-        23 => wire__crate__api__graph__SynapseGraph_open_impl(port, ptr, rust_vec_len, data_len),
-        24 => {
+        34 => wire__crate__api__graph__SynapseGraph_open_impl(port, ptr, rust_vec_len, data_len),
+        35 => {
             wire__crate__api__graph__SynapseGraph_open_page_impl(port, ptr, rust_vec_len, data_len)
         }
-        25 => wire__crate__api__graph__SynapseGraph_outdent_block_impl(
+        36 => wire__crate__api__graph__SynapseGraph_outdent_block_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__graph__SynapseGraph_outline_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__graph__SynapseGraph_page_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__graph__SynapseGraph_page_by_title_impl(
+        37 => wire__crate__api__graph__SynapseGraph_outline_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__graph__SynapseGraph_page_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__graph__SynapseGraph_page_by_title_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__crate__api__graph__SynapseGraph_put_asset_bytes_impl(
+        40 => wire__crate__api__graph__SynapseGraph_page_structure_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        30 => wire__crate__api__graph__SynapseGraph_put_asset_file_impl(
+        41 => wire__crate__api__graph__SynapseGraph_pages_with_tag_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        31 => wire__crate__api__graph__SynapseGraph_record_visit_impl(
+        42 => wire__crate__api__graph__SynapseGraph_purge_pages_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__crate__api__graph__SynapseGraph_related_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__graph__SynapseGraph_remove_alias_impl(
+        43 => wire__crate__api__graph__SynapseGraph_put_asset_bytes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        34 => wire__crate__api__graph__SynapseGraph_rename_page_impl(
+        44 => wire__crate__api__graph__SynapseGraph_put_asset_file_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        35 => wire__crate__api__graph__SynapseGraph_search_blocks_impl(
+        45 => wire__crate__api__graph__SynapseGraph_record_visit_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        36 => wire__crate__api__graph__SynapseGraph_search_titles_impl(
+        46 => wire__crate__api__graph__SynapseGraph_related_impl(port, ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__graph__SynapseGraph_remove_alias_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        37 => wire__crate__api__graph__SynapseGraph_set_collapsed_impl(
+        48 => wire__crate__api__graph__SynapseGraph_remove_from_hub_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        38 => {
+        49 => wire__crate__api__graph__SynapseGraph_remove_page_tag_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        50 => wire__crate__api__graph__SynapseGraph_remove_page_type_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        51 => wire__crate__api__graph__SynapseGraph_rename_page_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        52 => wire__crate__api__graph__SynapseGraph_search_blocks_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        53 => wire__crate__api__graph__SynapseGraph_search_titles_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        54 => wire__crate__api__graph__SynapseGraph_set_collapsed_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        55 => wire__crate__api__graph__SynapseGraph_set_hub_description_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        56 => wire__crate__api__graph__SynapseGraph_set_page_tags_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        57 => wire__crate__api__graph__SynapseGraph_set_page_types_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        58 => wire__crate__api__graph__SynapseGraph_tag_catalog_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        59 => {
             wire__crate__api__graph__SynapseGraph_timeline_impl(port, ptr, rust_vec_len, data_len)
         }
-        40 => wire__crate__api__graph__SynapseGraph_update_block_impl(
+        61 => wire__crate__api__graph__SynapseGraph_type_catalog_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        62 => wire__crate__api__graph__SynapseGraph_update_block_impl(
             port,
             ptr,
             rust_vec_len,
@@ -3036,9 +4566,9 @@ fn pde_ffi_dispatcher_sync_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         1 => wire__crate__api__layout__ForceLayout_new_impl(ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__graph__SynapseGraph_asset_path_impl(ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__graph__SynapseGraph_dir_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__graph__SynapseGraph_today_impl(ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__graph__SynapseGraph_asset_path_impl(ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__graph__SynapseGraph_dir_impl(ptr, rust_vec_len, data_len),
+        60 => wire__crate__api__graph__SynapseGraph_today_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3222,6 +4752,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::GraphNode {
             self.backlinks.into_into_dart().into_dart(),
             self.cluster.into_into_dart().into_dart(),
             self.primary_tag.into_into_dart().into_dart(),
+            self.is_hub.into_into_dart().into_dart(),
+            self.home_hub.into_into_dart().into_dart(),
+            self.tags.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3229,6 +4762,67 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::GraphNode {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::GraphNode {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::GraphNode> for crate::api::dto::GraphNode {
     fn into_into_dart(self) -> crate::api::dto::GraphNode {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::HubDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.title.into_into_dart().into_dart(),
+            self.description.into_into_dart().into_dart(),
+            self.depth.into_into_dart().into_dart(),
+            self.members.into_into_dart().into_dart(),
+            self.sub_hubs.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::HubDto {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::HubDto> for crate::api::dto::HubDto {
+    fn into_into_dart(self) -> crate::api::dto::HubDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::HubPreviewDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.suggested_title.into_into_dart().into_dart(),
+            self.suggested_description.into_into_dart().into_dart(),
+            self.members.into_into_dart().into_dart(),
+            self.prose_blocks.into_into_dart().into_dart(),
+            self.blocks.into_into_dart().into_dart(),
+            self.suggested_note_title.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::dto::HubPreviewDto
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::HubPreviewDto>
+    for crate::api::dto::HubPreviewDto
+{
+    fn into_into_dart(self) -> crate::api::dto::HubPreviewDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::HubsDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.hubs.into_into_dart().into_dart(),
+            self.roots.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::HubsDto {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::HubsDto> for crate::api::dto::HubsDto {
+    fn into_into_dart(self) -> crate::api::dto::HubsDto {
         self
     }
 }
@@ -3251,12 +4845,58 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::LayoutFrame>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::LegacyCandidate {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.title.into_into_dart().into_dart(),
+            self.reason.into_into_dart().into_dart(),
+            self.blocks.into_into_dart().into_dart(),
+            self.preselected.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::dto::LegacyCandidate
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::LegacyCandidate>
+    for crate::api::dto::LegacyCandidate
+{
+    fn into_into_dart(self) -> crate::api::dto::LegacyCandidate {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::NamespaceEntry {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.title.into_into_dart().into_dart(),
+            self.id.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::dto::NamespaceEntry
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::NamespaceEntry>
+    for crate::api::dto::NamespaceEntry
+{
+    fn into_into_dart(self) -> crate::api::dto::NamespaceEntry {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::dto::PageBrief {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.id.into_into_dart().into_dart(),
             self.title.into_into_dart().into_dart(),
             self.is_journal.into_into_dart().into_dart(),
+            self.is_hub.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3296,6 +4936,11 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::PageDto {
             self.origin_journal.into_into_dart().into_dart(),
             self.created_at.into_into_dart().into_dart(),
             self.updated_at.into_into_dart().into_dart(),
+            self.is_hub.into_into_dart().into_dart(),
+            self.description.into_into_dart().into_dart(),
+            self.tags.into_into_dart().into_dart(),
+            self.is_tag.into_into_dart().into_dart(),
+            self.types.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3303,6 +4948,31 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::PageDto {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::PageDto {}
 impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageDto> for crate::api::dto::PageDto {
     fn into_into_dart(self) -> crate::api::dto::PageDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::PageStructure {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.is_hub.into_into_dart().into_dart(),
+            self.description.into_into_dart().into_dart(),
+            self.members.into_into_dart().into_dart(),
+            self.in_hubs.into_into_dart().into_dart(),
+            self.ns_path.into_into_dart().into_dart(),
+            self.ns_children.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::dto::PageStructure
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::PageStructure>
+    for crate::api::dto::PageStructure
+{
+    fn into_into_dart(self) -> crate::api::dto::PageStructure {
         self
     }
 }
@@ -3355,6 +5025,23 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::RelatedDto>
     for crate::api::dto::RelatedDto
 {
     fn into_into_dart(self) -> crate::api::dto::RelatedDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::dto::TagDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.name.into_into_dart().into_dart(),
+            self.count.into_into_dart().into_dart(),
+            self.suggested.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::dto::TagDto {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::dto::TagDto> for crate::api::dto::TagDto {
+    fn into_into_dart(self) -> crate::api::dto::TagDto {
         self
     }
 }
@@ -3564,6 +5251,41 @@ impl SseEncode for crate::api::dto::GraphNode {
         <u32>::sse_encode(self.backlinks, serializer);
         <u32>::sse_encode(self.cluster, serializer);
         <Option<u32>>::sse_encode(self.primary_tag, serializer);
+        <bool>::sse_encode(self.is_hub, serializer);
+        <Option<u32>>::sse_encode(self.home_hub, serializer);
+        <Vec<String>>::sse_encode(self.tags, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::HubDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <String>::sse_encode(self.description, serializer);
+        <u32>::sse_encode(self.depth, serializer);
+        <Vec<crate::api::dto::PageBrief>>::sse_encode(self.members, serializer);
+        <Vec<String>>::sse_encode(self.sub_hubs, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::HubPreviewDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.suggested_title, serializer);
+        <String>::sse_encode(self.suggested_description, serializer);
+        <Vec<crate::api::dto::PageBrief>>::sse_encode(self.members, serializer);
+        <u32>::sse_encode(self.prose_blocks, serializer);
+        <u32>::sse_encode(self.blocks, serializer);
+        <String>::sse_encode(self.suggested_note_title, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::HubsDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::api::dto::HubDto>>::sse_encode(self.hubs, serializer);
+        <Vec<String>>::sse_encode(self.roots, serializer);
     }
 }
 
@@ -3586,6 +5308,17 @@ impl SseEncode for crate::api::dto::LayoutFrame {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<f32>>::sse_encode(self.positions, serializer);
         <f32>::sse_encode(self.alpha, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::LegacyCandidate {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.title, serializer);
+        <String>::sse_encode(self.reason, serializer);
+        <u32>::sse_encode(self.blocks, serializer);
+        <bool>::sse_encode(self.preselected, serializer);
     }
 }
 
@@ -3645,6 +5378,36 @@ impl SseEncode for Vec<crate::api::dto::GraphNode> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::dto::GraphNode>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::dto::HubDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::HubDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::dto::LegacyCandidate> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::LegacyCandidate>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::dto::NamespaceEntry> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::NamespaceEntry>::sse_encode(item, serializer);
         }
     }
 }
@@ -3719,6 +5482,16 @@ impl SseEncode for Vec<crate::api::dto::RelatedDto> {
     }
 }
 
+impl SseEncode for Vec<crate::api::dto::TagDto> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::dto::TagDto>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::dto::TimelineDayDto> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3736,6 +5509,14 @@ impl SseEncode for Vec<crate::api::dto::TitleHit> {
         for item in self {
             <crate::api::dto::TitleHit>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::api::dto::NamespaceEntry {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.title, serializer);
+        <Option<String>>::sse_encode(self.id, serializer);
     }
 }
 
@@ -3795,6 +5576,7 @@ impl SseEncode for crate::api::dto::PageBrief {
         <String>::sse_encode(self.id, serializer);
         <String>::sse_encode(self.title, serializer);
         <bool>::sse_encode(self.is_journal, serializer);
+        <bool>::sse_encode(self.is_hub, serializer);
     }
 }
 
@@ -3818,6 +5600,23 @@ impl SseEncode for crate::api::dto::PageDto {
         <Option<String>>::sse_encode(self.origin_journal, serializer);
         <i64>::sse_encode(self.created_at, serializer);
         <i64>::sse_encode(self.updated_at, serializer);
+        <bool>::sse_encode(self.is_hub, serializer);
+        <String>::sse_encode(self.description, serializer);
+        <Vec<String>>::sse_encode(self.tags, serializer);
+        <bool>::sse_encode(self.is_tag, serializer);
+        <Vec<String>>::sse_encode(self.types, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::PageStructure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_hub, serializer);
+        <String>::sse_encode(self.description, serializer);
+        <Vec<crate::api::dto::PageBrief>>::sse_encode(self.members, serializer);
+        <Vec<crate::api::dto::PageBrief>>::sse_encode(self.in_hubs, serializer);
+        <Vec<crate::api::dto::NamespaceEntry>>::sse_encode(self.ns_path, serializer);
+        <Vec<crate::api::dto::NamespaceEntry>>::sse_encode(self.ns_children, serializer);
     }
 }
 
@@ -3860,6 +5659,15 @@ impl SseEncode for crate::api::dto::RelatedDto {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <crate::api::dto::PageBrief>::sse_encode(self.page, serializer);
         <f32>::sse_encode(self.score, serializer);
+    }
+}
+
+impl SseEncode for crate::api::dto::TagDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.name, serializer);
+        <u32>::sse_encode(self.count, serializer);
+        <bool>::sse_encode(self.suggested, serializer);
     }
 }
 

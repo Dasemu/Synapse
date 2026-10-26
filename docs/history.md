@@ -12,6 +12,10 @@ works on it (`git --git-dir=<graph>/history log`, `clone`, ...).
   bullet. Blocks targeted by `((uuid))` get an `id::` property. `collapsed:: true` is kept.
 - Property values: raw text, or JSON when the value is not a plain string (so numbers/bools
   survive a restore). Keys are sorted, so output is byte-stable.
+- Hubs: `synapse-kind:: hub` and `synapse-description::` page properties (hubs have no
+  bullets). A page's tags (tag page titles) are listed in `synapse-tags:: ["a","b"]` and its types in `synapse-types:: [...]`; tag pages carry `synapse-kind:: tag` (all restored with the page). A page in hubs lists their titles in `synapse-hubs:: ["A","B"]`, so renaming a hub
+  re-exports its members. Restore sets kinds first, then memberships (missing hubs or
+  memberships that would now form a cycle are skipped).
 - `assets.json`: manifest `hash → name/size/mime`, sorted. Asset bytes are **not** committed
   (the blob store is already content-addressed) unless `HistoryOptions::include_blobs`, which
   adds `blobs/<hash>`.

@@ -11,7 +11,9 @@ enum EdgeKind {
   blockRef('Block ref'),
   embed('Embed'),
   mention('Mention'),
-  synapse('Synapse');
+  synapse('Synapse'),
+  contains('Contains'),
+  tagged('Shared tag');
 
   const EdgeKind(this.label);
   final String label;
@@ -50,6 +52,123 @@ class GraphModel {
   int other(int e, int i) => source(e) == i ? target(e) : source(e);
 
   bool isJournal(int i) => node(i).journalDate != null;
+
+  bool isHub(int i) => node(i).isHub;
+
+  /// Whether the graph has any hub (folder-like page).
+  late final bool hasHubs = data.nodes.any((n) => n.isHub);
+
+  /// Hubs that are the home hub of the most pages first (journals excluded); ties by index.
+  /// A hub's position here is its colour rank in the hub grouping.
+  late final List<int> hubOrder = () {
+    final count = <int, int>{};
+    for (var i = 0; i < nodeCount; i++) {
+      final h = node(i).homeHub;
+      if (h != null && !isJournal(i)) count[h] = (count[h] ?? 0) + 1;
+    }
+    return count.keys.toList()..sort((a, b) {
+      final c = count[b]!.compareTo(count[a]!);
+      return c != 0 ? c : a.compareTo(b);
+    });
+  }();
+
+  /// Hub node index → colour rank (see [hubOrder]).
+  late final Map<int, int> hubRank = {
+    for (var r = 0; r < hubOrder.length; r++) hubOrder[r]: r,
+  };
+
+  /// Members of each hub: the targets of its `CONTAINS` edges (hub -> member), in edge order.
+  late final Map<int, Set<int>> hubMembers = () {
+    final m = <int, Set<int>>{};
+    for (var e = 0; e < edgeCount; e++) {
+      if (kind(e) != EdgeKind.contains) continue;
+      final hub = source(e), page = target(e);
+      if (hub == page) continue;
+      (m[hub] ??= <int>{}).add(page);
+    }
+    return m;
+  }();
+
+  /// Layout-only springs from every page in `nodes` to its home hub, so folders cluster.
+  List<(int, int, double)> hubSprings(
+    Iterable<int> nodes, {
+    double strength = 0.6,
+  }) => [
+    for (final i in nodes)
+      if (node(i).homeHub case final h? when h != i) (i, h, strength),
+  ];
+
+  /// The tag that groups page `i` in the "by tags" clusters: the page's most widely used tag
+  /// (ties: alphabetical). Keys are lower-case; journals and untagged pages have none.
+  String? homeTag(int i) {
+    if (isJournal(i)) return null;
+    String? best;
+    for (final t in node(i).tags) {
+      final k = t.toLowerCase();
+      if (best == null ||
+          _tagUse[k]! > _tagUse[best]! ||
+          (_tagUse[k] == _tagUse[best] && k.compareTo(best) < 0)) {
+        best = k;
+      }
+    }
+    return best;
+  }
+
+  /// Pages per tag key and the first spelling met, over every non-journal page.
+  late final Map<String, int> _tagUse = () {
+    final m = <String, int>{};
+    for (var i = 0; i < nodeCount; i++) {
+      if (isJournal(i)) continue;
+      for (final t in node(i).tags) {
+        final k = t.toLowerCase();
+        m[k] = (m[k] ?? 0) + 1;
+        _tagName.putIfAbsent(k, () => t);
+      }
+    }
+    return m;
+  }();
+  final _tagName = <String, String>{};
+
+  /// Tag keys that are the home tag of the most pages first; a tag's position is its colour
+  /// rank in the tag grouping.
+  late final List<String> tagGroups = () {
+    final count = <String, int>{};
+    for (var i = 0; i < nodeCount; i++) {
+      final t = homeTag(i);
+      if (t != null) count[t] = (count[t] ?? 0) + 1;
+    }
+    return count.keys.toList()..sort((a, b) {
+      final c = count[b]!.compareTo(count[a]!);
+      return c != 0 ? c : a.compareTo(b);
+    });
+  }();
+
+  late final Map<String, int> tagGroupRank = {
+    for (var r = 0; r < tagGroups.length; r++) tagGroups[r]: r,
+  };
+
+  /// Display name of a tag key.
+  String tagLabel(String key) => _tagName[key] ?? key;
+
+  /// Layout-only springs from every page in `nodes` to the best connected page of its home
+  /// tag, so pages sharing a tag cluster spatially.
+  List<(int, int, double)> tagSprings(
+    Iterable<int> nodes, {
+    double strength = 0.6,
+  }) {
+    final anchor = <String, int>{};
+    for (final i in nodes) {
+      final t = homeTag(i);
+      if (t == null) continue;
+      final a = anchor[t];
+      if (a == null || node(i).degree > node(a).degree) anchor[t] = i;
+    }
+    return [
+      for (final i in nodes)
+        if (homeTag(i) case final t? when anchor[t] != i)
+          (i, anchor[t]!, strength),
+    ];
+  }
 
   /// Tag pages actually used as tags, most used first.
   late final List<int> tags = () {
@@ -112,7 +231,7 @@ class GraphModel {
 /// Filters of the network modes.
 class GraphFilter {
   const GraphFilter({
-    this.journals = false,
+    this.journals = true,
     this.orphans = true,
     this.minDegree = 0,
     this.tag,
@@ -126,6 +245,8 @@ class GraphFilter {
       EdgeKind.blockRef,
       EdgeKind.embed,
       EdgeKind.mention,
+      EdgeKind.contains,
+      EdgeKind.tagged,
     },
   });
 
