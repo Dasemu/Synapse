@@ -186,15 +186,15 @@ class _JournalHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          JournalChain(view: view),
+          // No previous/next links here: the list itself is the chain (scroll up or
+          // down). A journal opened on its own (PageScreen) keeps them.
         ],
       ),
     );
   }
 }
 
-/// Previous / next journal links (the episodic chain).
+/// Previous / next journal links (the episodic chain), shown on a journal opened on its own.
 class JournalChain extends StatelessWidget {
   const JournalChain({super.key, required this.view});
   final PageData view;
