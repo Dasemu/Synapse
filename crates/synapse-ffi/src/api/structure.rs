@@ -204,15 +204,24 @@ impl SynapseGraph {
         ))
     }
 
-    /// Pages that are probably leftovers of Logseq: its built-ins and pages with
-    /// `type:: system`. Only the organisational files (`contents`, `card`, `favorites`,
-    /// `hls__*`) and empty pages are preselected, and never a hub: a built-in title such as
-    /// `todo` may hold real content.
+    /// Pages worth cleaning up: leftovers of Logseq (its built-ins and pages with
+    /// `type:: system`) and empty pages (no text in any block, not a hub, no type, tags or
+    /// description). Of the Logseq ones only the organisational files (`contents`, `card`,
+    /// `favorites`, `hls__*`) and empty pages are preselected, and never a hub: a built-in
+    /// title such as `todo` may hold real content. Empty pages are all preselected.
     pub fn legacy_candidates(&self) -> Result<Vec<LegacyCandidate>> {
         let g = self.lock();
         let mut out = Vec::new();
         for p in g.list_pages(false, u32::MAX, 0)? {
             let key = title_key(&p.title);
+            let tree = g.page_tree(p.id)?;
+            let blocks = tree.len() as u32;
+            let blank = tree.iter().all(|(_, b)| b.content.trim().is_empty());
+            let empty = blank
+                && !p.is_hub()
+                && p.page_type().is_none()
+                && p.tags.is_empty()
+                && p.description.trim().is_empty();
             let reason = if is_legacy_page(&p.title) {
                 if key.starts_with("hls__") {
                     "Logseq PDF highlights"
@@ -221,10 +230,11 @@ impl SynapseGraph {
                 }
             } else if p.properties.get("type").and_then(|v| v.as_str()) == Some("system") {
                 "type:: system"
+            } else if empty {
+                "Empty"
             } else {
                 continue;
             };
-            let blocks = g.page_tree(p.id)?.len() as u32;
             let organisational = matches!(key.as_str(), "contents" | "card" | "favorites")
                 || key.starts_with("hls__");
             out.push(LegacyCandidate {
@@ -232,7 +242,7 @@ impl SynapseGraph {
                 title: p.title.clone(),
                 reason: reason.into(),
                 blocks,
-                preselected: !p.is_hub() && (blocks == 0 || organisational),
+                preselected: !p.is_hub() && (empty || blocks == 0 || organisational),
             });
         }
         out.sort_by_key(|c| title_key(&c.title));

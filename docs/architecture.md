@@ -47,6 +47,8 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
   the first; `PageKind` has no `Tag` any more and "tag" parses as a note.
 - In the graph (`synapse-ffi`) every tag in use is a virtual node (`GraphNode.is_tag`, id
   `tag:<title_key>`, no page), with a `TAGGED` edge from each tagged page (type included).
+  A tag named like a hub in the graph uses the hub's node instead; its members, already
+  linked by `CONTAINS`, get no `TAGGED` edge.
 - Known limitations: replicas still on the old schema may overwrite tags with stale values (LWW per page), and `rename_tag` is a bulk page edit, so concurrent edits on another replica can undo part of it.
 - Exports use `synapse-tags::` and `synapse-type::` (see `history.md`).
 
@@ -90,8 +92,8 @@ Two orthogonal ways to organise pages.
     a hub; `convert_to_note` keeps such blocks. Clients older than schema v3 drop `kind`,
     `description` and `hubs` when they upsert a page, so every client must be on v3.
 - Logseq built-ins (`contents`, `TODO`, `hls__*`, ...) are recognised by `is_legacy_page`; the
-  app offers to purge them (`legacy_candidates` / `purge_pages` in `synapse-ffi`). The importer
-  only skips a narrower set (see `import.md`).
+  app offers to purge them, together with empty pages (`legacy_candidates` / `purge_pages` in
+  `synapse-ffi`). The importer only skips a narrower set (see `import.md`).
 
 ## Temporal model
 - `journal_neighbors(date)` gives the previous/next existing journal (episodic chain).

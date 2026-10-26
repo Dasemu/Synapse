@@ -515,7 +515,7 @@ void main() {
     await pump(tester, b, home: const Scaffold(body: AllPagesView()));
     await tester.tap(find.text('Clean up'));
     await settle(tester);
-    expect(find.text('Remove legacy Logseq pages'), findsOneWidget);
+    expect(find.text('Clean up pages'), findsOneWidget);
     expect(find.text('Delete (2)'), findsOneWidget);
     // Uncheck "card".
     await tester.tap(
@@ -538,7 +538,7 @@ void main() {
     await pump(tester, demo(), home: const Scaffold(body: AllPagesView()));
     await tester.tap(find.text('Clean up'));
     await settle(tester);
-    expect(find.text('No legacy pages found.'), findsOneWidget);
+    expect(find.text('Nothing to clean up.'), findsOneWidget);
   });
 }
 

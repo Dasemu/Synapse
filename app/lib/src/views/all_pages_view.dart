@@ -374,21 +374,43 @@ class _CleanupDialogState extends State<CleanupDialog> {
     final colors = context.colors;
     final items = widget.candidates;
     return AlertDialog(
-      title: const Text('Remove legacy Logseq pages'),
+      title: const Text('Clean up pages'),
       content: SizedBox(
         width: 460,
         child: items.isEmpty
             ? Text(
-                'No legacy pages found.',
+                'Nothing to clean up.',
                 style: TextStyle(color: colors.muted),
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'This deletes the selected pages and their blocks.',
-                    style: TextStyle(fontSize: 13, color: colors.muted),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Empty pages and Logseq leftovers. This deletes the '
+                          'selected pages and their blocks.',
+                          style: TextStyle(fontSize: 13, color: colors.muted),
+                        ),
+                      ),
+                      TextButton(
+                        key: const Key('cleanup-toggle-all'),
+                        onPressed: () => setState(() {
+                          if (_checked.length == items.length) {
+                            _checked.clear();
+                          } else {
+                            _checked.addAll([for (final c in items) c.id]);
+                          }
+                        }),
+                        child: Text(
+                          _checked.length == items.length
+                              ? 'Select none'
+                              : 'Select all',
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Flexible(
