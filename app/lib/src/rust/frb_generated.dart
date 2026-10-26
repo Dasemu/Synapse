@@ -2950,12 +2950,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BlockHit dco_decode_block_hit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return BlockHit(
       id: dco_decode_String(arr[0]),
       content: dco_decode_String(arr[1]),
-      pageTitle: dco_decode_String(arr[2]),
+      pageId: dco_decode_String(arr[2]),
+      pageTitle: dco_decode_String(arr[3]),
     );
   }
 
@@ -3644,8 +3645,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
     var var_content = sse_decode_String(deserializer);
+    var var_pageId = sse_decode_String(deserializer);
     var var_pageTitle = sse_decode_String(deserializer);
-    return BlockHit(id: var_id, content: var_content, pageTitle: var_pageTitle);
+    return BlockHit(
+      id: var_id,
+      content: var_content,
+      pageId: var_pageId,
+      pageTitle: var_pageTitle,
+    );
   }
 
   @protected
@@ -4461,6 +4468,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
     sse_encode_String(self.content, serializer);
+    sse_encode_String(self.pageId, serializer);
     sse_encode_String(self.pageTitle, serializer);
   }
 

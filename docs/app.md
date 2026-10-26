@@ -81,6 +81,10 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   journals, Ctrl+Shift+G graph, Ctrl+Shift+T timeline, Ctrl+\ sidebar, Ctrl+Shift+\ graph
   sidebar, Ctrl+, settings, Alt+←/→ back/forward, Ctrl+T new tab, Ctrl+W close tab,
   Ctrl+Tab / Ctrl+Shift+Tab next/previous tab.
+- Quick switcher (Ctrl+K): page titles and aliases first, then "In notes": pages whose blocks
+  contain the text (from two characters; one row per page with the first matching block as
+  a highlighted snippet), then "Create page". Content search is the FFI's `search_blocks`
+  (SQL `LIKE`, case-insensitive for ASCII only) until synapse-search's full-text index is wired.
 
 ## Tabs
 - `AppState` holds a list of `AppTab`s; each has its own route and back/forward history, and

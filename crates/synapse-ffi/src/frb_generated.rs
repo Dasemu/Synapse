@@ -3568,10 +3568,12 @@ impl SseDecode for crate::api::dto::BlockHit {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_id = <String>::sse_decode(deserializer);
         let mut var_content = <String>::sse_decode(deserializer);
+        let mut var_pageId = <String>::sse_decode(deserializer);
         let mut var_pageTitle = <String>::sse_decode(deserializer);
         return crate::api::dto::BlockHit {
             id: var_id,
             content: var_content,
+            page_id: var_pageId,
             page_title: var_pageTitle,
         };
     }
@@ -4664,6 +4666,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::dto::BlockHit {
         [
             self.id.into_into_dart().into_dart(),
             self.content.into_into_dart().into_dart(),
+            self.page_id.into_into_dart().into_dart(),
             self.page_title.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -5183,6 +5186,7 @@ impl SseEncode for crate::api::dto::BlockHit {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.id, serializer);
         <String>::sse_encode(self.content, serializer);
+        <String>::sse_encode(self.page_id, serializer);
         <String>::sse_encode(self.page_title, serializer);
     }
 }

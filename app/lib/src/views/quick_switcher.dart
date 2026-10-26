@@ -5,7 +5,8 @@ import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
 
-/// Ctrl+K: jump to a page by title or alias, or create it.
+/// Ctrl+K: jump to a page by title or alias, to a page whose blocks contain the text, or
+/// create it.
 Future<void> showQuickSwitcher(BuildContext context) => showDialog<void>(
   context: context,
   barrierColor: Colors.black.withAlpha(0x33),
@@ -23,6 +24,9 @@ class QuickSwitcher extends StatefulWidget {
 class _QuickSwitcherState extends State<QuickSwitcher> {
   final _text = TextEditingController();
   List<TitleHit> _hits = const [];
+
+  /// Blocks containing the query (pages already listed by title are not repeated).
+  List<BlockHit> _blocks = const [];
   int _selected = 0;
   int _seq = 0;
 
@@ -44,15 +48,31 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
       _query.isNotEmpty &&
       !_hits.any((h) => h.title.toLowerCase() == _query.toLowerCase());
 
-  int get _count => _hits.length + (_offerCreate ? 1 : 0);
+  // Rows: title hits, then block hits, then "Create page".
+  int get _count => _hits.length + _blocks.length + (_offerCreate ? 1 : 0);
 
   Future<void> _search(String q) async {
     final seq = ++_seq;
-    final hits = await AppScope.read(context).backend
-        .searchTitles(q, limit: 12);
+    final backend = AppScope.read(context).backend;
+    final results = await Future.wait([
+      backend.searchTitles(q, limit: 12),
+      // Content search starts at two characters: one matches nearly every block.
+      q.trim().length < 2
+          ? Future.value(const <BlockHit>[])
+          : backend.searchBlocks(q, limit: 30),
+    ]);
     if (!mounted || seq != _seq) return;
+    final hits = results[0] as List<TitleHit>;
+    final titled = {for (final h in hits) h.pageId};
+    final seen = <String>{};
+    final blocks = [
+      for (final b in results[1] as List<BlockHit>)
+        // One row per page, the first (most recent) matching block.
+        if (!titled.contains(b.pageId) && seen.add(b.pageId)) b,
+    ].take(12).toList();
     setState(() {
       _hits = hits;
+      _blocks = blocks;
       _selected = 0;
     });
   }
@@ -65,6 +85,8 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
     final AppRoute route;
     if (i < _hits.length) {
       route = PageTarget(id: _hits[i].pageId);
+    } else if (i < _hits.length + _blocks.length) {
+      route = PageTarget(id: _blocks[i - _hits.length].pageId);
     } else if (query.isNotEmpty) {
       route = PageTarget(title: query);
     } else {
@@ -139,20 +161,40 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.all(6),
                   children: [
-                    for (var i = 0; i < _count; i++)
+                    for (var i = 0; i < _hits.length; i++)
                       _Item(
                         selected: i == _selected,
                         onTap: () => _open(i),
                         onMiddle: () => _open(i, newTab: true),
-                        icon: i < _hits.length
-                            ? Icons.description_outlined
-                            : Icons.add_rounded,
-                        title: i < _hits.length
-                            ? _hits[i].title
-                            : 'Create page “$_query”',
-                        detail: i < _hits.length && _hits[i].isAlias
-                            ? 'alias'
-                            : null,
+                        icon: Icons.description_outlined,
+                        title: _hits[i].title,
+                        detail: _hits[i].isAlias ? 'alias' : null,
+                      ),
+                    if (_blocks.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                        child: Text(
+                          'IN NOTES',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                    for (var j = 0; j < _blocks.length; j++)
+                      _Item(
+                        key: ValueKey('block-hit-${_blocks[j].id}'),
+                        selected: _hits.length + j == _selected,
+                        onTap: () => _open(_hits.length + j),
+                        onMiddle: () => _open(_hits.length + j, newTab: true),
+                        icon: Icons.notes_rounded,
+                        title: _blocks[j].pageTitle,
+                        snippet: _Snippet(_blocks[j].content, _query),
+                      ),
+                    if (_offerCreate)
+                      _Item(
+                        selected: _count - 1 == _selected,
+                        onTap: () => _open(_count - 1),
+                        onMiddle: () => _open(_count - 1, newTab: true),
+                        icon: Icons.add_rounded,
+                        title: 'Create page “$_query”',
                       ),
                   ],
                 ),
@@ -167,12 +209,14 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
 
 class _Item extends StatelessWidget {
   const _Item({
+    super.key,
     required this.selected,
     required this.onTap,
     required this.icon,
     required this.title,
     required this.onMiddle,
     this.detail,
+    this.snippet,
   });
   final bool selected;
   final VoidCallback onTap;
@@ -180,6 +224,9 @@ class _Item extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? detail;
+
+  /// Matching text shown under the title (content results).
+  final Widget? snippet;
 
   @override
   Widget build(BuildContext context) {
@@ -204,11 +251,20 @@ class _Item extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14, color: colors.ink),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, color: colors.ink),
+                    ),
+                    if (snippet != null) ...[
+                      const SizedBox(height: 2),
+                      snippet!,
+                    ],
+                  ],
                 ),
               ),
               if (detail != null)
@@ -220,6 +276,48 @@ class _Item extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One line of a block around the first match of `query`, the match highlighted.
+class _Snippet extends StatelessWidget {
+  const _Snippet(this.content, this.query);
+  final String content;
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final text = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final at = text.toLowerCase().indexOf(query.toLowerCase());
+    // Start a little before the match so it stays visible on one line.
+    final from = at > 40 ? at - 30 : 0;
+    final shown = (from > 0 ? '…' : '') + text.substring(from);
+    final base = TextStyle(fontSize: 12.5, color: colors.muted);
+    final spans = <TextSpan>[];
+    final m = at < 0 ? -1 : at - from + (from > 0 ? 1 : 0);
+    if (m < 0 || query.isEmpty) {
+      spans.add(TextSpan(text: shown));
+    } else {
+      spans
+        ..add(TextSpan(text: shown.substring(0, m)))
+        ..add(
+          TextSpan(
+            text: shown.substring(m, m + query.length),
+            style: TextStyle(
+              color: colors.ink,
+              fontWeight: FontWeight.w600,
+              backgroundColor: colors.highlight,
+            ),
+          ),
+        )
+        ..add(TextSpan(text: shown.substring(m + query.length)));
+    }
+    return Text.rich(
+      TextSpan(style: base, children: spans),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

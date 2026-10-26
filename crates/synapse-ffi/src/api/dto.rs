@@ -187,11 +187,12 @@ pub struct TitleHit {
     pub is_alias: bool,
 }
 
-/// `((` autocomplete hit.
+/// A block matching a search (`((` autocomplete, quick switcher content results).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockHit {
     pub id: String,
     pub content: String,
+    pub page_id: String,
     pub page_title: String,
 }
 

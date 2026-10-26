@@ -291,8 +291,21 @@ class MemoryBackend implements GraphBackend {
   }
 
   @override
-  Future<List<BlockHit>> searchBlocks(String query, {int limit = 20}) async =>
-      [];
+  Future<List<BlockHit>> searchBlocks(String query, {int limit = 20}) async {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return [];
+    return [
+      for (final e in outlines.entries)
+        for (final n in e.value)
+          if (n.content.toLowerCase().contains(q))
+            BlockHit(
+              id: n.id,
+              content: n.content,
+              pageId: e.key,
+              pageTitle: pages[e.key]?.title ?? '',
+            ),
+    ].take(limit).toList();
+  }
 
   @override
   String? assetPath(String hash) => null;

@@ -110,20 +110,23 @@ class BlockDto {
           hasChildren == other.hasChildren;
 }
 
-/// `((` autocomplete hit.
+/// A block matching a search (`((` autocomplete, quick switcher content results).
 class BlockHit {
   final String id;
   final String content;
+  final String pageId;
   final String pageTitle;
 
   const BlockHit({
     required this.id,
     required this.content,
+    required this.pageId,
     required this.pageTitle,
   });
 
   @override
-  int get hashCode => id.hashCode ^ content.hashCode ^ pageTitle.hashCode;
+  int get hashCode =>
+      id.hashCode ^ content.hashCode ^ pageId.hashCode ^ pageTitle.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -132,6 +135,7 @@ class BlockHit {
           runtimeType == other.runtimeType &&
           id == other.id &&
           content == other.content &&
+          pageId == other.pageId &&
           pageTitle == other.pageTitle;
 }
 
