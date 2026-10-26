@@ -117,7 +117,7 @@ Tokens: `paper surface ink muted faint line accent accent-soft ref done code-bg 
 comments, selectors and unknown properties are ignored (unknown `--vars` are reported).
 
 ## Types and tags
-- **Type** (what a note is): plain names, no page (persona, lugar, empresa, cliente, herramienta,
+- **Type** (what a note is): plain names, no page (persona, lugar, empresa, software, sueño,
   concepto, idea, ...). "Type" under the header opens a picker with the types in use (with count)
   and seeded suggestions, or type a new name. Stored in `Page.types`.
 - **Tag** (a topic): a real page of kind `tag`. "Tag" opens a picker over the existing tag pages
