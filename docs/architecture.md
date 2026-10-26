@@ -6,6 +6,8 @@ app/ (Flutter, Dart)  ──FFI──▶  synapse-ffi  ──▶  synapse-core  
                                      │                 │   └─────── synapse-history
                                      ├──▶ synapse-ai ──┘ (Embedder) synapse-caldav
                                      └──▶ synapse-sync ──HTTP──▶ synapse-server (axum)
+AI assistant ──MCP stdio──▶ synapse-mcp ──▶ synapse-core        │
+AI assistant ──MCP HTTP───────────────────▶ /v1/graphs/{id}/mcp ┘ (synapse-mcp tools)
 ```
 
 ## Graph on disk
