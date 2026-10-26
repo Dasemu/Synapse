@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/pickers.dart';
 
@@ -81,10 +82,17 @@ class TagView extends StatelessWidget {
               80,
             ),
             children: [
-              Text(
-                '#$name',
-                key: const ValueKey('tag-title'),
-                style: Theme.of(context).textTheme.headlineLarge,
+              Row(
+                children: [
+                  TypeIcon(name, size: 26, gap: 10),
+                  Expanded(
+                    child: Text(
+                      '#$name',
+                      key: const ValueKey('tag-title'),
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               Wrap(
@@ -137,6 +145,7 @@ class TagView extends StatelessWidget {
                           color: colors.faint,
                         ),
                         const SizedBox(width: 10),
+                        TypeIcon(p.pageType, size: 14, gap: 6),
                         Expanded(
                           child: Text(
                             p.title,

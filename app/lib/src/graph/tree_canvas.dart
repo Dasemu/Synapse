@@ -8,12 +8,16 @@ import 'package:flutter/scheduler.dart';
 
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import 'graph_model.dart';
 
 /// A node of the hub / namespace / tag tree.
 class TreeItem {
-  TreeItem(this.label, {this.global, this.isHub = false});
+  TreeItem(this.label, {this.global, this.isHub = false, this.icon});
   final String label;
+
+  /// Emoji of the page's type, drawn before [label] (the network view never shows it).
+  String? icon;
 
   /// Drawn with the folder look.
   final bool isHub;
@@ -51,8 +55,13 @@ class TreeItem {
 /// split on `/`, straight off the centre) for pages in no hub, then the remaining notes
 /// (orphans included) straight off the centre. Journals and tags are left out. Nothing is
 /// capped: large branches are collapsed in the canvas instead.
-TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
+TreeItem buildNamespaceTree(
+  GraphModel g, {
+  String name = 'Graph',
+  String? Function(String? type)? typeIcon,
+}) {
   final root = TreeItem(name);
+  String? icon(int i) => typeIcon?.call(g.node(i).pageType);
   final placed = <int>{};
   bool page(int i) => !g.isJournal(i) && !g.isTag(i);
 
@@ -61,14 +70,19 @@ TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
   final nested = {for (final m in members.values) ...m};
   TreeItem? build(int hub) {
     if (!placed.add(hub)) return null;
-    final item = TreeItem(g.node(hub).title, global: hub, isHub: true);
+    final item = TreeItem(
+      g.node(hub).title,
+      global: hub,
+      isHub: true,
+      icon: icon(hub),
+    );
     for (final m in members[hub] ?? const <int>{}) {
       if (!page(m)) continue;
       if (g.isHub(m)) {
         final sub = build(m);
         if (sub != null) item.children.add(sub);
       } else if (placed.add(m)) {
-        item.children.add(TreeItem(g.node(m).title, global: m));
+        item.children.add(TreeItem(g.node(m).title, global: m, icon: icon(m)));
       }
     }
     return item;
@@ -101,6 +115,7 @@ TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
       final p = byTitle[parts.sublist(0, k + 1).join('/').toLowerCase()];
       if (p != null && !placed.contains(p)) {
         at.global = p;
+        at.icon = icon(p);
         placed.add(p);
       }
     }
@@ -110,7 +125,7 @@ TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
   // Everything else hangs straight off the centre.
   for (var i = 0; i < g.nodeCount; i++) {
     if (page(i) && !g.isHub(i) && placed.add(i)) {
-      root.children.add(TreeItem(g.node(i).title, global: i));
+      root.children.add(TreeItem(g.node(i).title, global: i, icon: icon(i)));
     }
   }
   _measure(root, 0, null);
@@ -241,8 +256,12 @@ class TreeCanvas extends StatefulWidget {
     required this.model,
     required this.onTap,
     this.name = 'Graph',
+    this.typeIcon,
   });
   final GraphModel model;
+
+  /// Emoji of a page type, shown before page labels.
+  final String? Function(String? type)? typeIcon;
 
   /// Label of the centre: the name of the notes store.
   final String name;
@@ -306,7 +325,11 @@ class TreeCanvasState extends State<TreeCanvas> {
   }
 
   void _build() {
-    _root = buildNamespaceTree(widget.model, name: widget.name);
+    _root = buildNamespaceTree(
+      widget.model,
+      name: widget.name,
+      typeIcon: widget.typeIcon,
+    );
     expandInitial(_root);
     _items = const [];
     _userMoved = false;
@@ -850,7 +873,7 @@ class _TreePainter extends CustomPainter {
           ink,
           TextPainter(
             text: TextSpan(
-              text: t.label,
+              text: withTypeIcon(t.icon, t.label),
               style: TextStyle(
                 fontFamily: uiFont,
                 fontSize: t.parent == null ? 14 : (branch ? 12.5 : 11.5),

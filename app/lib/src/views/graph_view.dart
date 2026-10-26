@@ -442,6 +442,7 @@ class _GraphViewState extends State<GraphView> {
         model: m,
         onTap: _open,
         name: AppScope.read(context).backend.graphName,
+        typeIcon: AppScope.read(context).typeIcon,
       );
     }
     final sub = _sub;

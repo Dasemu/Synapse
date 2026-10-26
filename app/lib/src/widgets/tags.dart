@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme/theme.dart';
 import 'common.dart';
 import 'pickers.dart';
+import 'type_icon.dart';
 
 /// The page's metadata as one compact wrapping line: the type pill, the tag chips (sorted;
 /// tapping one opens its [TagRoute]) and a "+ tag" link. A page has at most one type; tags
@@ -107,13 +108,19 @@ class _TypePill extends StatelessWidget {
             color: colors.accentSoft,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(
-            name,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: colors.accent,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TypeIcon(name, size: 12, gap: 4),
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: colors.accent,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -295,6 +302,7 @@ class _TypePickerState extends State<_TypePicker> {
                     for (final t in options)
                       ActionChip(
                         key: ValueKey('type-opt-${t.name}'),
+                        avatar: t.icon == null ? null : Text(t.icon!),
                         label: Text(
                           t.count > 0 ? '${t.name} · ${t.count}' : t.name,
                           style: TextStyle(

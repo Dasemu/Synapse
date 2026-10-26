@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
 import '../widgets/pickers.dart' show errorText;
@@ -303,6 +304,7 @@ class _AllPagesViewState extends State<AllPagesView> {
                               : colors.faint,
                         ),
                       ),
+                    TypeIcon(p.pageType, size: 14, gap: 6),
                     Expanded(
                       child: Text(
                         p.title,
