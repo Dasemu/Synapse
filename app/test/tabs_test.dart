@@ -146,6 +146,15 @@ void main() {
       app.activateTab(0);
       expect((app.route as PageTarget).id, beta.id);
     });
+
+    test('a page opened by title is left too, so it is not recreated', () {
+      final b = demo();
+      final alpha = byTitle(b, 'Alpha');
+      final app = AppState(b);
+      app.go(const PageTarget(title: 'alpha'));
+      app.pagesDeleted([alpha.id], titles: ['Alpha']);
+      expect(app.route, isA<JournalsRoute>());
+    });
   });
 
   group('tabs UI', () {

@@ -741,7 +741,7 @@ class PageMenu extends StatelessWidget {
       return;
     }
     // Tabs showing the page step back (or fall back to Journals); recents drop it.
-    app.pagesDeleted([page.id]);
+    app.pagesDeleted([page.id], titles: [page.title]);
     messenger.showSnackBar(SnackBar(content: Text('Deleted "${page.title}"')));
   }
 

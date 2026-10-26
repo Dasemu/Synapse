@@ -117,7 +117,7 @@ class _AllPagesViewState extends State<AllPagesView> {
         if (_chosen.isEmpty) _selecting = false;
       });
     }
-    app.pagesDeleted(ids);
+    app.pagesDeleted(ids, titles: [for (final p in targets) p.title]);
     messenger.showSnackBar(
       SnackBar(
         content: Text(

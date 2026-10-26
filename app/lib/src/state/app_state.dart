@@ -485,9 +485,18 @@ class AppState extends ChangeNotifier {
 
   /// Pages were deleted: tabs showing them step back to the last surviving entry (or
   /// Journals) and the recents drop them.
-  void pagesDeleted(Iterable<String> ids) {
+  ///
+  /// Routes that open a page by title count too: left open, they would recreate it.
+  void pagesDeleted(
+    Iterable<String> ids, {
+    Iterable<String> titles = const [],
+  }) {
     final gone = ids.toSet();
-    bool dead(AppRoute r) => r is PageTarget && gone.contains(r.id);
+    final goneTitles = {for (final t in titles) t.toLowerCase()};
+    bool dead(AppRoute r) =>
+        r is PageTarget &&
+        (gone.contains(r.id) ||
+            (r.title != null && goneTitles.contains(r.title!.toLowerCase())));
     recent.removeWhere((p) => gone.contains(p.id));
     for (final t in _tabs) {
       t.back.removeWhere(dead);
