@@ -117,16 +117,17 @@ Tokens: `paper surface ink muted faint line accent accent-soft ref done code-bg 
 comments, selectors and unknown properties are ignored (unknown `--vars` are reported).
 
 ## Types and tags
-- **Type** (what a note is): plain names, no page (persona, lugar, empresa, software, sueño,
-  concepto, idea, ...). "Type" under the header opens a picker with the types in use (with count)
-  and seeded suggestions, or type a new name. Stored in `Page.types`.
-- **Tag** (a topic): a real page of kind `tag`. "Tag" opens a picker over the existing tag pages
-  or creates one by typing a new name (a note used as a tag becomes a tag page; hubs, journals
-  and templates cannot be tags). Tag chips open the tag page, which lists its tagged notes.
-  An inline `#tema` or `[[tema]]` in the text also links to the page. Renaming or deleting a tag
-  page updates its members. Tag pages cannot be tagged themselves.
-- In the graph a tagged note points at its tag pages with a separate edge kind (TAGGED), apart
-  from page links and inline references.
+Both are plain names with no page, shown as one row of pills under the title.
+- **Type** (what a note is): at most one per page (persona, lugar, empresa, software, sueño,
+  concepto, idea, ...). The filled pill (or the ghost "Add type") opens a single-select picker
+  with the types in use (with count), seeded suggestions, a new name, or "Remove type". Stored
+  in `Page.types`; a type also counts as a tag of the same name.
+- **Tags** (topics): many per page, always sorted alphabetically. "+ tag" opens a picker where
+  several can be added in a row; hovering a chip shows its ×. A chip opens the tag view: pages
+  with that tag or type, "Rename" (also renames types, merging duplicates) and "Remove from all
+  pages". An inline `#tema` in the text still links to a page of that name.
+- In the graph every tag is a virtual node drawn as a hollow accent ring and linked to its
+  pages with a separate edge kind (TAGGED); tapping one opens its tag view.
 
 ## Hubs, namespaces and cleanup
 - **Hub** (folder icon): a page kind, not a note: no outline, a title, a short description
@@ -172,13 +173,14 @@ One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
   activation, edge thickness = Hebbian synapse weight, a pulse travels outward by hops.
 - **Clusters**: soft hulls grouped by "Hubs" (home hub, default when the graph has hubs; hull
   labelled with the hub title once it is wide enough on screen; layout-only springs pull
-  members to their hub), by "Tags" (each page goes to its most widely used tag page, ties
+  members to their hub), by "Tags" (each page goes to its most widely used tag, ties
   alphabetical; hull labelled with the tag name; springs pull pages to the best connected page
   of the tag; journals and untagged pages stay out) or by "Communities" (Louvain: groups found
   automatically from link density, no names). Colours follow group size.
 - **Tree**: hubs (root hubs, then members recursively, cycle-safe, each hub expanded once,
   folder glyph; membership = CONTAINS edges), namespaces (`a/b/c` titles, straight off the
-  centre), the notes in no hub (orphans included) and Tags (with their pages). Nothing is
+  centre), the notes in no hub (orphans included) and Tags (each tag node with its pages;
+  clicking a tag opens its tag view). Nothing is
   capped. Laid out by the same `ForceLayout` as the network (edges = parent/child, seeded
   from a radial layout). The centre carries the store name; every arm and sub-branch has its
   own colour (arms evenly spread over the hue circle, children split their parent's sector).

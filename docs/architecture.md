@@ -28,19 +28,20 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
 - **Assets**: metadata rows; bytes in the blob store.
 
 ## Tags and types (`synapse-core::{tags, types}`)
-- **Tags are pages** of kind `tag` (topics such as "tecnología"). A page carries
-  `Page.tags: Vec<String>` (tag page titles; `pages.tags`, schema v5, synced with the page, LWW
-  per page); the derived `page_tags(page_id, tag_key)` index is rewritten on every page write.
-  Setting a tag creates the tag page or converts a note to one; hubs, journals and templates
-  cannot be tags, and tag pages cannot be tagged. Renaming/deleting a tag page rewrites/removes
-  it in its members; opening the graph creates tag pages for tag names that lack one.
-  API: `set_page_tags`, `add_page_tag`, `remove_page_tag`, `pages_with_tag`, `tag_catalog`.
-  The graph has a `TAGGED` edge from each tagged page to its tag pages.
-- **Types** are plain names saying what a page is: `Page.types` (`pages.types`, no page, no
-  index). API: `set_page_types`, `add_page_type`, `remove_page_type`, `type_catalog` (types in
-  use by count, then the seeded `SUGGESTED_TYPES`).
-- Both are exported as `synapse-tags::` / `synapse-types::`, and tag pages as
-  `synapse-kind:: tag` (see `history.md`).
+- **Tags are plain names**, never pages. A page carries `Page.tags: Vec<String>` (`pages.tags`,
+  synced with the page, LWW per page), stored sorted case-insensitively by `title_key`. The
+  derived `page_tags(page_id, tag_key)` index covers the page's tags plus its type and is
+  rewritten on every page write. Journals and templates cannot be tagged.
+  API: `set_page_tags`, `add_page_tag`, `remove_page_tag`, `pages_with_tag`, `tag_catalog`,
+  `rename_tag` (tags and types, merging duplicates) and `remove_tag` (explicit tags only).
+- **A page has at most one type** (`Page.types`, 0 or 1 entries; `Page::page_type()`), a name
+  saying what the page is. It implies a tag of the same name. API: `set_page_type(page,
+  Option<&str>)`, `type_catalog` (types in use by count, then the seeded `SUGGESTED_TYPES`).
+- Schema v6 turned former tag pages (kind `tag`) into plain notes and trimmed multiple types to
+  the first; `PageKind` has no `Tag` any more and "tag" parses as a note.
+- In the graph (`synapse-ffi`) every tag in use is a virtual node (`GraphNode.is_tag`, id
+  `tag:<title_key>`, no page), with a `TAGGED` edge from each tagged page (type included).
+- Exports use `synapse-tags::` and `synapse-type::` (see `history.md`).
 
 ## Hubs and namespaces (`synapse-core::structure`)
 Two orthogonal ways to organise pages.
