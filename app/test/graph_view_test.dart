@@ -175,6 +175,7 @@ void main() {
       id: t,
       title: t,
       createdAt: 0,
+      isTag: false,
       degree: 1,
       backlinks: 0,
       cluster: 0,
@@ -258,6 +259,88 @@ void main() {
     expect(hull.contains(const Offset(5, 5)), isFalse);
   });
 
+  group('virtual tag nodes', () {
+    // Two pages tagged "ocio" through TAGGED edges (kind 8) to one tag node.
+    GraphData tagData() {
+      GraphNode n(String id, String title, {bool tag = false}) => GraphNode(
+        id: id,
+        title: title,
+        createdAt: 0,
+        isTag: tag,
+        degree: 1,
+        backlinks: 0,
+        cluster: 0,
+        isHub: false,
+        tags: const [],
+      );
+      final nodes = [
+        n('0', 'Games'),
+        n('1', 'Chess'),
+        n('tag:ocio', 'ocio', tag: true),
+        n('tag:a/b', 'a/b', tag: true),
+      ];
+      final edges = [(0, 2, 8), (1, 2, 8)];
+      return GraphData(
+        nodes: nodes,
+        sources: Uint32List.fromList([for (final e in edges) e.$1]),
+        targets: Uint32List.fromList([for (final e in edges) e.$2]),
+        kinds: Uint8List.fromList([for (final e in edges) e.$3]),
+        weights: Float32List.fromList([for (final _ in edges) 1.0]),
+        seq: 1,
+      );
+    }
+
+    test('the Tags branch is built from tag nodes, not loose notes', () {
+      final m = GraphModel(tagData());
+      expect(m.isTag(2), isTrue);
+      expect(m.tags, [2]);
+      final root = buildNamespaceTree(m);
+      final tags = root.children.firstWhere((c) => c.label == 'Tags');
+      final ocio = tags.children.single;
+      expect(ocio.label, '#ocio');
+      expect(ocio.global, 2);
+      expect(ocio.children.map((c) => c.label).toSet(), {'Games', 'Chess'});
+      // Tag nodes are neither loose notes nor namespaces.
+      expect(
+        root.children.where((c) => c.label == 'ocio' || c.label == 'a'),
+        isEmpty,
+      );
+    });
+
+    test('filtering by a tag node keeps the tagged pages', () {
+      final m = GraphModel(tagData());
+      expect(const GraphFilter().copyWith(tag: () => 2).apply(m), [0, 1, 2]);
+    });
+
+    testWidgets('a tag in the tree opens its tag view by name', (tester) async {
+      String? opened;
+      final m = GraphModel(tagData());
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        AppScope(
+          state: AppState(MemoryBackend()),
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: Scaffold(
+              body: TreeCanvas(
+                model: m,
+                onTap: (_) {},
+                onTag: (name) => opened = name,
+              ),
+            ),
+          ),
+        ),
+      );
+      final state = tester.state<TreeCanvasState>(find.byType(TreeCanvas));
+      final tags = buildNamespaceTree(m).children
+          .firstWhere((c) => c.label == 'Tags');
+      state.openItem(tags.children.single);
+      expect(opened, 'ocio');
+    });
+  });
+
   group('hubs', () {
     // Media (hub) -> TV (hub) -> Anime (page); Media -> Books; Notes (page) in Media;
     // a TV -> Media CONTAINS edge (a cycle the tree must survive); a journal (never a member).
@@ -273,6 +356,7 @@ void main() {
         title: title,
         journalDate: journal,
         createdAt: 0,
+        isTag: false,
         degree: 1,
         backlinks: 0,
         cluster: 0,
@@ -370,6 +454,7 @@ void main() {
         id: '$i',
         title: hub ? 'Library' : 'Page $i',
         createdAt: 0,
+        isTag: false,
         degree: 1,
         backlinks: 0,
         cluster: 0,

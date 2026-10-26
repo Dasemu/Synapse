@@ -32,8 +32,6 @@ class MemoryBackend implements GraphBackend {
       isHub: false,
       description: '',
       tags: const [],
-      isTag: false,
-      types: const [],
     );
     pages[p.id] = p;
     outlines[p.id] = [];
@@ -156,35 +154,12 @@ class MemoryBackend implements GraphBackend {
         n.content = n.content.replaceAll('[[${p.title}]]', '[[$t]]');
       }
     }
-    final old = p.title;
     _put(p, title: t);
-    if (p.isTag) {
-      for (final q in pages.values.toList()) {
-        if (q.tags.any((x) => _tagKey(x) == _tagKey(old))) {
-          _put(
-            q,
-            tags: [for (final x in q.tags) _tagKey(x) == _tagKey(old) ? t : x],
-          );
-        }
-      }
-    }
     return pages[id]!;
   }
 
   @override
   Future<void> deletePage(String id) async {
-    final gone = pages[id];
-    if (gone != null && gone.isTag) {
-      for (final q in pages.values.toList()) {
-        _put(
-          q,
-          tags: [
-            for (final x in q.tags)
-              if (_tagKey(x) != _tagKey(gone.title)) x,
-          ],
-        );
-      }
-    }
     pages.remove(id);
     outlines.remove(id);
     _forget(id);
@@ -355,8 +330,8 @@ class MemoryBackend implements GraphBackend {
     bool? isHub,
     String? description,
     List<String>? tags,
-    bool? isTag,
-    List<String>? types,
+    String? pageType,
+    bool clearType = false,
   }) {
     pages[p.id] = PageDto(
       id: p.id,
@@ -368,8 +343,7 @@ class MemoryBackend implements GraphBackend {
       isHub: isHub ?? p.isHub,
       description: description ?? p.description,
       tags: tags ?? p.tags,
-      isTag: isTag ?? p.isTag,
-      types: types ?? p.types,
+      pageType: clearType ? null : (pageType ?? p.pageType),
     );
   }
 
@@ -463,56 +437,37 @@ class MemoryBackend implements GraphBackend {
         next.add(t);
       }
     }
-    final stored = <String>[];
-    for (final t in next) {
-      var tp = _byTitle(t);
-      if (tp == null) {
-        tp = createPage(t);
-        _put(tp, isTag: true);
-      } else if (tp.journalDate != null || tp.isHub) {
-        throw Exception('"$t" cannot be a tag');
-      } else if (!tp.isTag) {
-        _put(tp, isTag: true);
-      }
-      stored.add(pages[tp.id]!.title);
-    }
-    _put(p, tags: stored);
+    next.sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
+    _put(p, tags: next);
     return pages[pageId]!;
   }
+
+  /// Tag names of a page: its tags plus its type (which implies a tag), once each.
+  List<String> allTags(PageDto p) => [
+    ...p.tags,
+    if (p.pageType != null &&
+        !p.tags.any((t) => _tagKey(t) == _tagKey(p.pageType!)))
+      p.pageType!,
+  ];
 
   static const suggestedTypes = ['persona', 'lugar', 'empresa'];
 
   @override
-  Future<PageDto> setPageTypes(String pageId, List<String> types) async {
+  Future<PageDto> setPageType(String pageId, String? type) async {
     final p = pages[pageId]!;
-    if (p.journalDate != null) throw Exception('Journals cannot have types');
-    final next = <String>[];
-    for (final raw in types) {
-      final t = raw.trim();
-      if (t.isNotEmpty && !next.any((x) => _tagKey(x) == _tagKey(t))) {
-        next.add(t);
-      }
+    final t = type?.trim() ?? '';
+    if (p.journalDate != null && t.isNotEmpty) {
+      throw Exception('Journals cannot have a type');
     }
-    _put(p, types: next);
+    _put(p, pageType: t, clearType: t.isEmpty);
     return pages[pageId]!;
   }
-
-  @override
-  Future<PageDto> addPageType(String pageId, String ty) =>
-      setPageTypes(pageId, [...pages[pageId]!.types, ty]);
-
-  @override
-  Future<PageDto> removePageType(String pageId, String ty) =>
-      setPageTypes(pageId, [
-        for (final t in pages[pageId]!.types)
-          if (_tagKey(t) != _tagKey(ty)) t,
-      ]);
 
   @override
   Future<List<TagDto>> typeCatalog() async {
     final used = <String, TagDto>{};
     for (final p in pages.values) {
-      for (final t in p.types) {
+      for (final t in [if (p.pageType != null) p.pageType!]) {
         final k = _tagKey(t);
         used[k] = TagDto(
           name: used[k]?.name ?? t,
@@ -544,25 +499,67 @@ class MemoryBackend implements GraphBackend {
 
   @override
   Future<List<TagDto>> tagCatalog() async {
-    final out = [
-      for (final t in pages.values)
-        if (t.isTag)
-          TagDto(
-            name: t.title,
-            count: pages.values
-                .where((p) => p.tags.any((x) => _tagKey(x) == _tagKey(t.title)))
-                .length,
-            suggested: false,
-          ),
-    ]..sort((a, b) => b.count.compareTo(a.count));
-    return out;
+    final used = <String, TagDto>{};
+    for (final p in pages.values) {
+      for (final t in allTags(p)) {
+        final k = _tagKey(t);
+        used[k] = TagDto(
+          name: used[k]?.name ?? t,
+          count: (used[k]?.count ?? 0) + 1,
+          suggested: false,
+        );
+      }
+    }
+    return used.values.toList()..sort((a, b) {
+      final c = b.count.compareTo(a.count);
+      return c != 0 ? c : _tagKey(a.name).compareTo(_tagKey(b.name));
+    });
   }
 
   @override
   Future<List<PageBrief>> pagesWithTag(String tag) async => [
     for (final p in pages.values)
-      if (p.tags.any((t) => _tagKey(t) == _tagKey(tag))) _brief(p),
+      if (allTags(p).any((t) => _tagKey(t) == _tagKey(tag))) _brief(p),
   ];
+
+  @override
+  Future<int> renameTag(String old, String new_) async {
+    final name = new_.trim().replaceFirst(RegExp(r'^#+'), '').trim();
+    if (name.isEmpty) throw Exception('Empty tag name');
+    var n = 0;
+    for (final p in pages.values.toList()) {
+      final hasTag = p.tags.any((t) => _tagKey(t) == _tagKey(old));
+      final hasType =
+          p.pageType != null && _tagKey(p.pageType!) == _tagKey(old);
+      if (!hasTag && !hasType) continue;
+      final seen = <String>{};
+      final tags = [
+        for (final t in p.tags)
+          if (seen.add(_tagKey(_tagKey(t) == _tagKey(old) ? name : t)))
+            _tagKey(t) == _tagKey(old) ? name : t,
+      ]..sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
+      _put(p, tags: tags, pageType: hasType ? name : null);
+      n++;
+    }
+    return n;
+  }
+
+  @override
+  Future<int> removeTag(String name) async {
+    var n = 0;
+    for (final p in pages.values.toList()) {
+      if (!p.tags.any((t) => _tagKey(t) == _tagKey(name))) continue;
+      _put(
+        p,
+        tags: [
+          for (final t in p.tags)
+            if (_tagKey(t) != _tagKey(name)) t,
+        ],
+      );
+      n++;
+    }
+    return n;
+  }
 
   @override
   Future<String> hubTemplate(String hubId) async {
@@ -889,20 +886,28 @@ class MemoryBackend implements GraphBackend {
       t.add(index[m]!);
       k.add(EdgeKind.contains.index);
     }
-    // A note points at each of its tag pages.
+    // Tags are virtual nodes after the pages; a page points at each of its tags.
+    final tagNames = <String, String>{};
+    for (final p in pages.values) {
+      for (final tg in allTags(p)) {
+        tagNames.putIfAbsent(_tagKey(tg), () => tg);
+      }
+    }
+    final tagKeys = tagNames.keys.toList()..sort();
+    final tagIndex = {
+      for (var j = 0; j < tagKeys.length; j++) tagKeys[j]: ids.length + j,
+    };
     for (final p in pages.values) {
       final i = index[p.id];
       if (i == null) continue;
-      for (final tg in p.tags) {
-        final tp = _byTitle(tg);
-        final j = tp == null ? null : index[tp.id];
-        if (j == null) continue;
+      for (final tg in allTags(p)) {
         s.add(i);
-        t.add(j);
+        t.add(tagIndex[_tagKey(tg)]!);
         k.add(EdgeKind.tagged.index);
       }
     }
-    while (degree.length < ids.length) {
+    final total = ids.length + tagKeys.length;
+    while (degree.length < total) {
       degree.add(0);
     }
     for (var e = 0; e < s.length; e++) {
@@ -922,7 +927,20 @@ class MemoryBackend implements GraphBackend {
             cluster: 0,
             isHub: _isHub(ids[i]),
             homeHub: home[ids[i]] == null ? null : index[home[ids[i]]!],
-            tags: pages[ids[i]]!.tags,
+            tags: allTags(pages[ids[i]]!),
+            isTag: false,
+          ),
+        for (var j = 0; j < tagKeys.length; j++)
+          GraphNode(
+            id: 'tag:${tagKeys[j]}',
+            title: tagNames[tagKeys[j]]!,
+            createdAt: 0,
+            degree: degree[ids.length + j],
+            backlinks: 0,
+            cluster: 0,
+            isHub: false,
+            tags: const [],
+            isTag: true,
           ),
       ],
       sources: Uint32List.fromList(s),
