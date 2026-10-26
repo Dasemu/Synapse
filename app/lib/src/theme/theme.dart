@@ -117,7 +117,78 @@ class SynapseColors extends ThemeExtension<SynapseColors> {
   );
 
   @override
-  SynapseColors copyWith() => this;
+  SynapseColors copyWith({
+    Color? paper,
+    Color? surface,
+    Color? ink,
+    Color? muted,
+    Color? faint,
+    Color? line,
+    Color? accent,
+    Color? accentSoft,
+    Color? ref,
+    Color? done,
+    Color? codeBg,
+    Color? highlight,
+  }) => SynapseColors(
+    paper: paper ?? this.paper,
+    surface: surface ?? this.surface,
+    ink: ink ?? this.ink,
+    muted: muted ?? this.muted,
+    faint: faint ?? this.faint,
+    line: line ?? this.line,
+    accent: accent ?? this.accent,
+    accentSoft: accentSoft ?? this.accentSoft,
+    ref: ref ?? this.ref,
+    done: done ?? this.done,
+    codeBg: codeBg ?? this.codeBg,
+    highlight: highlight ?? this.highlight,
+  );
+
+  /// The colour of `token`.
+  Color of(ColorToken token) => token.get(this);
+
+  /// `copyWith` for one token chosen at runtime.
+  SynapseColors withToken(ColorToken token, Color c) => switch (token.name) {
+    'paper' => copyWith(paper: c),
+    'surface' => copyWith(surface: c),
+    'ink' => copyWith(ink: c),
+    'muted' => copyWith(muted: c),
+    'faint' => copyWith(faint: c),
+    'line' => copyWith(line: c),
+    'accent' => copyWith(accent: c),
+    'accentSoft' => copyWith(accentSoft: c),
+    'ref' => copyWith(ref: c),
+    'done' => copyWith(done: c),
+    'codeBg' => copyWith(codeBg: c),
+    _ => copyWith(highlight: c),
+  };
+
+  /// `{token: '#rrggbbaa'}` (CSS order, always 8 digits) for persistence.
+  Map<String, String> toMap() => {
+    for (final t in colorTokens) t.name: colorToHex(of(t), always8: true),
+  };
+
+  /// Reads `toMap` output; missing or unparsable tokens come from `fallback`.
+  static SynapseColors fromMap(
+    Map<dynamic, dynamic> map,
+    SynapseColors fallback,
+  ) {
+    var out = fallback;
+    for (final t in colorTokens) {
+      final v = map[t.name];
+      final c = v is String ? parseCssColor(v) : null;
+      if (c != null) out = out.withToken(t, c);
+    }
+    return out;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is SynapseColors && colorTokens.every((t) => of(t) == other.of(t));
+
+  @override
+  int get hashCode => Object.hashAll(colorTokens.map(of));
 
   @override
   SynapseColors lerp(SynapseColors? other, double t) {
@@ -162,6 +233,52 @@ class AppTheme {
   final SynapseColors colors;
 }
 
+extension AppThemeX on AppTheme {
+  AppTheme copyWith({
+    String? label,
+    Brightness? brightness,
+    SynapseColors? colors,
+  }) => AppTheme(
+    id,
+    label ?? this.label,
+    brightness ?? this.brightness,
+    colors ?? this.colors,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'label': label,
+    'brightness': brightness == Brightness.dark ? 'dark' : 'light',
+    'colors': colors.toMap(),
+  };
+}
+
+/// Reads a persisted custom theme; null for corrupt entries. Missing tokens come from the
+/// base palette of the theme's brightness.
+AppTheme? customThemeFromJson(Object? json) {
+  if (json is! Map) return null;
+  final id = json['id'];
+  final label = json['label'];
+  final b = json['brightness'];
+  final colors = json['colors'];
+  if (id is! String ||
+      id.isEmpty ||
+      id == autoThemeId ||
+      themeById(id) != null) {
+    return null;
+  }
+  if (label is! String || (b != 'light' && b != 'dark') || colors is! Map) {
+    return null;
+  }
+  final brightness = b == 'dark' ? Brightness.dark : Brightness.light;
+  return AppTheme(
+    id,
+    label,
+    brightness,
+    SynapseColors.fromMap(colors, baseColors(brightness)),
+  );
+}
+
 const autoThemeId = 'auto';
 
 const appThemes = [
@@ -177,12 +294,229 @@ const appThemes = [
   AppTheme('nord', 'Nord', Brightness.dark, SynapseColors.nord),
 ];
 
-/// The theme with `id`, or null for `auto` and unknown ids.
+/// The built-in theme with `id`, or null for `auto`, custom and unknown ids.
 AppTheme? themeById(String id) {
   for (final t in appThemes) {
     if (t.id == id) return t;
   }
   return null;
+}
+
+/// A colour token: its field name, CSS variable, UI label and hint.
+class ColorToken {
+  const ColorToken(
+    this.name,
+    this.css,
+    this.label,
+    this.hint,
+    this.get, {
+    this.alpha = false,
+  });
+  final String name;
+  final String css;
+  final String label;
+  final String hint;
+  final Color Function(SynapseColors) get;
+
+  /// Whether the token is meant to be translucent (the picker shows an alpha slider).
+  final bool alpha;
+}
+
+final colorTokens = <ColorToken>[
+  ColorToken('paper', 'paper', 'Paper', 'Page background', (c) => c.paper),
+  ColorToken(
+    'surface',
+    'surface',
+    'Surface',
+    'Sidebar and panels',
+    (c) => c.surface,
+  ),
+  ColorToken('ink', 'ink', 'Ink', 'Main text', (c) => c.ink),
+  ColorToken('muted', 'muted', 'Muted', 'Secondary text', (c) => c.muted),
+  ColorToken(
+    'faint',
+    'faint',
+    'Faint',
+    'Bullets, placeholders, icons',
+    (c) => c.faint,
+  ),
+  ColorToken('line', 'line', 'Line', 'Borders and dividers', (c) => c.line),
+  ColorToken(
+    'accent',
+    'accent',
+    'Accent',
+    'Links, focus, selection',
+    (c) => c.accent,
+  ),
+  ColorToken(
+    'accentSoft',
+    'accent-soft',
+    'Accent soft',
+    'Tinted backgrounds behind links',
+    (c) => c.accentSoft,
+    alpha: true,
+  ),
+  ColorToken('ref', 'ref', 'Reference', 'Block references', (c) => c.ref),
+  ColorToken('done', 'done', 'Done', 'Completed tasks', (c) => c.done),
+  ColorToken(
+    'codeBg',
+    'code-bg',
+    'Code background',
+    'Inline code and code blocks',
+    (c) => c.codeBg,
+  ),
+  ColorToken(
+    'highlight',
+    'highlight',
+    'Highlight',
+    'Marked text and search hits',
+    (c) => c.highlight,
+    alpha: true,
+  ),
+];
+
+/// The built-in base palette for `brightness`.
+SynapseColors baseColors(Brightness brightness) =>
+    brightness == Brightness.light ? SynapseColors.light : SynapseColors.dark;
+
+String _hex2(int v) => v.toRadixString(16).padLeft(2, '0');
+
+/// `#rrggbb`, or `#rrggbbaa` when not opaque (CSS order); `always8` forces the alpha digits.
+String colorToHex(Color c, {bool always8 = false}) {
+  final v = c.toARGB32();
+  final a = (v >> 24) & 0xFF;
+  final rgb =
+      '${_hex2((v >> 16) & 0xFF)}${_hex2((v >> 8) & 0xFF)}${_hex2(v & 0xFF)}';
+  return a == 0xFF && !always8 ? '#$rgb' : '#$rgb${_hex2(a)}';
+}
+
+double? _num(String s, {double scale = 1}) {
+  s = s.trim();
+  if (s.endsWith('%')) {
+    final v = double.tryParse(s.substring(0, s.length - 1));
+    return v == null ? null : v / 100 * scale;
+  }
+  return double.tryParse(s);
+}
+
+double? _alpha(String? s) {
+  if (s == null) return 1;
+  final v = _num(s);
+  return v?.clamp(0.0, 1.0);
+}
+
+/// Parses a CSS colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()/rgba()` and
+/// `hsl()/hsla()` (comma or space syntax). Returns null when it is not a valid colour.
+Color? parseCssColor(String input) {
+  final s = input.trim().toLowerCase();
+  if (s.startsWith('#')) {
+    var h = s.substring(1);
+    if (!RegExp(r'^[0-9a-f]+$').hasMatch(h)) return null;
+    if (h.length == 3 || h.length == 4) {
+      h = h.split('').map((c) => '$c$c').join();
+    }
+    if (h.length != 6 && h.length != 8) return null;
+    final rgb = int.parse(h.substring(0, 6), radix: 16);
+    final a = h.length == 8 ? int.parse(h.substring(6), radix: 16) : 0xFF;
+    return Color((a << 24) | rgb);
+  }
+  final m = RegExp(r'^(rgba?|hsla?)\(([^)]*)\)$').matchAsPrefix(s);
+  if (m == null) return null;
+  final parts = m
+      .group(2)!
+      .split(RegExp(r'[\s,/]+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
+  if (parts.length != 3 && parts.length != 4) return null;
+  final a = _alpha(parts.length == 4 ? parts[3] : null);
+  if (a == null) return null;
+  if (m.group(1)!.startsWith('rgb')) {
+    final v = [for (var i = 0; i < 3; i++) _num(parts[i], scale: 255)];
+    if (v.contains(null)) return null;
+    int ch(double? x) => x!.round().clamp(0, 255);
+    return Color.fromARGB((a * 255).round(), ch(v[0]), ch(v[1]), ch(v[2]));
+  }
+  final hue = double.tryParse(parts[0].replaceAll(RegExp(r'deg$'), ''));
+  final sat = _num(parts[1]);
+  final lig = _num(parts[2]);
+  if (hue == null || sat == null || lig == null) return null;
+  // `_num` leaves bare numbers as-is: treat "50" as 50 %, like "50%" (0..1 after scaling).
+  double pct(String p, double v) => p.trim().endsWith('%') ? v : v / 100;
+  return HSLColor.fromAHSL(
+    a,
+    ((hue % 360) + 360) % 360,
+    pct(parts[1], sat).clamp(0.0, 1.0),
+    pct(parts[2], lig).clamp(0.0, 1.0),
+  ).toColor();
+}
+
+/// The result of `parseThemeCss`.
+class ParsedTheme {
+  const ParsedTheme(this.brightness, this.colors, this.errors);
+
+  /// From `color-scheme`, or null when the CSS does not say.
+  final Brightness? brightness;
+  final SynapseColors colors;
+
+  /// Human-readable problems; the offending lines were skipped.
+  final List<String> errors;
+}
+
+String _norm(String name) => name.toLowerCase().replaceAll(RegExp(r'[-_]'), '');
+
+/// Serialises a theme as CSS custom properties (see `parseThemeCss`).
+String themeToCss(AppTheme t) {
+  final b = StringBuffer(
+    '/* Synapse theme: ${t.label.replaceAll('*/', '')} */\n:root {\n',
+  );
+  b.writeln(
+    '  color-scheme: ${t.brightness == Brightness.dark ? 'dark' : 'light'};',
+  );
+  for (final tok in colorTokens) {
+    b.writeln('  --${tok.css}: ${colorToHex(t.colors.of(tok))};');
+  }
+  b.write('}\n');
+  return b.toString();
+}
+
+/// Reads `--token: colour;` declarations and `color-scheme`. Comments, selectors and braces
+/// are ignored; tokens not mentioned keep their value from `fallback`.
+ParsedTheme parseThemeCss(String css, {required SynapseColors fallback}) {
+  final text = css.replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '');
+  final byName = {for (final t in colorTokens) _norm(t.name): t};
+  var colors = fallback;
+  Brightness? brightness;
+  final errors = <String>[];
+  for (final m in RegExp(
+    r'(--[\w-]+|color-scheme)\s*:\s*([^;{}]*)',
+  ).allMatches(text)) {
+    final name = m.group(1)!;
+    final value = m.group(2)!.trim();
+    if (name == 'color-scheme') {
+      // The first scheme listed is the preferred one (`light dark` means light).
+      final v = value.toLowerCase().trim().split(RegExp(r'\s+')).first;
+      if (v == 'dark') {
+        brightness = Brightness.dark;
+      } else if (v == 'light') {
+        brightness = Brightness.light;
+      } else {
+        errors.add('Unknown color-scheme "$value" (use light or dark)');
+      }
+      continue;
+    }
+    final tok = byName[_norm(name.substring(2))];
+    if (tok == null) {
+      errors.add('Unknown variable $name');
+      continue;
+    }
+    final c = parseCssColor(value);
+    if (c == null) {
+      errors.add('Bad colour for $name: "$value"');
+      continue;
+    }
+    colors = colors.withToken(tok, c);
+  }
+  return ParsedTheme(brightness, colors, errors);
 }
 
 ThemeData buildTheme(Brightness brightness, {SynapseColors? colors}) {

@@ -1,3 +1,5 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 
 import '../backend/graph_backend.dart';
@@ -66,8 +68,17 @@ class AppState extends ChangeNotifier {
       _settings = settings ?? MemorySettings() {
     this.queue.onError = _writeFailed;
     final saved = _settings.load();
+    final custom = saved['customThemes'];
+    if (custom is List) {
+      for (final j in custom) {
+        final t = customThemeFromJson(j);
+        if (t != null && customThemes.every((c) => c.id != t.id)) {
+          customThemes.add(t);
+        }
+      }
+    }
     final id = saved['theme'];
-    if (id is String && (id == autoThemeId || themeById(id) != null)) {
+    if (id is String && (id == autoThemeId || resolveTheme(id) != null)) {
       themeId = id;
     }
     final keys = saved['keys'];
@@ -86,8 +97,73 @@ class AppState extends ChangeNotifier {
   /// Selected theme id (`auto` follows the system).
   String themeId = autoThemeId;
 
+  /// The user's own themes, in creation order.
+  final List<AppTheme> customThemes = [];
+
   void _saveSettings() {
-    _settings.save({'theme': themeId, 'keys': keymap.toJson()});
+    _settings.save({
+      'theme': themeId,
+      'customThemes': [for (final t in customThemes) t.toJson()],
+      'keys': keymap.toJson(),
+    });
+  }
+
+  /// A built-in or custom theme by id; null for `auto` and unknown ids.
+  AppTheme? resolveTheme(String id) {
+    final built = themeById(id);
+    if (built != null) return built;
+    for (final t in customThemes) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  /// Duplicates theme `from` (default: the selected one; `auto` uses Paper light or dark by
+  /// the platform brightness) as a new custom theme named "Custom", "Custom 2", ..., and
+  /// selects it.
+  AppTheme createCustomTheme({String? from}) {
+    final srcId = from ?? themeId;
+    final src =
+        resolveTheme(srcId) ??
+        themeById(
+          PlatformDispatcher.instance.platformBrightness == Brightness.dark
+              ? 'paper-dark'
+              : 'paper',
+        )!;
+    final names = {for (final t in customThemes) t.label};
+    var label = 'Custom';
+    for (var n = 2; names.contains(label); n++) {
+      label = 'Custom $n';
+    }
+    var millis = DateTime.now().millisecondsSinceEpoch;
+    while (customThemes.any((t) => t.id == 'custom-$millis')) {
+      millis++;
+    }
+    final t = AppTheme('custom-$millis', label, src.brightness, src.colors);
+    customThemes.add(t);
+    themeId = t.id;
+    _saveSettings();
+    notifyListeners();
+    return t;
+  }
+
+  /// Replaces the custom theme with the same id (no-op for unknown ids).
+  void updateCustomTheme(AppTheme t) {
+    final i = customThemes.indexWhere((c) => c.id == t.id);
+    if (i < 0) return;
+    customThemes[i] = t;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// Removes a custom theme; if it was selected the theme goes back to `auto`.
+  void deleteCustomTheme(String id) {
+    final before = customThemes.length;
+    customThemes.removeWhere((t) => t.id == id);
+    if (customThemes.length == before) return;
+    if (themeId == id) themeId = autoThemeId;
+    _saveSettings();
+    notifyListeners();
   }
 
   void setTheme(String id) {

@@ -34,7 +34,7 @@ class _SynapseAppState extends State<SynapseApp> {
       child: ListenableBuilder(
         listenable: _state,
         builder: (context, _) {
-          final t = themeById(_state.themeId);
+          final t = _state.resolveTheme(_state.themeId);
           final built = t == null
               ? null
               : buildTheme(t.brightness, colors: t.colors);
