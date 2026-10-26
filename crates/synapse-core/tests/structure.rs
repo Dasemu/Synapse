@@ -506,7 +506,7 @@ fn old_ops_and_v2_databases_load() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(schema, "7");
+    assert_eq!(schema, "8");
     let p = g.get_page(id).unwrap().unwrap();
     assert_eq!((p.kind, p.title.as_str()), (PageKind::Note, "Legacy"));
     let h = g.create_hub("New hub", "").unwrap();
@@ -995,4 +995,156 @@ fn v6_databases_gain_hub_tags() {
     };
     let g = Graph::open(dir.path()).unwrap();
     assert_eq!(g.pages_with_tag("anime").unwrap(), [a]);
+}
+
+fn type_row(g: &Graph, name: &str) -> Option<(String, u32, Option<String>)> {
+    g.type_catalog()
+        .unwrap()
+        .into_iter()
+        .find(|t| synapse_core::title_key(&t.name) == synapse_core::title_key(name))
+        .map(|t| (t.name, t.count, t.icon))
+}
+
+#[test]
+fn types_carry_an_icon_and_can_exist_without_pages() {
+    let (_d, g) = graph();
+    let p = page(&g, "Ada", &["x"]);
+    g.set_page_type(p, Some("persona")).unwrap();
+    g.set_type_icon("Persona", Some(" 🧑 ")).unwrap();
+    assert_eq!(
+        type_row(&g, "persona"),
+        Some(("persona".into(), 1, Some("🧑".into())))
+    );
+    // Unused suggestions keep listing (e.g. "sueño"), and can get an icon.
+    assert_eq!(type_row(&g, "sueño"), Some(("sueño".into(), 0, None)));
+    g.set_type_icon("sueño", Some("💭")).unwrap();
+    assert_eq!(
+        type_row(&g, "sueño"),
+        Some(("sueño".into(), 0, Some("💭".into())))
+    );
+    // A type created explicitly lists with no pages.
+    assert_eq!(g.create_type("  Libro ").unwrap(), "Libro");
+    assert_eq!(type_row(&g, "libro"), Some(("Libro".into(), 0, None)));
+    assert_eq!(g.create_type("LIBRO").unwrap(), "Libro");
+    // Icons are short emoji, not words; clearing works.
+    assert!(invalid(g.set_type_icon("Libro", Some("ab"))));
+    assert!(invalid(g.set_type_icon("Libro", Some("📕 📗"))));
+    assert!(invalid(g.set_type_icon("Libro", Some(&"📕".repeat(17)))));
+    g.set_type_icon("Libro", Some("👨‍👩‍👧‍👦")).unwrap();
+    g.set_type_icon("Libro", None).unwrap();
+    assert_eq!(type_row(&g, "libro"), Some(("Libro".into(), 0, None)));
+    assert!(invalid(g.create_type("   ")));
+}
+
+#[test]
+fn renaming_a_type_keeps_its_icon_and_removing_drops_it() {
+    let (_d, g) = graph();
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.set_page_type(a, Some("persona")).unwrap();
+    g.set_page_type(b, Some("persona")).unwrap();
+    g.add_page_tag(b, "persona").unwrap();
+    g.set_type_icon("persona", Some("🧑")).unwrap();
+    assert_eq!(g.rename_tag("persona", "Gente").unwrap(), 2);
+    assert_eq!(
+        type_row(&g, "gente"),
+        Some(("Gente".into(), 2, Some("🧑".into())))
+    );
+    // The old name is gone; a seeded suggestion of that name is not offered again.
+    assert_eq!(type_row(&g, "persona"), None);
+    // Merging into a type with its own icon keeps that icon.
+    g.set_type_icon("humano", Some("🙂")).unwrap();
+    g.rename_tag("gente", "humano").unwrap();
+    assert_eq!(
+        type_row(&g, "humano"),
+        Some(("humano".into(), 2, Some("🙂".into())))
+    );
+    // Renaming an unused suggestion through rename_type keeps it listed.
+    g.set_type_icon("sueño", Some("💭")).unwrap();
+    assert_eq!(g.rename_type("sueño", "Sueños").unwrap(), 0);
+    assert_eq!(
+        type_row(&g, "sueños"),
+        Some(("Sueños".into(), 0, Some("💭".into())))
+    );
+    assert_eq!(type_row(&g, "sueño"), None);
+    // Case-only renames keep the definition.
+    g.rename_type("Sueños", "sueños").unwrap();
+    assert_eq!(
+        type_row(&g, "sueños"),
+        Some(("sueños".into(), 0, Some("💭".into())))
+    );
+
+    // Removing a type clears it from its pages (explicit tags stay) and drops the icon.
+    assert_eq!(g.remove_type("Humano").unwrap(), 2);
+    assert!(g.get_page(a).unwrap().unwrap().types.is_empty());
+    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["humano"]);
+    assert_eq!(type_row(&g, "humano"), None);
+    // Defining it again starts without an icon.
+    g.create_type("humano").unwrap();
+    assert_eq!(type_row(&g, "humano"), Some(("humano".into(), 0, None)));
+    // A removed suggestion stays hidden until used again.
+    g.remove_type("lugar").unwrap();
+    assert_eq!(type_row(&g, "lugar"), None);
+    g.set_page_type(a, Some("lugar")).unwrap();
+    assert_eq!(type_row(&g, "lugar"), Some(("lugar".into(), 1, None)));
+}
+
+#[test]
+fn type_definitions_sync_last_writer_wins() {
+    let (_a, a) = graph();
+    let (_b, b) = graph();
+    a.set_type_icon("persona", Some("🧑")).unwrap();
+    a.create_type("Libro").unwrap();
+    assert_eq!(ship(&a, &a, 0), 0, "own ops are not re-applied");
+    ship(&a, &b, 0);
+    assert_eq!(type_row(&b, "persona").unwrap().2.as_deref(), Some("🧑"));
+    assert_eq!(type_row(&b, "libro"), Some(("Libro".into(), 0, None)));
+    let (seq_a, seq_b) = (a.last_seq().unwrap(), b.last_seq().unwrap());
+    // Concurrent edits: both replicas end with the same icon.
+    a.set_type_icon("persona", Some("👤")).unwrap();
+    b.set_type_icon("persona", Some("🙋")).unwrap();
+    ship(&a, &b, seq_a);
+    ship(&b, &a, seq_b);
+    assert_eq!(
+        type_row(&a, "persona").unwrap().2,
+        type_row(&b, "persona").unwrap().2
+    );
+    // Removal travels as a tombstone.
+    let seq_a = a.last_seq().unwrap();
+    a.remove_type("libro").unwrap();
+    ship(&a, &b, seq_a);
+    assert_eq!(type_row(&b, "libro"), None);
+    // The op round-trips through JSON; missing fields default.
+    for r in a.ops_since(0, 1000).unwrap() {
+        let s = serde_json::to_string(&r.op).unwrap();
+        assert_eq!(serde_json::from_str::<Op>(&s).unwrap(), r.op);
+    }
+    let op: Op =
+        serde_json::from_value(json!({"type": "put_type_def", "def": {"name": "x"}})).unwrap();
+    assert!(matches!(op, Op::PutTypeDef { def } if def.icon.is_none() && !def.removed));
+}
+
+#[test]
+fn v7_databases_gain_type_definitions() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let g = Graph::open(dir.path()).unwrap();
+        let p = page(&g, "A", &["x"]);
+        g.set_page_type(p, Some("persona")).unwrap();
+        g.conn().execute("DROP TABLE type_defs", []).unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='7' WHERE key='schema'", [])
+            .unwrap();
+    }
+    let g = Graph::open(dir.path()).unwrap();
+    let schema: String = g
+        .conn()
+        .query_row("SELECT value FROM meta WHERE key='schema'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(schema, "8");
+    assert_eq!(type_row(&g, "persona"), Some(("persona".into(), 1, None)));
+    g.set_type_icon("persona", Some("🧑")).unwrap();
+    assert_eq!(type_row(&g, "persona").unwrap().2.as_deref(), Some("🧑"));
 }

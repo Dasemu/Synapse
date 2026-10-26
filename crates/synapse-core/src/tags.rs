@@ -23,6 +23,8 @@ pub struct TagInfo {
     pub count: u32,
     /// Part of the seeded suggestions (types only).
     pub suggested: bool,
+    /// Emoji of the type ([`crate::TypeDef::icon`]; types only).
+    pub icon: Option<String>,
 }
 
 /// Cleans a tag name: leading `#` dropped, whitespace collapsed. `None` when nothing is left.
@@ -153,6 +155,7 @@ impl Graph {
                 name,
                 count,
                 suggested: false,
+                icon: None,
             })
             .collect();
         out.sort_by(|a, b| {
@@ -165,7 +168,8 @@ impl Graph {
 
     /// Renames a tag everywhere: in the `tags` and `types` of every page carrying it (one
     /// transaction; each page is rewritten and logged, so it syncs). When a page already lists
-    /// `new`, the two merge. Returns the number of pages changed. A hub's implicit tag is never renamed (the hub page
+    /// `new`, the two merge. A type's definition (its icon) moves to the new name, keeping the
+    /// icon `new` already had. Returns the number of pages changed. A hub's implicit tag is never renamed (the hub page
     /// is not touched): only explicit tags and types change.
     pub fn rename_tag(&self, old: &str, new: &str) -> Result<usize> {
         let new = normalize_tag(new).ok_or_else(|| Error::Invalid("empty tag name".into()))?;
@@ -191,6 +195,7 @@ impl Graph {
                 changed += 1;
             }
         }
+        self.rename_type_def(&key, &new)?;
         tx.commit()?;
         Ok(changed)
     }

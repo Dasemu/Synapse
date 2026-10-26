@@ -25,4 +25,4 @@ pub use structure::{
     HubConversion, HubInfo, HubPreview, Structure, is_legacy_page, namespace_parent,
 };
 pub use tags::{MAX_TAG_CHARS, TagInfo, normalize_tag};
-pub use types::SUGGESTED_TYPES;
+pub use types::{MAX_ICON_CHARS, SUGGESTED_TYPES, normalize_icon};
