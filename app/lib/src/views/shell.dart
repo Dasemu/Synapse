@@ -16,6 +16,8 @@ import 'graph_view.dart';
 import 'settings_view.dart';
 import 'tab_strip.dart';
 import 'tag_view.dart';
+import 'tags_types_view.dart';
+import '../widgets/type_icon.dart';
 
 /// App frame: sidebar (navigation, hubs, recents), top bar (history, search, theme,
 /// settings) and the current view.
@@ -132,6 +134,7 @@ class _ShellState extends State<Shell> {
                                 ),
                                 AllPagesRoute() => const AllPagesView(),
                                 SettingsRoute() => const SettingsView(),
+                                TagsTypesRoute() => const TagsTypesView(),
                                 TagRoute() => TagView(name: route.name),
                                 PageTarget() => PageScreen(target: route),
                               },
@@ -323,6 +326,13 @@ class _Sidebar extends StatelessWidget {
               onTap: () => go(const AllPagesRoute()),
               onMiddle: () => newTab(const AllPagesRoute()),
             ),
+            _NavItem(
+              icon: Icons.style_outlined,
+              label: 'Tags & types',
+              selected: route is TagsTypesRoute,
+              onTap: () => go(const TagsTypesRoute()),
+              onMiddle: () => newTab(const TagsTypesRoute()),
+            ),
             const SizedBox(height: 22),
             Expanded(
               child: ListView(
@@ -342,6 +352,7 @@ class _Sidebar extends StatelessWidget {
                   for (final p in app.recent)
                     _NavItem(
                       label: p.isJournal ? longDate(p.title) : p.title,
+                      leading: TypeIcon(p.pageType),
                       selected: route is PageTarget && route.id == p.id,
                       dense: true,
                       onTap: () => go(PageTarget(id: p.id)),
@@ -360,6 +371,7 @@ class _Sidebar extends StatelessWidget {
 class _NavItem extends StatefulWidget {
   const _NavItem({
     this.icon,
+    this.leading,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -367,6 +379,9 @@ class _NavItem extends StatefulWidget {
     this.dense = false,
   });
   final IconData? icon;
+
+  /// Shown before the label (a page's type emoji).
+  final Widget? leading;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -417,6 +432,7 @@ class _NavItemState extends State<_NavItem> {
                 ),
                 const SizedBox(width: 10),
               ],
+              ?widget.leading,
               Expanded(
                 child: Text(
                   widget.label,

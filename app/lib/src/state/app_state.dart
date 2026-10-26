@@ -31,6 +31,11 @@ class SettingsRoute extends AppRoute {
   const SettingsRoute();
 }
 
+/// Manage the vocabulary: types (with their emoji) and tags.
+class TagsTypesRoute extends AppRoute {
+  const TagsTypesRoute();
+}
+
 enum GraphMode {
   network('Network', Icons.hub_outlined),
   brain('Synapses', Icons.bolt_outlined),
@@ -81,6 +86,9 @@ class AppTab {
   /// Title of a page route (the route only has an id); set once the page is shown.
   String? label;
 
+  /// Type of the page shown (for its emoji next to [title]); set with [label].
+  String? pageType;
+
   /// Stable identity for widget keys (reordering, closing).
   final int uid = _nextUid++;
   static int _nextUid = 0;
@@ -90,6 +98,7 @@ class AppTab {
     TimelineRoute() => 'Timeline',
     AllPagesRoute() => 'All pages',
     SettingsRoute() => 'Settings',
+    TagsTypesRoute() => 'Tags & types',
     TagRoute(:final name) => '#$name',
     GraphRoute() => 'Graph',
     PageTarget(:final title) => label ?? title ?? 'Page',
@@ -100,6 +109,7 @@ class AppTab {
     TimelineRoute() => Icons.timeline_rounded,
     AllPagesRoute() => Icons.description_outlined,
     SettingsRoute() => Icons.settings_outlined,
+    TagsTypesRoute() => Icons.style_outlined,
     TagRoute() => Icons.sell_outlined,
     GraphRoute() => Icons.hub_outlined,
     PageTarget() => Icons.article_outlined,
@@ -116,6 +126,7 @@ Map<String, dynamic>? routeToJson(AppRoute r, {String? label}) => switch (r) {
   TimelineRoute() => {'t': 'timeline'},
   AllPagesRoute() => {'t': 'all'},
   SettingsRoute() => {'t': 'settings'},
+  TagsTypesRoute() => {'t': 'tags-types'},
   TagRoute() => {'t': 'tag', 'name': r.name},
   GraphRoute() => {
     't': 'graph',
@@ -142,6 +153,8 @@ AppRoute? routeFromJson(Object? j) {
       return const AllPagesRoute();
     case 'settings':
       return const SettingsRoute();
+    case 'tags-types':
+      return const TagsTypesRoute();
     case 'tag':
       final name = j['name'];
       return name is String && name.isNotEmpty ? TagRoute(name) : null;
@@ -338,6 +351,29 @@ class AppState extends ChangeNotifier {
   /// Bumped to make the current view reload from the core (failed writes, renames).
   int generation = 0;
 
+  /// Emoji of each type, by lower-cased type name (types are names; see [typeIcon]).
+  final Map<String, String> typeIcons = {};
+
+  /// The emoji of a page type, if it has one.
+  String? typeIcon(String? type) =>
+      type == null ? null : typeIcons[type.trim().toLowerCase()];
+
+  /// The type emoji of the page a tab shows (null for other routes).
+  String? tabTypeIcon(AppTab t) =>
+      t.route is PageTarget ? typeIcon(t.pageType) : null;
+
+  /// Reloads [typeIcons] from the type catalogue (at start and after type edits).
+  Future<void> loadTypeIcons() async {
+    final types = await backend.typeCatalog();
+    typeIcons
+      ..clear()
+      ..addAll({
+        for (final t in types)
+          if (t.icon != null) t.name.toLowerCase(): t.icon!,
+      });
+    notifyListeners();
+  }
+
   /// Hubs expanded in the sidebar tree (kept here so it survives sidebar rebuilds).
   final expandedHubs = <String>{};
 
@@ -380,6 +416,7 @@ class AppState extends ChangeNotifier {
     t.forward.clear();
     t.route = r;
     t.label = null;
+    t.pageType = null;
     _saveSettings();
     notifyListeners();
   }
@@ -548,6 +585,7 @@ class AppState extends ChangeNotifier {
         tab.label = label;
         _saveSettings();
       }
+      tab.pageType = page.pageType;
     }
     recent.removeWhere((p) => p.id == page.id);
     // Hubs are folders, not pages: they never show up in recents.
@@ -559,6 +597,7 @@ class AppState extends ChangeNotifier {
           title: page.title,
           isJournal: page.journalDate != null,
           isHub: false,
+          pageType: page.pageType,
         ),
       );
       if (recent.length > 12) recent.removeLast();
@@ -572,7 +611,13 @@ class AppState extends ChangeNotifier {
     for (final p in pages) {
       if (!p.isHub && !recent.any((r) => r.id == p.id)) {
         recent.add(
-          PageBrief(id: p.id, title: p.title, isJournal: false, isHub: p.isHub),
+          PageBrief(
+            id: p.id,
+            title: p.title,
+            isJournal: false,
+            isHub: p.isHub,
+            pageType: p.pageType,
+          ),
         );
       }
     }
@@ -591,6 +636,7 @@ class AppState extends ChangeNotifier {
         title: title,
         isJournal: recent[i].isJournal,
         isHub: recent[i].isHub,
+        pageType: recent[i].pageType,
       );
     }
     notifyListeners();
