@@ -293,4 +293,83 @@ void main() {
     final data = await b.graphData();
     expect(data.nodes.firstWhere((n) => n.title == 'Rome').pageType, 'lugar');
   });
+
+  testWidgets('the tree picks up icons loaded or edited after it was built', (
+    tester,
+  ) async {
+    final b = await demo();
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    // Cold start: the icon cache is still empty when the tree is built.
+    final app = AppState(b)..go(const GraphRoute(GraphMode.tree));
+    await tester.pumpWidget(
+      AppScope(
+        state: app,
+        child: MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: const Scaffold(body: GraphView(mode: GraphMode.tree)),
+        ),
+      ),
+    );
+    await settle(tester);
+    TreeItem ada() {
+      final items = <TreeItem>[];
+      void walk(TreeItem t) {
+        items.add(t);
+        t.children.forEach(walk);
+      }
+
+      walk(tester.state<TreeCanvasState>(find.byType(TreeCanvas)).root);
+      return items.firstWhere((t) => t.label == 'Ada');
+    }
+
+    expect(ada().icon, isNull);
+    await app.loadTypeIcons();
+    await settle(tester);
+    expect(ada().icon, '🧑');
+    await b.setTypeIcon('persona', '👤');
+    await app.loadTypeIcons();
+    await settle(tester);
+    expect(ada().icon, '👤');
+  });
+
+  test('reload refreshes the icon cache; failures are logged', () async {
+    final b = await demo();
+    final app = AppState(b);
+    await app.loadTypeIcons();
+    expect(app.typeIcon('persona'), '🧑');
+    final v = app.iconsVersion;
+    await app.loadTypeIcons();
+    expect(app.iconsVersion, v, reason: 'unchanged icons do not notify');
+    // Changed elsewhere (sync, restore): a reload picks it up.
+    await b.setTypeIcon('persona', '👤');
+    app.reload();
+    await Future<void>.delayed(Duration.zero);
+    expect(app.typeIcon('persona'), '👤');
+    await AppState(_FailingBackend()).loadTypeIcons();
+  });
+
+  testWidgets(
+    'renaming a tag from its view moves the type emoji in the cache',
+    (tester) async {
+      final b = await demo();
+      final app = await pump(tester, b, route: const TagRoute('persona'));
+      await tester.tap(find.byKey(const ValueKey('tag-rename')));
+      await settle(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('tag-rename-input')),
+        'gente',
+      );
+      await tester.tap(find.byKey(const ValueKey('tag-rename-confirm')));
+      await settle(tester);
+      expect(app.typeIcon('gente'), '🧑');
+      expect(app.typeIcon('persona'), isNull);
+    },
+  );
+}
+
+class _FailingBackend extends MemoryBackend {
+  @override
+  Future<List<TagDto>> typeCatalog() async => throw Exception('boom');
 }

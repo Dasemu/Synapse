@@ -257,11 +257,15 @@ class TreeCanvas extends StatefulWidget {
     required this.onTap,
     this.name = 'Graph',
     this.typeIcon,
+    this.iconsVersion = 0,
   });
   final GraphModel model;
 
   /// Emoji of a page type, shown before page labels.
   final String? Function(String? type)? typeIcon;
+
+  /// Changes when the type icons change: labels re-resolve their emoji (no new layout).
+  final int iconsVersion;
 
   /// Label of the centre: the name of the notes store.
   final String name;
@@ -313,7 +317,19 @@ class TreeCanvasState extends State<TreeCanvas> {
     if (!identical(oldWidget.model, widget.model) ||
         oldWidget.name != widget.name) {
       _build();
+    } else if (oldWidget.iconsVersion != widget.iconsVersion) {
+      _refreshIcons(_root);
+      _repaint.value++;
     }
+  }
+
+  /// Re-reads the type emoji of every page item (labels redraw with them).
+  void _refreshIcons(TreeItem t) {
+    final g = t.global;
+    if (g != null) {
+      t.icon = widget.typeIcon?.call(widget.model.node(g).pageType);
+    }
+    t.children.forEach(_refreshIcons);
   }
 
   @override
@@ -739,8 +755,8 @@ class _TreePainter extends CustomPainter {
   final Brightness brightness;
   final TextScaler textScaler;
 
-  /// Laid-out labels per item, invalidated when the text colours change.
-  static final _cache = Expando<(Color, TextPainter)>();
+  /// Laid-out labels per item, invalidated when the text colour or the icon changes.
+  static final _cache = Expando<(Color, String?, TextPainter)>();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -868,9 +884,10 @@ class _TreePainter extends CustomPainter {
       final branch = t.children.isNotEmpty;
       final ink = branch || t.parent == null ? colors.ink : colors.muted;
       var entry = _cache[t];
-      if (entry == null || entry.$1 != ink) {
+      if (entry == null || entry.$1 != ink || entry.$2 != t.icon) {
         entry = _cache[t] = (
           ink,
+          t.icon,
           TextPainter(
             text: TextSpan(
               text: withTypeIcon(t.icon, t.label),
@@ -890,7 +907,7 @@ class _TreePainter extends CustomPainter {
           )..layout(maxWidth: 170),
         );
       }
-      final tp = entry.$2;
+      final tp = entry.$3;
       final r = s._radius(t) * scale.clamp(0.6, 1.6);
       // Labels on the outer side of the node, away from its parent.
       final par = t.parent == null ? null : s._index[t.parent!];

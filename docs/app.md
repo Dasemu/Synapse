@@ -151,9 +151,10 @@ Both are plain names with no page, shown as one row of pills under the title.
   shown before the names of pages of that type: page title, All pages, quick switcher,
   recents, tabs, hub members, tag view (also its title when the tag is a type), linked
   references, related pages, the type pill and picker, and the tree view labels. Never in the
-  network graph. `AppState.typeIcons` caches type → emoji (`loadTypeIcons`, at start and
-  after edits); list DTOs carry `pageType` and `TypeIcon` (`widgets/type_icon.dart`) looks
-  it up.
+  network graph. `AppState.typeIcons` caches type → emoji (`loadTypeIcons`: at start, after
+  edits and on every view reload, so synced or restored changes show; `iconsVersion` makes
+  the tree view redraw its labels without a new layout); list DTOs carry `pageType` and
+  `TypeIcon` (`widgets/type_icon.dart`) looks it up.
 - **Tags & types view** (sidebar, under All pages; also a tab route): "Types" lists every type
   with its emoji, page count and seeded suggestions; the emoji button opens a picker (curated
   grid by category, a field to paste any single emoji, "Remove emoji"); "New type" creates a

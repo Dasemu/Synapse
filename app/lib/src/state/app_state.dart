@@ -1,5 +1,6 @@
 import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
@@ -362,16 +363,35 @@ class AppState extends ChangeNotifier {
   String? tabTypeIcon(AppTab t) =>
       t.route is PageTarget ? typeIcon(t.pageType) : null;
 
-  /// Reloads [typeIcons] from the type catalogue (at start and after type edits).
+  /// Bumped whenever [typeIcons] changes (lets painters such as the tree view redraw).
+  int iconsVersion = 0;
+
+  /// Reloads [typeIcons] from the type catalogue (at start, after type edits and on every
+  /// [reload]); listeners are only notified when something changed. Errors are logged.
   Future<void> loadTypeIcons() async {
-    final types = await backend.typeCatalog();
+    final List<TagDto> types;
+    try {
+      types = await backend.typeCatalog();
+    } catch (e, st) {
+      debugPrint('loading type icons failed: $e\n$st');
+      return;
+    }
+    final next = {
+      for (final t in types)
+        if (t.icon != null) t.name.toLowerCase(): t.icon!,
+    };
+    if (mapEquals(next, typeIcons)) return;
     typeIcons
       ..clear()
-      ..addAll({
-        for (final t in types)
-          if (t.icon != null) t.name.toLowerCase(): t.icon!,
-      });
+      ..addAll(next);
+    iconsVersion++;
     notifyListeners();
+  }
+
+  /// Views reload from the core: so do the type icons (they may have changed elsewhere).
+  void _bumpGeneration() {
+    generation++;
+    loadTypeIcons().ignore();
   }
 
   /// Hubs expanded in the sidebar tree (kept here so it survives sidebar rebuilds).
@@ -405,7 +425,7 @@ class AppState extends ChangeNotifier {
 
   /// Rebuilds the current view from the core (after queued writes have run).
   void reload() {
-    generation++;
+    _bumpGeneration();
     notifyListeners();
   }
 
@@ -495,7 +515,7 @@ class AppState extends ChangeNotifier {
         }
       }
     }
-    generation++;
+    _bumpGeneration();
     _saveSettings();
     notifyListeners();
   }
@@ -547,7 +567,7 @@ class AppState extends ChangeNotifier {
         t.label = null;
       }
     }
-    generation++;
+    _bumpGeneration();
     _saveSettings();
     notifyListeners();
   }
@@ -557,7 +577,7 @@ class AppState extends ChangeNotifier {
     tab
       ..route = r
       ..label = null;
-    generation++;
+    _bumpGeneration();
     _saveSettings();
     notifyListeners();
   }
