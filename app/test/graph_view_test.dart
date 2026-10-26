@@ -398,6 +398,17 @@ void main() {
       expect(hub.expanded, isFalse);
     });
 
+    test('small branches open even when the centre is crowded', () {
+      final root = TreeItem('Graph');
+      for (var i = 0; i < 300; i++) {
+        root.children.add(TreeItem('Note $i', global: i));
+      }
+      final ns = TreeItem('Anthropic')..children.add(TreeItem('Claude'));
+      root.children.add(ns);
+      expandInitial(root);
+      expect(ns.expanded, isTrue);
+    });
+
     testWidgets('branches expand and collapse in the canvas', (tester) async {
       await pumpGraph(tester, _HubBackend(bigHub()));
       await mode(tester, 'Tree');

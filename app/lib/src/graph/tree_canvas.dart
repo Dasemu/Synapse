@@ -198,8 +198,9 @@ Iterable<TreeItem> _shown(TreeItem t) sync* {
 }
 
 /// Opens levels breadth-first while the canvas stays readable (about `budget` items), so a
-/// small graph shows whole and a large one its top levels.
-void expandInitial(TreeItem root, {int budget = 150}) {
+/// small graph shows whole and a large one its top levels. Small branches (up to `small`
+/// children) always open: a crowded centre must not leave them folded.
+void expandInitial(TreeItem root, {int budget = 150, int small = 12}) {
   root.expanded = true;
   var shown = 1 + root.children.length;
   var level = root.children;
@@ -207,7 +208,9 @@ void expandInitial(TreeItem root, {int budget = 150}) {
     final next = <TreeItem>[];
     for (final t in level) {
       if (t.children.isEmpty) continue;
-      if (shown + t.children.length > budget) continue;
+      if (t.children.length > small && shown + t.children.length > budget) {
+        continue;
+      }
       t.expanded = true;
       shown += t.children.length;
       next.addAll(t.children);
