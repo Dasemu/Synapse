@@ -91,7 +91,9 @@ Resources: `synapse://page/{title}` and `synapse://journal/{date}` (outline with
   WAL). Reads run in a deferred transaction that is always rolled back (a consistent snapshot
   that can never write); writes run in `BEGIN IMMEDIATE`, held only for the call, retried a few
   times while SQLite is busy (plus the 5 s busy timeout). Opening per call also re-reads the
-  op log's last clock, so this process never stamps ops behind the app's.
+  op log's last clock. Each call checks that `synapse.db` still exists and is on this binary's
+  schema version, so the server never migrates or re-stamps the app's live database: build
+  `synapse-mcp` from the same version as the app.
 - **Server**: tools run on the shared graph handle (`GraphHandle::run`), so writes are normal
   ops: logged, pushed to SSE subscribers, pulled by every client. Stateless JSON responses (no
   MCP sessions to keep).
@@ -101,8 +103,9 @@ Resources: `synapse://page/{title}` and `synapse://journal/{date}` (outline with
   of blocks); switch to a read-only tantivy reader when the app indexes.
 - **Writes** use only the `Graph` API (`create_page`, `insert_block`, `set_page_type`, ...).
   Side effects inherited from the core: a page born today, or edited today, ensures today's
-  (empty) journal page exists, and `[[New Page]]` links create those pages, as in the app.
-  The journal content itself is never modified. `rename_page` is not exposed: it rewrites the
+  journal page exists (empty if new; on the server "today" is the server's local date), and
+  links in written content create their target pages, `[[YYYY-MM-DD]]` included (an empty
+  journal), as in the app. Existing journal content is never modified. `rename_page` is not exposed: it rewrites the
   links in every referencing block, journals included.
 
 ## Security
@@ -112,3 +115,11 @@ Resources: `synapse://page/{title}` and `synapse://journal/{date}` (outline with
 - HTTP: own tokens (hashed, constant-time compare), separate from the sync tokens; the graph
   must exist; `Host` allowlist against DNS rebinding; always behind TLS (see `server.md`).
 - Read-only by default on both transports; write tools are not even listed without the flag.
+- Every MCP token reaches every graph on the server (no per-graph scoping yet).
+
+## Known limits
+- The stdio server writes with the app's actor id. Its clock starts from the newest op, but the
+  running app's in-memory clock does not see MCP's ops, so in rare cases (same millisecond, or
+  a clock pinned ahead by a remote op) both can stamp an op with the same HLC; replicas could
+  then disagree on which edit of the same block wins. A core fix (re-observe the newest op
+  before ticking) is pending.
