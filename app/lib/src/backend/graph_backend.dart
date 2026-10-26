@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import '../graph/graph_model.dart';
@@ -133,6 +134,27 @@ abstract class GraphBackend {
     Float32List weights, {
     Float32List? initial,
   });
+  // Modules: sandboxed WebAssembly extensions (docs/modules.md).
+  Future<List<ModuleDto>> modules();
+
+  /// Reads a module file without installing it (manifest, for the consent dialog).
+  Future<ModuleDto> inspectModule(Uint8List wasm);
+
+  /// Installs or updates a module; [granted] must list every permission it asks for.
+  Future<ModuleDto> installModule(Uint8List wasm, List<String> granted);
+  Future<void> setModuleEnabled(String id, bool enabled);
+
+  /// Removes a module from this device; [deleteData] also deletes its synced data.
+  Future<void> uninstallModule(String id, {bool deleteData = false});
+
+  /// Sends a request to a module and returns its decoded JSON response.
+  Future<Map<String, dynamic>> moduleCall(
+    String id,
+    Map<String, dynamic> request,
+  );
+
+  /// Drops a module's running instance (its in-memory state, e.g. unlocked keys).
+  Future<void> stopModule(String id);
 }
 
 class _FfiLayout implements LayoutEngine {
@@ -362,4 +384,31 @@ class FfiGraphBackend implements GraphBackend {
       initial: initial,
     ),
   );
+
+  @override
+  Future<List<ModuleDto>> modules() => _g.modules();
+  @override
+  Future<ModuleDto> inspectModule(Uint8List wasm) =>
+      _g.inspectModule(wasm: wasm);
+  @override
+  Future<ModuleDto> installModule(Uint8List wasm, List<String> granted) =>
+      _g.installModule(wasm: wasm, granted: granted);
+  @override
+  Future<void> setModuleEnabled(String id, bool enabled) =>
+      _g.setModuleEnabled(id: id, enabled: enabled);
+  @override
+  Future<void> uninstallModule(String id, {bool deleteData = false}) =>
+      _g.uninstallModule(id: id, deleteData: deleteData);
+  @override
+  Future<Map<String, dynamic>> moduleCall(
+    String id,
+    Map<String, dynamic> request,
+  ) async {
+    final out = await _g.moduleCall(id: id, request: jsonEncode(request));
+    final v = jsonDecode(out);
+    return v is Map<String, dynamic> ? v : {'error': 'bad response'};
+  }
+
+  @override
+  Future<void> stopModule(String id) => _g.stopModule(id: id);
 }
