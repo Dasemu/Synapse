@@ -108,13 +108,17 @@ impl Running {
             .func_wrap(
                 "synapse",
                 "call",
-                |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> Result<i32, wasmi::Error> {
+                |mut caller: Caller<'_, HostState>,
+                 ptr: i32,
+                 len: i32|
+                 -> Result<i32, wasmi::Error> {
                     let req = read_bytes(&caller, ptr, len)?;
                     let reply = match dispatch(caller.data_mut(), &req) {
                         Ok(v) => json!({ "ok": v }),
                         Err(e) => json!({ "error": e.to_string() }),
                     };
-                    let bytes = serde_json::to_vec(&reply).map_err(|e| wasmi::Error::new(e.to_string()))?;
+                    let bytes =
+                        serde_json::to_vec(&reply).map_err(|e| wasmi::Error::new(e.to_string()))?;
                     if bytes.len() > MAX_MESSAGE {
                         return Err(wasmi::Error::new("host reply too large"));
                     }
@@ -139,7 +143,10 @@ impl Running {
                 l.func_wrap(
                     "synapse",
                     "respond",
-                    |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> Result<(), wasmi::Error> {
+                    |mut caller: Caller<'_, HostState>,
+                     ptr: i32,
+                     len: i32|
+                     -> Result<(), wasmi::Error> {
                         let bytes = read_bytes(&caller, ptr, len)?;
                         caller.data_mut().response = Some(bytes);
                         Ok(())

@@ -404,7 +404,11 @@ impl ModuleDto {
             version: m.version.clone(),
             description: m.description.clone(),
             author: m.author.clone(),
-            permissions: m.permissions.iter().map(|p| p.as_str().to_string()).collect(),
+            permissions: m
+                .permissions
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect(),
             views: m
                 .views
                 .iter()

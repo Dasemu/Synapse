@@ -21,8 +21,12 @@ fn module_data_is_namespaced_listed_and_deleted() {
     g.set_module_data("a.mod", "entry/1", Some("x")).unwrap();
     g.set_module_data("a.mod", "entry/2", Some("y")).unwrap();
     g.set_module_data("a.mod", "vault", Some("h")).unwrap();
-    g.set_module_data("b.mod", "entry/1", Some("other")).unwrap();
-    assert_eq!(g.module_data("a.mod", "entry/1").unwrap().as_deref(), Some("x"));
+    g.set_module_data("b.mod", "entry/1", Some("other"))
+        .unwrap();
+    assert_eq!(
+        g.module_data("a.mod", "entry/1").unwrap().as_deref(),
+        Some("x")
+    );
     let keys: Vec<_> = g
         .module_data_list("a.mod", "entry/")
         .unwrap()
