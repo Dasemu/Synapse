@@ -13,7 +13,7 @@ works on it (`git --git-dir=<graph>/history log`, `clone`, ...).
 - Property values: raw text, or JSON when the value is not a plain string (so numbers/bools
   survive a restore). Keys are sorted, so output is byte-stable.
 - Hubs: `synapse-kind:: hub` and `synapse-description::` page properties (hubs have no
-  bullets). A page's tags (tag page titles) are listed in `synapse-tags:: ["a","b"]` and its types in `synapse-types:: [...]`; tag pages carry `synapse-kind:: tag` (all restored with the page). A page in hubs lists their titles in `synapse-hubs:: ["A","B"]`, so renaming a hub
+  bullets). A page's tags (names, no pages) are listed in `synapse-tags:: ["a","b"]` and its single type in `synapse-type:: persona` (both restored with the page; the old list form `synapse-types::` is still read, first entry wins). Exports of older versions may carry `synapse-kind:: tag` on a former tag page; it is ignored and the page restores as a note. A page in hubs lists their titles in `synapse-hubs:: ["A","B"]`, so renaming a hub
   re-exports its members. Restore sets kinds first, then memberships (missing hubs or
   memberships that would now form a cycle are skipped).
 - `assets.json`: manifest `hash → name/size/mime`, sorted. Asset bytes are **not** committed

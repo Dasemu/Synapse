@@ -53,7 +53,6 @@ fn atomic<T>(graph: &Graph, f: impl FnOnce() -> Result<T>) -> Result<T> {
 struct Plan {
     page: PageId,
     is_hub: bool,
-    is_tag: bool,
     description: String,
     /// Titles of the hubs the page belongs to.
     hubs: Vec<String>,
@@ -172,7 +171,6 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
     Ok(Plan {
         page: page.id,
         is_hub: parsed.is_hub,
-        is_tag: parsed.is_tag,
         description: parsed.description.clone(),
         hubs: parsed.hubs.clone(),
         tags: parsed.tags.clone(),
@@ -223,8 +221,6 @@ fn apply_kind(graph: &Graph, plan: &Plan) -> Result<bool> {
     };
     let kind = if plan.is_hub {
         PageKind::Hub
-    } else if plan.is_tag {
-        PageKind::Tag
     } else {
         PageKind::Note
     };

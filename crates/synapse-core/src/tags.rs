@@ -1,27 +1,26 @@
-//! Tags: topic pages ("neurociencia", "finanzas") that notes are filed under.
+//! Tags: topic names ("neurociencia", "finanzas") that notes are filed under.
 //!
-//! A tag is a page of kind [`PageKind::Tag`]: it has an outline, backlinks and a place in the
-//! graph like any note. A page lists the titles of its tag pages in [`Page::tags`] (synced
-//! with the page, last writer wins), any number of them, and a derived `page_tags` index
-//! answers "which pages have this tag". Tagging with a title that has no page creates the tag
-//! page; tagging with an existing note turns that note into a tag page. Renaming or deleting
-//! a tag page keeps its members in step. Names compare case-insensitively ([`title_key`]).
-//! What a page *is* ("persona", "lugar") is a different, name-only mechanism: see `types`.
+//! A tag is only a name: it has no page. A page lists its tags in [`Page::tags`] (synced with
+//! the page, last writer wins), any number of them. Its type ([`Page::types`], at most one) implies a tag of
+//! the same name without being stored twice, and a derived `page_tags` index (tags and types,
+//! one row per page and [`title_key`]) answers "which pages have this tag". Names compare
+//! case-insensitively. What a page *is* ("persona", "lugar") is the name-only mechanism in
+//! `types`.
 
 use crate::error::{Error, Result};
-use crate::model::{NewPage, Page, PageId, PageKind, title_key};
+use crate::model::{Page, PageId, title_key};
 use crate::store::{Graph, parse_id};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Longest tag (or type) name, in characters.
 pub const MAX_TAG_CHARS: usize = 48;
 
-/// A tag with the number of pages filed under it (tag pages with no members count 0).
+/// A tag with the number of pages filed under it (explicitly or through a type).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagInfo {
     pub name: String,
     pub count: u32,
-    /// Part of the seeded suggestions (types only; tag pages are never seeded).
+    /// Part of the seeded suggestions (types only).
     pub suggested: bool,
 }
 
@@ -33,34 +32,14 @@ pub fn normalize_tag(raw: &str) -> Option<String> {
 }
 
 impl Graph {
-    /// The tag page called `name`, created (or made out of a note of that name) on demand.
-    fn ensure_tag_page(&self, name: &str) -> Result<Page> {
-        if let Some(mut p) = self.page_by_title(name)? {
-            return match p.kind {
-                PageKind::Tag => Ok(p),
-                PageKind::Note if !p.is_journal() => {
-                    p.kind = PageKind::Tag;
-                    p.updated_at = self.now_ms();
-                    self.write_page(&p, &self.tick())?;
-                    Ok(p)
-                }
-                _ => Err(Error::Invalid(format!(
-                    "{name:?} is a hub, template or journal and cannot be a tag"
-                ))),
-            };
-        }
-        self.create_page_kind_tx(NewPage::titled(name), PageKind::Tag, String::new())
-    }
-
     /// Replaces the tags of `page` (names cleaned, duplicates dropped case-insensitively,
-    /// order kept; each becomes the title of a tag page). Journals, templates and tag pages
-    /// cannot be tagged, nor can a page be tagged with itself.
+    /// kept sorted by [`title_key`]). Journals and templates cannot be tagged.
     pub fn set_page_tags(&self, page: PageId, tags: Vec<String>) -> Result<Page> {
         let tx = self.tx()?;
         let mut p = self
             .get_page(page)?
             .ok_or_else(|| Error::NotFound(page.to_string()))?;
-        let mut wanted: Vec<String> = Vec::with_capacity(tags.len());
+        let mut next: Vec<String> = Vec::with_capacity(tags.len());
         for raw in tags {
             let Some(t) = normalize_tag(&raw) else {
                 continue;
@@ -70,21 +49,15 @@ impl Graph {
                     "tag {t:?} is longer than {MAX_TAG_CHARS} characters"
                 )));
             }
-            if !wanted.iter().any(|x| title_key(x) == title_key(&t)) {
-                wanted.push(t);
+            if !next.iter().any(|x| title_key(x) == title_key(&t)) {
+                next.push(t);
             }
         }
-        if (p.is_journal() || p.is_template() || p.is_tag()) && !wanted.is_empty() {
+        next.sort_by_cached_key(|t| title_key(t));
+        if (p.is_journal() || p.is_template()) && !next.is_empty() {
             return Err(Error::Invalid(
-                "journals, templates and tag pages cannot have tags".into(),
+                "journals and templates cannot have tags".into(),
             ));
-        }
-        if wanted.iter().any(|t| title_key(t) == title_key(&p.title)) {
-            return Err(Error::Invalid("a page cannot be its own tag".into()));
-        }
-        let mut next = Vec::with_capacity(wanted.len());
-        for t in wanted {
-            next.push(self.ensure_tag_page(&t)?.title);
         }
         if next == p.tags {
             tx.commit()?;
@@ -107,7 +80,8 @@ impl Graph {
         self.set_page_tags(page, tags)
     }
 
-    /// Removes a tag (no-op when the page does not have it). The tag page stays.
+    /// Removes an explicit tag (no-op when the page does not list it; a type of the same name
+    /// keeps implying it).
     pub fn remove_page_tag(&self, page: PageId, tag: &str) -> Result<Page> {
         let p = self
             .get_page(page)?
@@ -117,7 +91,7 @@ impl Graph {
         self.set_page_tags(page, tags)
     }
 
-    /// Pages carrying `tag`, most recently updated first.
+    /// Pages carrying `tag` (listed or implied by a type), most recently updated first.
     pub fn pages_with_tag(&self, tag: &str) -> Result<Vec<PageId>> {
         let mut st = self.conn().prepare_cached(
             "SELECT p.id FROM page_tags t JOIN pages p ON p.id = t.page_id
@@ -127,39 +101,63 @@ impl Graph {
         rows.map(|r| parse_id(&r?)).collect()
     }
 
-    /// Tags of every tagged page, as stored.
+    /// Tags of every tagged page: the listed ones, then the type if not already among them
+    /// (each type implies a tag), names as stored.
     pub fn all_page_tags(&self) -> Result<HashMap<PageId, Vec<String>>> {
-        let mut st = self
-            .conn()
-            .prepare_cached("SELECT id, tags FROM pages WHERE tags != '[]'")?;
-        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut st = self.conn().prepare_cached(
+            "SELECT id, tags, types FROM pages WHERE tags != '[]' OR types != '[]'",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
         let mut out = HashMap::new();
         for row in rows {
-            let (id, tags) = row?;
-            out.insert(
-                parse_id(&id)?,
-                serde_json::from_str(&tags).unwrap_or_default(),
-            );
+            let (id, tags, types) = row?;
+            let mut all: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
+            let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+            for t in types.into_iter().take(1) {
+                if !all.iter().any(|x| title_key(x) == title_key(&t)) {
+                    all.push(t);
+                }
+            }
+            out.insert(parse_id(&id)?, all);
         }
         Ok(out)
     }
 
-    /// Every tag page with the number of pages under it: most used first, then by name.
+    /// Every tag in use, listed or implied by a type: spelling of its first page, with its page
+    /// count. Most used first, then by name.
     pub fn tag_catalog(&self) -> Result<Vec<TagInfo>> {
         let mut st = self.conn().prepare_cached(
-            "SELECT p.title, (SELECT COUNT(*) FROM page_tags t WHERE t.tag_key = p.title_key)
-             FROM pages p WHERE p.kind = 'tag'",
+            "SELECT tags, types FROM pages WHERE tags != '[]' OR types != '[]'
+             ORDER BY created_at, id",
         )?;
-        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))?;
-        let mut out = Vec::new();
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut used: HashMap<String, (String, u32)> = HashMap::new();
         for row in rows {
-            let (name, count) = row?;
-            out.push(TagInfo {
+            let (tags, types) = row?;
+            let tags: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
+            let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+            let mut seen = HashSet::new();
+            for t in tags.into_iter().chain(types.into_iter().take(1)) {
+                let key = title_key(&t);
+                if seen.insert(key.clone()) {
+                    used.entry(key).or_insert((t, 0)).1 += 1;
+                }
+            }
+        }
+        let mut out: Vec<TagInfo> = used
+            .into_values()
+            .map(|(name, count)| TagInfo {
                 name,
                 count,
                 suggested: false,
-            });
-        }
+            })
+            .collect();
         out.sort_by(|a, b| {
             b.count
                 .cmp(&a.count)
@@ -168,59 +166,68 @@ impl Graph {
         Ok(out)
     }
 
-    /// A tag page was renamed: its members now list the new title.
-    pub(crate) fn retitle_tag(&self, old: &str, new: &str) -> Result<()> {
-        for id in self.pages_with_tag(old)? {
-            if let Some(mut p) = self.get_page(id)? {
-                let key = title_key(old);
-                for t in &mut p.tags {
-                    if title_key(t) == key {
-                        *t = new.to_string();
-                    }
-                }
-                self.write_page(&p, &self.tick())?;
-            }
+    /// Renames a tag everywhere: in the `tags` and `types` of every page carrying it (one
+    /// transaction; each page is rewritten and logged, so it syncs). When a page already lists
+    /// `new`, the two merge. Returns the number of pages changed.
+    pub fn rename_tag(&self, old: &str, new: &str) -> Result<usize> {
+        let new = normalize_tag(new).ok_or_else(|| Error::Invalid("empty tag name".into()))?;
+        if new.chars().count() > MAX_TAG_CHARS {
+            return Err(Error::Invalid(format!(
+                "tag {new:?} is longer than {MAX_TAG_CHARS} characters"
+            )));
         }
-        Ok(())
-    }
-
-    /// A tag page was deleted: its members stop listing it.
-    pub(crate) fn drop_tag_from_members(&self, title: &str) -> Result<()> {
-        let key = title_key(title);
-        for id in self.pages_with_tag(title)? {
-            if let Some(mut p) = self.get_page(id)? {
-                p.tags.retain(|t| title_key(t) != key);
-                self.write_page(&p, &self.tick())?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Databases from before tag pages (or snapshots of them) list tags that have no page:
-    /// create the missing pages, keeping the spelling first used.
-    pub(crate) fn repair_tag_pages(&self) -> Result<()> {
-        let missing: Vec<String> = {
-            let mut st = self.conn().prepare_cached(
-                "SELECT DISTINCT tag_key FROM page_tags
-                 WHERE tag_key NOT IN (SELECT title_key FROM pages)",
-            )?;
-            st.query_map([], |r| r.get(0))?
-                .collect::<std::result::Result<_, _>>()?
-        };
-        if missing.is_empty() {
-            return Ok(());
-        }
+        let key = title_key(old);
         let tx = self.tx()?;
-        let mut done = std::collections::HashSet::new();
-        for (_, tags) in self.all_page_tags()? {
-            for t in tags {
-                let key = title_key(&t);
-                if missing.contains(&key) && done.insert(key) {
-                    self.ensure_tag_page(&t)?;
-                }
+        let mut changed = 0;
+        for id in self.pages_with_tag(old)? {
+            let Some(mut p) = self.get_page(id)? else {
+                continue;
+            };
+            let (tags, types) = (p.tags.clone(), p.types.clone());
+            p.tags = rename_in(&p.tags, &key, &new);
+            p.tags.sort_by_cached_key(|t| title_key(t));
+            p.types = rename_in(&p.types, &key, &new);
+            if p.tags != tags || p.types != types {
+                p.updated_at = self.now_ms();
+                self.write_page(&p, &self.tick())?;
+                changed += 1;
             }
         }
         tx.commit()?;
-        Ok(())
+        Ok(changed)
     }
+
+    /// Removes the explicit tag `name` from every page (types of that name stay, and keep
+    /// implying it). Returns the number of pages changed.
+    pub fn remove_tag(&self, name: &str) -> Result<usize> {
+        let key = title_key(name);
+        let tx = self.tx()?;
+        let mut changed = 0;
+        for id in self.pages_with_tag(name)? {
+            let Some(mut p) = self.get_page(id)? else {
+                continue;
+            };
+            let before = p.tags.len();
+            p.tags.retain(|t| title_key(t) != key);
+            if p.tags.len() != before {
+                p.updated_at = self.now_ms();
+                self.write_page(&p, &self.tick())?;
+                changed += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+}
+
+/// `names` with the entries matching `key` replaced by `new` (later duplicates dropped).
+fn rename_in(names: &[String], key: &str, new: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(names.len());
+    for n in names {
+        let n = if title_key(n) == key { new } else { n };
+        if !out.iter().any(|x| title_key(x) == title_key(n)) {
+            out.push(n.to_string());
+        }
+    }
+    out
 }

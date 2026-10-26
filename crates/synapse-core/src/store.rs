@@ -82,7 +82,6 @@ impl Graph {
             dir,
             now_override: Cell::new(None),
         };
-        graph.repair_tag_pages()?;
         Ok(graph)
     }
 
@@ -358,12 +357,9 @@ impl Graph {
             st.query_map([&old_key], |r| r.get(0))?
                 .collect::<std::result::Result<_, _>>()?
         };
-        let old_title = std::mem::replace(&mut page.title, new_title.to_string());
+        page.title = new_title.to_string();
         page.updated_at = self.now_ms();
         self.write_page(&page, &self.tick())?;
-        if page.is_tag() {
-            self.retitle_tag(&old_title, new_title)?;
-        }
         for bid in referencing {
             if let Some(mut b) = self.get_block(parse_id(&bid)?)? {
                 let rewritten = parse::rewrite_refs(&b.content, &old_key, new_title);
@@ -411,11 +407,6 @@ impl Graph {
     pub(crate) fn delete_page_rows(&self, id: PageId) -> Result<()> {
         // Members of a deleted hub leave it (each member page is rewritten and logged).
         self.drop_hub_from_members(id)?;
-        if let Some(p) = self.get_page(id)?
-            && p.is_tag()
-        {
-            self.drop_tag_from_members(&p.title)?;
-        }
         let ids: Vec<String> = {
             let mut st = self
                 .conn
@@ -1222,7 +1213,9 @@ impl Graph {
         )?;
         let id = p.id.to_string();
         self.exec("DELETE FROM page_tags WHERE page_id=?1", [&id])?;
-        for t in &p.tags {
+        // The type implies a tag of the same name, so the index covers both (a page has one
+        // type: older replicas may sync more, and only the first counts).
+        for t in p.tags.iter().chain(p.types.iter().take(1)) {
             self.exec(
                 "INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)",
                 params![id, title_key(t)],

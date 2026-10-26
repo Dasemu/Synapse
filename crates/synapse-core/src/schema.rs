@@ -1,6 +1,6 @@
 use rusqlite::OptionalExtension;
 
-pub const VERSION: i64 = 5;
+pub const VERSION: i64 = 6;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -116,11 +116,18 @@ CREATE TABLE IF NOT EXISTS ops (
 );
 "#;
 
-/// Rebuilds the `page_tags` index from every page's `tags` column.
+/// Rebuilds the `page_tags` index from every page's `tags` column and first type (the type
+/// implies a tag of the same name).
 pub fn rebuild_page_tags(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM page_tags", [])?;
     let rows: Vec<(String, String)> = {
-        let mut st = conn.prepare("SELECT id, tags FROM pages WHERE tags != '[]'")?;
+        let mut st = conn.prepare(
+            "SELECT id, json_group_array(value) FROM (
+                 SELECT pages.id AS id, j.value AS value FROM pages, json_each(pages.tags) j
+                 UNION ALL
+                 SELECT pages.id AS id, j.value AS value FROM pages, json_each(pages.types) j WHERE j.key = 0
+             ) GROUP BY id",
+        )?;
         st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?
     };
@@ -190,6 +197,18 @@ pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         rebuild_page_hubs(conn)?;
     }
     if version.is_some_and(|v| v < 4) {
+        rebuild_page_tags(conn)?;
+    }
+    if version.is_some_and(|v| v < 6) {
+        // v6: tags and types are names only, one type per page. Old tag pages become plain notes (title,
+        // outline and links kept); their members keep the name in `tags`.
+        conn.execute("UPDATE pages SET kind='note' WHERE kind='tag'", [])?;
+        // A page has one type: keep the first of several.
+        conn.execute(
+            "UPDATE pages SET types = json_array(json_extract(types, '$[0]'))
+             WHERE json_array_length(types) > 1",
+            [],
+        )?;
         rebuild_page_tags(conn)?;
     }
     conn.execute(

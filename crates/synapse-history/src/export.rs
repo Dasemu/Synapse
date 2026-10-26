@@ -23,7 +23,9 @@ pub const DESCRIPTION_PROP: &str = "synapse-description";
 /// Page property listing the titles of the hubs a page belongs to (JSON array).
 pub const HUBS_PROP: &str = "synapse-hubs";
 pub const TAGS_PROP: &str = "synapse-tags";
-/// Page property with the type names (`synapse-types:: persona, lugar`).
+/// Page property with the page's type (`synapse-type:: persona`).
+pub const TYPE_PROP: &str = "synapse-type";
+/// Retired list form of the type, still read on restore (the first entry wins).
 pub const TYPES_PROP: &str = "synapse-types";
 
 /// Encodes a page title as a file name ("triple-lowbar" format: `/` becomes `___`,
@@ -185,8 +187,6 @@ pub fn render_page(graph: &Graph, page: &Page, referenced: &HashSet<BlockId>) ->
     props.remove("alias");
     if page.is_hub() {
         props.insert(KIND_PROP.into(), Value::String("hub".into()));
-    } else if page.is_tag() {
-        props.insert(KIND_PROP.into(), Value::String("tag".into()));
     }
     if !page.description.is_empty() {
         props.insert(
@@ -209,11 +209,8 @@ pub fn render_page(graph: &Graph, page: &Page, referenced: &HashSet<BlockId>) ->
             Value::Array(page.tags.iter().cloned().map(Value::String).collect()),
         );
     }
-    if !page.types.is_empty() {
-        props.insert(
-            TYPES_PROP.into(),
-            Value::Array(page.types.iter().cloned().map(Value::String).collect()),
-        );
+    if let Some(t) = page.page_type() {
+        props.insert(TYPE_PROP.into(), Value::String(t.to_string()));
     }
     let mut list = sorted_props(&props);
     let aliases = graph.aliases_of(page.id)?;

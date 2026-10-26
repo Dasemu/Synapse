@@ -348,25 +348,25 @@ fn tags_round_trip_through_snapshots() {
     let note = add(&g, "Note", &["body"]);
     g.add_page_tag(note.id, "tecnología").unwrap();
     g.add_page_tag(note.id, "idea").unwrap();
-    g.add_page_type(note.id, "concepto").unwrap();
+    g.set_page_type(note.id, Some("concepto")).unwrap();
     let s1 = h.snapshot(&g, T0 + 500).unwrap().unwrap();
-    let tag_md = h.page_at(&s1.id, "idea").unwrap().unwrap();
-    assert!(tag_md.contains("synapse-kind:: tag"), "{tag_md}");
+    assert!(h.page_at(&s1.id, "idea").unwrap().is_none());
     let md = h.page_at(&s1.id, "Note").unwrap().unwrap();
     assert!(
-        md.contains(r#"synapse-tags:: ["tecnología","idea"]"#),
+        md.contains(r#"synapse-tags:: ["idea","tecnología"]"#),
         "{md}"
     );
+    assert!(md.contains("synapse-type:: concepto"), "{md}");
 
     at(&g, T0 + 1000);
     g.set_page_tags(note.id, vec![]).unwrap();
-    g.set_page_types(note.id, vec![]).unwrap();
+    g.set_page_type(note.id, None).unwrap();
     h.restore_graph(&g, &s1.id, T0 + 2000).unwrap();
     assert_eq!(g.get_page(note.id).unwrap().unwrap().types, ["concepto"]);
-    assert!(g.page_by_title("idea").unwrap().unwrap().is_tag());
+    assert!(g.page_by_title("idea").unwrap().is_none());
     assert_eq!(
         g.get_page(note.id).unwrap().unwrap().tags,
-        ["tecnología", "idea"]
+        ["idea", "tecnología"]
     );
     assert_eq!(g.pages_with_tag("idea").unwrap(), [note.id]);
 }
@@ -445,4 +445,20 @@ fn hubs_round_trip_kind_description_and_memberships() {
             "{title}"
         );
     }
+}
+
+#[test]
+fn old_tag_kind_exports_parse_as_plain_notes() {
+    let parsed = synapse_history::parse::parse_page("synapse-kind:: tag\n\n- body\n");
+    assert!(!parsed.is_hub);
+    assert!(!parsed.properties.contains_key("synapse-kind"));
+}
+
+#[test]
+fn old_types_list_restores_its_first_entry() {
+    let parsed =
+        synapse_history::parse::parse_page("synapse-types:: [\"persona\",\"lugar\"]\n\n- x\n");
+    assert_eq!(parsed.types, ["persona"]);
+    let parsed = synapse_history::parse::parse_page("synapse-type:: lugar\n\n- x\n");
+    assert_eq!(parsed.types, ["lugar"]);
 }
