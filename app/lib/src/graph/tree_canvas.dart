@@ -81,6 +81,7 @@ List<TreeItem> _hubBranches(GraphModel g) {
   // namespace branch).
   for (var i = 0; i < g.nodeCount; i++) {
     if (!g.isHub(i) &&
+        !g.isTag(i) &&
         !g.isJournal(i) &&
         !nested.contains(i) &&
         !g.node(i).title.contains('/')) {
@@ -99,11 +100,13 @@ TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
   final ns = TreeItem('Namespaces');
   final byTitle = <String, int>{};
   for (var i = 0; i < g.nodeCount; i++) {
-    if (!g.isJournal(i)) byTitle[g.node(i).title.toLowerCase()] = i;
+    if (!g.isJournal(i) && !g.isTag(i)) {
+      byTitle[g.node(i).title.toLowerCase()] = i;
+    }
   }
   for (var i = 0; i < g.nodeCount; i++) {
     final t = g.node(i).title;
-    if (g.isJournal(i) || !t.contains('/')) continue;
+    if (g.isJournal(i) || g.isTag(i) || !t.contains('/')) continue;
     var at = ns;
     final parts = t.split('/');
     for (var k = 0; k < parts.length; k++) {
@@ -119,7 +122,10 @@ TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
     final item = TreeItem('#${g.node(tag).title}', global: tag);
     final seen = <int>{};
     for (final e in g.adjacency[tag]) {
-      if (g.kind(e) != EdgeKind.tag || g.target(e) != tag) continue;
+      final k = g.kind(e);
+      if ((k != EdgeKind.tag && k != EdgeKind.tagged) || g.target(e) != tag) {
+        continue;
+      }
       final s = g.source(e);
       if (seen.add(s)) {
         item.children.add(TreeItem(g.node(s).title, global: s));
@@ -227,6 +233,7 @@ class TreeCanvas extends StatefulWidget {
     super.key,
     required this.model,
     required this.onTap,
+    this.onTag,
     this.name = 'Graph',
   });
   final GraphModel model;
@@ -234,6 +241,10 @@ class TreeCanvas extends StatefulWidget {
   /// Label of the centre: the name of the notes store.
   final String name;
   final void Function(int global) onTap;
+
+  /// Called with the tag name when a tag (which has no page) is clicked; falls back to
+  /// [onTap] when null.
+  final void Function(String name)? onTag;
 
   @override
   State<TreeCanvas> createState() => TreeCanvasState();
@@ -466,6 +477,20 @@ class TreeCanvasState extends State<TreeCanvas> {
     setState(_relayout);
   }
 
+  /// Opens the page (or tag) behind `t`, as a click on its name does.
+  void openItem(TreeItem t) {
+    if (t.global != null) _open(t.global!);
+  }
+
+  void _open(int global) {
+    final g = widget.model;
+    if (g.isTag(global) && widget.onTag != null) {
+      widget.onTag!(g.node(global).title);
+    } else {
+      widget.onTap(global);
+    }
+  }
+
   void _onTap(Offset local) {
     final k = _hitNode(local);
     if (k != null) {
@@ -473,13 +498,13 @@ class TreeCanvasState extends State<TreeCanvas> {
       if (t.children.isNotEmpty) {
         toggle(t);
       } else if (t.global != null) {
-        widget.onTap(t.global!);
+        _open(t.global!);
       }
       return;
     }
     final l = _hitLabel(local);
     if (l?.global != null) {
-      widget.onTap(l!.global!);
+      openItem(l!);
     } else if (l != null) {
       toggle(l);
     }

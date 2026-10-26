@@ -55,6 +55,9 @@ class GraphModel {
 
   bool isHub(int i) => node(i).isHub;
 
+  /// Whether node `i` is a virtual tag node (a name, not a page).
+  bool isTag(int i) => node(i).isTag;
+
   /// Whether the graph has any hub (folder-like page).
   late final bool hasHubs = data.nodes.any((n) => n.isHub);
 
@@ -170,11 +173,12 @@ class GraphModel {
     ];
   }
 
-  /// Tag pages actually used as tags, most used first.
+  /// Tag nodes (and pages targeted by inline `#tag` references) actually used as tags,
+  /// most used first.
   late final List<int> tags = () {
     final count = <int, int>{};
     for (var e = 0; e < edgeCount; e++) {
-      if (kind(e) == EdgeKind.tag) {
+      if (kind(e) == EdgeKind.tag || kind(e) == EdgeKind.tagged) {
         count[target(e)] = (count[target(e)] ?? 0) + 1;
       }
     }
@@ -292,7 +296,9 @@ class GraphFilter {
         : {
             tag!,
             for (final e in g.adjacency[tag!])
-              if (g.kind(e) == EdgeKind.tag && g.target(e) == tag) g.source(e),
+              if ((g.kind(e) == EdgeKind.tag || g.kind(e) == EdgeKind.tagged) &&
+                  g.target(e) == tag)
+                g.source(e),
           };
     String day(int i) {
       final ms = g.node(i).createdAt.toInt();

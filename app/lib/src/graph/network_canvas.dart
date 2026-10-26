@@ -619,7 +619,9 @@ class _NetworkPainter extends CustomPainter {
             .putIfAbsent(((r + _ringWidth) * 2).round(), _Buf.new)
             .add2(pos[2 * k], pos[2 * k + 1]);
       }
-      final ci = g.isJournal(sub.nodes[k]) ? -2 : s._colorIndex[k];
+      final ci = g.isTag(sub.nodes[k])
+          ? -3
+          : (g.isJournal(sub.nodes[k]) ? -2 : s._colorIndex[k]);
       final key = (ci, (r * 2).round());
       buckets.putIfAbsent(key, _Buf.new).add2(pos[2 * k], pos[2 * k + 1]);
     }
@@ -637,7 +639,9 @@ class _NetworkPainter extends CustomPainter {
     }
     for (final MapEntry(key: (ci, d2), value: pts) in buckets.entries) {
       if (pts.n == 0) continue;
-      var c = ci == -2 ? journalColor : (ci < 0 ? colors.muted : palette[ci]);
+      var c = ci == -3
+          ? colors.accent
+          : (ci == -2 ? journalColor : (ci < 0 ? colors.muted : palette[ci]));
       if (dim) c = c.withValues(alpha: 0.25);
       if (brain != null) c = colors.faint;
       canvas.drawRawPoints(
@@ -648,6 +652,17 @@ class _NetworkPainter extends CustomPainter {
           ..strokeWidth = d2.toDouble()
           ..strokeCap = StrokeCap.round,
       );
+    }
+    // Tag nodes are hollow rings (a name, not a page).
+    if (brain == null) {
+      for (var k = 0; k < sub.length; k++) {
+        if (!visible(k) || !g.isTag(sub.nodes[k])) continue;
+        canvas.drawCircle(
+          Offset(pos[2 * k], pos[2 * k + 1]),
+          s._radius[k] * 0.5,
+          Paint()..color = colors.paper,
+        );
+      }
     }
     // Activation glow (brain), highlighted and focused nodes on top.
     if (brain != null) {

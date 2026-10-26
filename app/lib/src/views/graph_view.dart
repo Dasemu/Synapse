@@ -176,7 +176,12 @@ class _GraphViewState extends State<GraphView> {
 
   void _open(int global) {
     final m = _model!;
-    AppScope.read(context).openId(m.node(global).id);
+    final app = AppScope.read(context);
+    if (m.isTag(global)) {
+      app.openTag(m.node(global).title);
+    } else {
+      app.openId(m.node(global).id);
+    }
   }
 
   @override
@@ -424,6 +429,7 @@ class _GraphViewState extends State<GraphView> {
       return TreeCanvas(
         model: m,
         onTap: _open,
+        onTag: AppScope.read(context).openTag,
         name: AppScope.read(context).backend.graphName,
       );
     }
@@ -776,7 +782,9 @@ class _LocalGraphPanelState extends State<LocalGraphPanel> {
                   compact: true,
                   focus: m.indexOf(widget.pageId),
                   cache: app.graphPositions,
-                  onTap: (g) => app.openId(m.node(g).id),
+                  onTap: (g) => m.isTag(g)
+                      ? app.openTag(m.node(g).title)
+                      : app.openId(m.node(g).id),
                 ),
         ),
       ],
