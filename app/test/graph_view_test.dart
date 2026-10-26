@@ -362,6 +362,59 @@ void main() {
       expect(find.text('Group: hubs'), findsOneWidget);
     });
   });
+
+  group('interactive tree', () {
+    // One hub with 200 pages: far more than the tree used to show ("… N more").
+    GraphData bigHub() {
+      GraphNode n(int i, {bool hub = false}) => GraphNode(
+        id: '$i',
+        title: hub ? 'Library' : 'Page $i',
+        createdAt: 0,
+        degree: 1,
+        backlinks: 0,
+        cluster: 0,
+        isHub: hub,
+        homeHub: 0,
+        tags: const [],
+      );
+      const count = 200;
+      return GraphData(
+        nodes: [n(0, hub: true), for (var i = 1; i <= count; i++) n(i)],
+        sources: Uint32List.fromList([for (var i = 1; i <= count; i++) 0]),
+        targets: Uint32List.fromList([for (var i = 1; i <= count; i++) i]),
+        kinds: Uint8List.fromList([for (var i = 1; i <= count; i++) 7]),
+        weights: Float32List.fromList([for (var i = 1; i <= count; i++) 1]),
+        seq: 1,
+      );
+    }
+
+    test('nothing is capped; big branches start collapsed', () {
+      final root = buildNamespaceTree(GraphModel(bigHub()));
+      final hub = root.children.single;
+      expect(hub.children, hasLength(200));
+      expect(hub.children.every((c) => c.global != null), isTrue);
+      expandInitial(root);
+      expect(root.expanded, isTrue);
+      expect(hub.expanded, isFalse);
+    });
+
+    testWidgets('branches expand and collapse in the canvas', (tester) async {
+      await pumpGraph(tester, _HubBackend(bigHub()));
+      await mode(tester, 'Tree');
+      final state = tester.state<TreeCanvasState>(find.byType(TreeCanvas));
+      expect(state.visibleCount, 2);
+      expect(find.text('2 of 202'), findsOneWidget);
+      state.toggle(state.root.children.single);
+      await settle(tester);
+      expect(state.visibleCount, 202);
+      await tester.tap(find.byKey(const ValueKey('tree-collapse-all')));
+      await settle(tester);
+      expect(state.visibleCount, 2);
+      await tester.tap(find.byKey(const ValueKey('tree-expand-all')));
+      await settle(tester);
+      expect(find.text('202 of 202'), findsOneWidget);
+    });
+  });
 }
 
 /// A memory backend whose graph data is fixed (so tests don't depend on its demo graph).
