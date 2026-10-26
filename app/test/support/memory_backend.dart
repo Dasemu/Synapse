@@ -514,6 +514,16 @@ class MemoryBackend implements GraphBackend {
   /// Type definitions like the core's `type_defs`: key -> (name, icon, removed).
   final typeDefs = <String, ({String name, String? icon, bool removed})>{};
 
+  /// Pages in the core's catalogue order (`created_at`, then id): the first spells a name.
+  List<PageDto> _byCreation() => pages.values.toList()
+    ..sort((a, b) {
+      final c = a.createdAt.compareTo(b.createdAt);
+      return c != 0 ? c : a.id.compareTo(b.id);
+    });
+
+  /// Like the core's `MAX_TAG_CHARS`.
+  static const maxTagChars = 48;
+
   ({String name, String? icon, bool removed})? _liveDef(String name) {
     final d = typeDefs[_tagKey(name)];
     return d == null || d.removed ? null : d;
@@ -522,7 +532,7 @@ class MemoryBackend implements GraphBackend {
   @override
   Future<List<TagDto>> typeCatalog() async {
     final used = <String, TagDto>{};
-    for (final p in pages.values) {
+    for (final p in _byCreation()) {
       for (final t in [if (p.pageType != null) p.pageType!]) {
         final k = _tagKey(t);
         used[k] = _tag(
@@ -580,6 +590,9 @@ class MemoryBackend implements GraphBackend {
   String _typeName(String raw) {
     final n = _normTag(raw);
     if (n.isEmpty) throw Exception('Empty type name');
+    if (n.runes.length > maxTagChars) {
+      throw Exception('Type is longer than $maxTagChars characters');
+    }
     return n;
   }
 
@@ -587,7 +600,7 @@ class MemoryBackend implements GraphBackend {
   String _typeSpelling(String name) {
     final d = _liveDef(name);
     if (d != null) return d.name;
-    for (final p in pages.values) {
+    for (final p in _byCreation()) {
       if (p.pageType != null && _tagKey(p.pageType!) == _tagKey(name)) {
         return p.pageType!;
       }
@@ -616,6 +629,10 @@ class MemoryBackend implements GraphBackend {
             i.runes.every((r) => r < 128))) {
       throw Exception('Not an emoji icon');
     }
+    final current = _liveDef(n);
+    final next = (i == null || i.isEmpty) ? null : i;
+    // Like the core: clearing an undefined type's icon defines nothing.
+    if (current == null ? next == null : current.icon == next) return;
     typeDefs[_tagKey(n)] = (
       name: _typeSpelling(n),
       icon: (i == null || i.isEmpty) ? null : i,
@@ -710,6 +727,9 @@ class MemoryBackend implements GraphBackend {
   Future<int> renameTag(String old, String new_) async {
     final name = _normTag(new_);
     if (name.isEmpty) throw Exception('Empty tag name');
+    if (name.runes.length > maxTagChars) {
+      throw Exception('Tag is longer than $maxTagChars characters');
+    }
     var n = 0;
     for (final p in pages.values.toList()) {
       final hasTag = p.tags.any((t) => _tagKey(t) == _tagKey(old));

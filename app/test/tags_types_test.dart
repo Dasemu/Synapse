@@ -73,6 +73,14 @@ void main() {
     'memory backend keeps icons through rename and drops them on delete',
     () async {
       final b = await demo();
+      // Like the core: clearing an undefined type's icon defines nothing, names are capped,
+      // and renaming a plain tag defines no type.
+      await b.setTypeIcon('nueva', null);
+      expect(b.typeDefs.containsKey('nueva'), isFalse);
+      expect(() => b.renameTag('math', 'x' * 49), throwsException);
+      expect(() => b.createType('x' * 49), throwsException);
+      await b.renameTag('math', 'idea');
+      expect(b.typeDefs.containsKey('math'), isFalse);
       expect(await b.renameType('persona', 'Gente'), 2);
       var cat = await b.typeCatalog();
       expect(cat.firstWhere((t) => t.name == 'Gente').icon, '🧑');
