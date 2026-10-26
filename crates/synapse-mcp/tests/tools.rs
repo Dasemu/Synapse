@@ -620,3 +620,28 @@ fn resources_render_pages() {
     let out = read(&g, |g| tools::page_resource(g, "Dune"));
     assert!(out.contains("- Arrakis is a desert planet\n"), "{out}");
 }
+
+#[test]
+fn extreme_dates_and_cursors_are_rejected() {
+    let (_d, g) = fixture();
+    let e = read_err(&g, |g| {
+        tools::timeline(
+            g,
+            &RangeParams {
+                from: None,
+                to: Some("-262143-01-03".into()),
+            },
+        )
+    });
+    assert!(e.contains("bad date"), "{e}");
+    let e = read_err(&g, |g| {
+        tools::list_pages(
+            g,
+            &ListPagesParams {
+                cursor: Some(usize::MAX.to_string()),
+                ..Default::default()
+            },
+        )
+    });
+    assert!(e.contains("bad cursor"), "{e}");
+}

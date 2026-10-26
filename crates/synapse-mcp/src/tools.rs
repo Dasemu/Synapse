@@ -69,6 +69,8 @@ impl From<rusqlite::Error> for ToolError {
 pub type ToolResult = Result<String, ToolError>;
 
 const MAX_RANGE_DAYS: i64 = 31;
+/// Cursors are offsets; capped so offset arithmetic cannot overflow.
+const MAX_CURSOR: usize = 1 << 32;
 const MAX_TIMELINE_DAYS: i64 = 92;
 
 // ------------------------------------------------------------------ helpers
@@ -98,7 +100,10 @@ pub fn parse_date(g: &Graph, s: &str) -> Result<NaiveDate, ToolError> {
         "yesterday" => Ok(today - Duration::days(1)),
         "tomorrow" => Ok(today + Duration::days(1)),
         _ => NaiveDate::parse_from_str(s, "%Y-%m-%d")
-            .map_err(|_| err(format!("bad date {s:?}: use YYYY-MM-DD or \"today\""))),
+            .ok()
+            // Sane years only: date arithmetic near chrono's limits would overflow.
+            .filter(|d| (1000..=9999).contains(&chrono::Datelike::year(d)))
+            .ok_or_else(|| err(format!("bad date {s:?}: use YYYY-MM-DD or \"today\""))),
     }
 }
 
@@ -131,7 +136,11 @@ fn date_range(
 fn parse_cursor(c: &Option<String>) -> Result<usize, ToolError> {
     match c.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
         None => Ok(0),
-        Some(c) => c.parse().map_err(|_| err(format!("bad cursor {c:?}"))),
+        Some(c) => c
+            .parse::<usize>()
+            .ok()
+            .filter(|n| *n <= MAX_CURSOR)
+            .ok_or_else(|| err(format!("bad cursor {c:?}"))),
     }
 }
 

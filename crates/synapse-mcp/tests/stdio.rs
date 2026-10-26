@@ -161,3 +161,36 @@ fn refuses_a_missing_graph() {
     assert!(!out.status.success());
     assert!(!dir.path().join("nope").exists(), "must not create a graph");
 }
+
+#[test]
+fn refuses_a_graph_on_another_schema() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let g = Graph::open(dir.path()).unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='1' WHERE key='schema'", [])
+            .unwrap();
+    }
+    let mut s = Server::start(dir.path(), &[]);
+    s.init();
+    let r = s.call(
+        2,
+        "tools/call",
+        json!({"name": "list_pages", "arguments": {}}),
+    );
+    let text = r["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("schema is v1"), "{r}");
+    drop(s);
+    let g = Graph::open(dir.path()).unwrap();
+    let v: String = g
+        .conn()
+        .query_row("SELECT value FROM meta WHERE key='schema'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        v,
+        synapse_core::SCHEMA_VERSION.to_string(),
+        "re-opened by core only here"
+    );
+}

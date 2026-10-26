@@ -75,12 +75,54 @@ impl GraphHost for LocalHost {
         let dir = self.dir.clone();
         Box::pin(async move {
             tokio::task::spawn_blocking(move || {
-                let g = Graph::open(&dir).map_err(ToolError::from)?;
+                let g = open_local(&dir)?;
                 job(&g)
             })
             .await
             .map_err(|e| ToolError::new(format!("internal error: {e}")))?
         })
+    }
+}
+
+/// Opens the app's graph without surprises: it must still exist (never re-created) and be
+/// on this binary's schema (`Graph::open` would migrate or re-stamp a live database).
+fn open_local(dir: &std::path::Path) -> Result<Graph, ToolError> {
+    let db = dir.join("synapse.db");
+    if !db.is_file() {
+        return Err(ToolError::new(format!("graph {} is gone", dir.display())));
+    }
+    let schema: Option<String> = {
+        let conn = rusqlite::Connection::open_with_flags(
+            &db,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.query_row("SELECT value FROM meta WHERE key='schema'", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .ok()
+    };
+    let want = synapse_core::SCHEMA_VERSION.to_string();
+    if schema.as_deref() != Some(want.as_str()) {
+        return Err(ToolError::new(format!(
+            "graph schema is v{} but this synapse-mcp expects v{want}; use a synapse-mcp built \
+             from the same version as the app",
+            schema.as_deref().unwrap_or("?")
+        )));
+    }
+    with_retry_open(|| Graph::open(dir).map_err(ToolError::from))
+}
+
+fn with_retry_open(f: impl Fn() -> Result<Graph, ToolError>) -> Result<Graph, ToolError> {
+    let mut attempt = 0;
+    loop {
+        match f() {
+            Err(e) if e.busy && attempt < BUSY_RETRIES => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(200 * attempt as u64));
+            }
+            other => return other,
+        }
     }
 }
 
@@ -96,8 +138,9 @@ impl<'a> Txn<'a> {
         Ok(Self { g, open: true })
     }
     fn commit(mut self) -> Result<(), ToolError> {
-        self.open = false;
+        // On failure `open` stays true and Drop rolls back, so no transaction leaks.
         self.g.conn().execute_batch("COMMIT")?;
+        self.open = false;
         Ok(())
     }
 }
