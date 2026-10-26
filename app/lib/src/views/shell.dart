@@ -177,7 +177,7 @@ class _TopBar extends StatelessWidget {
           const Spacer(),
           if (narrow) const TabCountButton(),
           // Phones: an icon instead of the pill keeps the bar from overflowing.
-          if (MediaQuery.sizeOf(context).width < 480)
+          if (MediaQuery.sizeOf(context).width < 600)
             icon(
               Icons.search_rounded,
               'Search (${app.keymap.of(AppAction.quickSwitcher).label})',
