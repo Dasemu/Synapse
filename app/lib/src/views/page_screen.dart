@@ -7,7 +7,11 @@ import '../state/outline_controller.dart';
 import '../theme/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
+import '../widgets/pickers.dart';
+import '../widgets/tags.dart';
+import 'convert_dialog.dart';
 import 'graph_view.dart';
+import 'hub_screen.dart';
 import 'journals_view.dart';
 
 /// A single page: title, aliases, outline, linked references and related notes.
@@ -24,6 +28,8 @@ class _PageScreenState extends State<PageScreen> {
   OutlineController? _outline;
   List<BacklinkGroup>? _backlinks;
   List<RelatedDto>? _related;
+  PageStructure? _structure;
+  Map<String, int> _hubSizes = const {};
   Object? _error;
 
   @override
@@ -69,6 +75,8 @@ class _PageScreenState extends State<PageScreen> {
       app.pageShown(view.page);
       // Make sure pending writes (e.g. a link just typed elsewhere) are visible.
       await app.queue.idle;
+      if (view.page.journalDate == null) await _loadStructure();
+      if (view.page.isHub) return;
       final results = await Future.wait([
         app.backend.backlinks(view.page.id),
         app.backend.related(view.page.id),
@@ -83,6 +91,27 @@ class _PageScreenState extends State<PageScreen> {
     }
   }
 
+  /// Hub and namespace context of the page (not shown for journals).
+  Future<void> _loadStructure() async {
+    final app = AppScope.read(context);
+    final id = _view!.page.id;
+    try {
+      final st = await app.backend.pageStructure(id);
+      var sizes = const <String, int>{};
+      if (st.isHub && st.members.any((m) => m.isHub)) {
+        final hubs = await app.backend.hubs();
+        sizes = {for (final h in hubs.hubs) h.id: h.members.length};
+      }
+      if (!mounted) return;
+      setState(() {
+        _structure = st;
+        _hubSizes = sizes;
+      });
+    } catch (e) {
+      debugPrint('page structure failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -92,10 +121,20 @@ class _PageScreenState extends State<PageScreen> {
     }
     final view = _view;
     if (view == null) return const SizedBox.shrink();
+    if (view.page.isHub) {
+      return HubScreen(
+        page: view.page,
+        aliases: view.aliases,
+        structure: _structure,
+        hubSizes: _hubSizes,
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
-        final wide = box.maxWidth >= 1180;
-        final mainWidth = wide ? box.maxWidth - 300 : box.maxWidth;
+        final open = AppScope.of(context).pageSidebar;
+        final wide = box.maxWidth >= 900;
+        final side = open && wide;
+        final mainWidth = side ? box.maxWidth - 300 : box.maxWidth;
         final pad = sidePadding(mainWidth);
         final scroll = CustomScrollView(
           slivers: [
@@ -104,12 +143,18 @@ class _PageScreenState extends State<PageScreen> {
               padding: EdgeInsets.symmetric(horizontal: pad),
               sliver: SliverMainAxisGroup(
                 slivers: [
-                  SliverToBoxAdapter(child: _Header(view: view)),
+                  SliverToBoxAdapter(
+                    child: _Header(view: view, structure: _structure),
+                  ),
+                  if (_structure != null)
+                    SliverToBoxAdapter(
+                      child: _NamespaceSection(structure: _structure!),
+                    ),
                   OutlineSliver(controller: _outline!),
                   SliverToBoxAdapter(
                     child: _LinkedReferences(groups: _backlinks),
                   ),
-                  if (!wide) ...[
+                  if (open && !wide) ...[
                     SliverToBoxAdapter(child: RelatedPanel(related: _related)),
                     SliverToBoxAdapter(
                       child: Padding(
@@ -124,7 +169,7 @@ class _PageScreenState extends State<PageScreen> {
             ),
           ],
         );
-        if (!wide) return scroll;
+        if (!side) return scroll;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -154,8 +199,9 @@ class _PageScreenState extends State<PageScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.view});
+  const _Header({required this.view, required this.structure});
   final PageData view;
+  final PageStructure? structure;
 
   @override
   Widget build(BuildContext context) {
@@ -185,13 +231,38 @@ class _Header extends StatelessWidget {
               ],
             ),
           ] else ...[
-            _TitleField(page: page),
+            if (structure != null && structure!.nsPath.isNotEmpty) ...[
+              Breadcrumb(path: structure!.nsPath),
+              const SizedBox(height: 6),
+            ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: TitleField(page: page)),
+                IconButton(
+                  key: const ValueKey('page-sidebar-toggle'),
+                  tooltip: AppScope.of(context).pageSidebar
+                      ? 'Hide graph sidebar'
+                      : 'Show graph sidebar',
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 20,
+                  color: AppScope.of(context).pageSidebar
+                      ? colors.accent
+                      : colors.muted,
+                  icon: const Icon(Icons.view_sidebar_outlined),
+                  onPressed: AppScope.read(context).togglePageSidebar,
+                ),
+                PageMenu(page: page, structure: structure),
+              ],
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 14,
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                if (structure != null && structure!.inHubs.isNotEmpty)
+                  InHubs(pageId: page.id, hubs: structure!.inHubs),
                 if (page.originJournal != null)
                   TextLink(
                     'Born ${longDate(page.originJournal!)}',
@@ -202,6 +273,9 @@ class _Header extends StatelessWidget {
                 _Aliases(page: page, initial: view.aliases),
               ],
             ),
+            const SizedBox(height: 8),
+            TagBar(page: page),
+            if (page.isTag) TaggedNotes(tag: page.title),
           ],
         ],
       ),
@@ -210,15 +284,15 @@ class _Header extends StatelessWidget {
 }
 
 /// Page title; editing it renames the page (and rewrites every link to it).
-class _TitleField extends StatefulWidget {
-  const _TitleField({required this.page});
+class TitleField extends StatefulWidget {
+  const TitleField({super.key, required this.page});
   final PageDto page;
 
   @override
-  State<_TitleField> createState() => _TitleFieldState();
+  State<TitleField> createState() => TitleFieldState();
 }
 
-class _TitleFieldState extends State<_TitleField> {
+class TitleFieldState extends State<TitleField> {
   late final _text = TextEditingController(text: widget.page.title);
   late final _focus = FocusNode()..addListener(_blur);
   late String _committed = widget.page.title;
@@ -244,10 +318,12 @@ class _TitleFieldState extends State<_TitleField> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await app.queue.run(() => app.backend.renamePage(widget.page.id, title));
+      final old = _committed;
       _committed = title;
       app.renamed(widget.page.id, title);
-      // The core rewrote links in other blocks, possibly on this page: reload them.
-      app.reload();
+      // The core rewrote links in other blocks, possibly on this page: reload them. The
+      // route must not keep opening the old title (that would create a duplicate page).
+      app.replaceWithId(widget.page.id, old);
     } catch (e) {
       _text.text = _committed;
       messenger.showSnackBar(SnackBar(content: Text('Rename failed: $e')));
@@ -489,6 +565,251 @@ class RelatedPanel extends StatelessWidget {
                   ],
                 ),
               ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Namespace ancestors of the page, `A / B` above the title. Segments open their page
+/// (virtual ones are created on open, like links).
+class Breadcrumb extends StatelessWidget {
+  const Breadcrumb({super.key, required this.path});
+  final List<NamespaceEntry> path;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final app = AppScope.read(context);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Icon(Icons.account_tree_outlined, size: 14, color: colors.faint),
+        for (var i = 0; i < path.length; i++) ...[
+          if (i > 0)
+            Text('/', style: TextStyle(fontSize: 12, color: colors.faint)),
+          TextLink(
+            path[i].title.split('/').last,
+            onTap: () => path[i].id != null
+                ? app.openId(path[i].id!)
+                : app.openTitle(path[i].title),
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// "In: hub, hub" chips for the hubs containing the page; each has a remove button.
+class InHubs extends StatelessWidget {
+  const InHubs({super.key, required this.pageId, required this.hubs});
+  final String pageId;
+  final List<PageBrief> hubs;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final app = AppScope.read(context);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('In', style: TextStyle(fontSize: 12, color: colors.faint)),
+        for (final h in hubs)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextLink(
+                h.title,
+                icon: Icons.folder_outlined,
+                onTap: () => app.openId(h.id),
+                style: const TextStyle(fontSize: 12),
+              ),
+              InkResponse(
+                key: ValueKey('leave-${h.id}'),
+                radius: 10,
+                onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await app.queue.run(
+                      () => app.backend.removeFromHub(pageId, h.id),
+                      report: false,
+                    );
+                    app.reload();
+                  } catch (e) {
+                    messenger.showSnackBar(
+                      SnackBar(content: Text(errorText(e))),
+                    );
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 12,
+                    color: colors.faint,
+                  ),
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+/// The page's "⋯" menu: hub conversion and hub membership.
+class PageMenu extends StatelessWidget {
+  const PageMenu({super.key, required this.page, required this.structure});
+  final PageDto page;
+  final PageStructure? structure;
+
+  Future<void> _addToHub(BuildContext context) async {
+    final app = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final taken = {page.id, ...?structure?.inHubs.map((h) => h.id)};
+    final r = await showPagePicker(
+      context,
+      heading: 'Add to hub',
+      canCreateHub: true,
+      search: (q) async {
+        final all = await app.backend.hubs();
+        return [
+          for (final h in all.hubs)
+            if (!taken.contains(h.id) &&
+                h.title.toLowerCase().contains(q.toLowerCase()))
+              PickItem(id: h.id, title: h.title, isHub: true),
+        ];
+      },
+    );
+    if (r == null) return;
+    try {
+      await app.queue.run(() async {
+        final id =
+            r.item?.id ?? (await app.backend.createHub(r.newTitle!, '')).id;
+        await app.backend.addToHub(page.id, id);
+      }, report: false);
+      app.reload();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
+    }
+  }
+
+  Future<void> _toHub(BuildContext context) async {
+    final app = AppScope.read(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => ConvertToHubDialog(page: page),
+    );
+    if (ok == true) {
+      app.recent.removeWhere((p) => p.id == page.id);
+      app.replaceWithId(page.id, page.title);
+    }
+  }
+
+  Future<void> _toNote(BuildContext context) async {
+    final app = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await app.queue.run(
+        () => app.backend.convertToNote(page.id),
+        report: false,
+      );
+      app.reload();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<String>(
+    key: const ValueKey('page-menu'),
+    icon: Icon(Icons.more_horiz_rounded, color: context.colors.faint),
+    tooltip: 'More',
+    onSelected: (v) => switch (v) {
+      'hub' => _toHub(context),
+      'note' => _toNote(context),
+      _ => _addToHub(context),
+    },
+    itemBuilder: (_) => [
+      if (!page.isHub)
+        const PopupMenuItem(value: 'hub', child: Text('Convert to hub…')),
+      if (page.isHub)
+        const PopupMenuItem(value: 'note', child: Text('Convert to note')),
+      const PopupMenuItem(value: 'add', child: Text('Add to hub…')),
+    ],
+  );
+}
+
+/// "Namespace" listing (title-kin children) under the header.
+class _NamespaceSection extends StatelessWidget {
+  const _NamespaceSection({required this.structure});
+  final PageStructure structure;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final app = AppScope.read(context);
+    final st = structure;
+    if (st.nsChildren.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(
+            'Namespace',
+            trailing: Text(
+              '${st.nsChildren.length}',
+              style: TextStyle(fontSize: 11, color: colors.faint),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            children: [
+              for (final c in st.nsChildren)
+                SizedBox(
+                  width: 230,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => c.id != null
+                        ? app.openId(c.id!)
+                        : app.openTitle(c.title),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.account_tree_outlined,
+                            size: 16,
+                            color: colors.accent.withAlpha(0xCC),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              c.title.split('/').last,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: colors.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );

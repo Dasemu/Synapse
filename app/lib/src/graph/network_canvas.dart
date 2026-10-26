@@ -10,7 +10,7 @@ import '../state/app_state.dart';
 import '../theme/theme.dart';
 import 'graph_model.dart';
 
-enum ColorBy { cluster, tag, none }
+enum ColorBy { cluster, tag, hub, tagGroup, none }
 
 /// Calm categorical palette (cluster / tag colours), tuned for each theme.
 List<Color> graphPalette(Brightness b) => b == Brightness.light
@@ -119,6 +119,7 @@ class NetworkCanvasState extends State<NetworkCanvas>
   // Reused point buffers (no per-frame allocation or boxing).
   final _edgeBufs = <EdgeKind, _Buf>{};
   final _nodeBufs = <(int, int), _Buf>{};
+  final _hubBufs = <int, _Buf>{};
   Float32List _meshPos = Float32List(0);
   Int32List _meshCol = Int32List(0);
   double _startScale = 1;
@@ -189,6 +190,8 @@ class NetworkCanvasState extends State<NetworkCanvas>
         3.0,
         22.0,
       );
+      // Hubs are a little larger; the painter adds a ring around them.
+      if (n.isHub) _radius[k] = _radius[k] * 1.2 + 1.5;
       _colorIndex[k] = switch (widget.colorBy) {
         ColorBy.cluster => n.cluster < 10 ? n.cluster : -1,
         ColorBy.tag =>
@@ -198,6 +201,18 @@ class NetworkCanvasState extends State<NetworkCanvas>
                   final i = g.tags.indexOf(n.primaryTag!);
                   return i < 10 ? i : -1;
                 })(),
+        ColorBy.hub =>
+          n.homeHub == null
+              ? -1
+              : (() {
+                  final r = g.hubRank[n.homeHub!] ?? -1;
+                  return r < 10 ? r : -1;
+                })(),
+        ColorBy.tagGroup => (() {
+          final t = g.homeTag(sub.nodes[k]);
+          final r = t == null ? -1 : (g.tagGroupRank[t] ?? -1);
+          return r < 10 ? r : -1;
+        })(),
         ColorBy.none => -1,
       };
     }
@@ -451,6 +466,8 @@ class _NetworkPainter extends CustomPainter {
 
   /// Laid-out labels per subgraph, invalidated when the text colour changes.
   static final _labels = Expando<(Color, Map<int, TextPainter>)>();
+  static final _hullLabels = Expando<(Color, Map<int, TextPainter>)>();
+  static const _ringWidth = 1.6;
 
   Color _edgeColor(EdgeKind k) => switch (k) {
     EdgeKind.link => colors.muted,
@@ -460,6 +477,8 @@ class _NetworkPainter extends CustomPainter {
     EdgeKind.embed => colors.ref,
     EdgeKind.mention => colors.faint,
     EdgeKind.synapse => palette[3],
+    EdgeKind.contains => colors.ink,
+    EdgeKind.tagged => palette[1],
   };
 
   @override
@@ -494,7 +513,9 @@ class _NetworkPainter extends CustomPainter {
     canvas.scale(scale);
 
     // Cluster hulls.
-    if (s.widget.hulls) _hulls(canvas, sub, pos, scale);
+    final hullLabels = s.widget.hulls
+        ? _hulls(canvas, sub, pos, scale)
+        : const <_HullLabel>[];
 
     // Edges, batched by kind.
     final pulse = s._pulse.value;
@@ -585,14 +606,34 @@ class _NetworkPainter extends CustomPainter {
       b.n = 0;
     }
     final journalColor = colors.faint;
+    for (final b in s._hubBufs.values) {
+      b.n = 0;
+    }
     for (var k = 0; k < sub.length; k++) {
       if (!visible(k)) continue;
       final r = brain == null
           ? s._radius[k]
           : 3 + 9 * (brain.activation[sub.nodes[k]] ?? 0);
+      if (g.isHub(sub.nodes[k])) {
+        s._hubBufs
+            .putIfAbsent(((r + _ringWidth) * 2).round(), _Buf.new)
+            .add2(pos[2 * k], pos[2 * k + 1]);
+      }
       final ci = g.isJournal(sub.nodes[k]) ? -2 : s._colorIndex[k];
       final key = (ci, (r * 2).round());
       buckets.putIfAbsent(key, _Buf.new).add2(pos[2 * k], pos[2 * k + 1]);
+    }
+    // Hub rings: a slightly larger disc under the node (one call per size bucket).
+    for (final MapEntry(key: d2, value: pts) in s._hubBufs.entries) {
+      if (pts.n == 0) continue;
+      canvas.drawRawPoints(
+        ui.PointMode.points,
+        pts.view,
+        Paint()
+          ..color = colors.ink.withValues(alpha: dim ? 0.2 : 0.8)
+          ..strokeWidth = d2.toDouble()
+          ..strokeCap = StrokeCap.round,
+      );
     }
     for (final MapEntry(key: (ci, d2), value: pts) in buckets.entries) {
       if (pts.n == 0) continue;
@@ -656,6 +697,7 @@ class _NetworkPainter extends CustomPainter {
     }
     canvas.restore();
 
+    _paintHullLabels(canvas, size, sub, hullLabels);
     _paintLabels(canvas, size, sub, pos, highlight, focusLocal);
   }
 
@@ -748,18 +790,39 @@ class _NetworkPainter extends CustomPainter {
     }
   }
 
-  void _hulls(Canvas canvas, SubGraph sub, Float32List pos, double scale) {
-    final byCluster = <int, List<Offset>>{};
+  /// Draws the soft hulls (by hub when colouring by hub, else by community) and returns
+  /// the labels to draw on screen afterwards.
+  List<_HullLabel> _hulls(
+    Canvas canvas,
+    SubGraph sub,
+    Float32List pos,
+    double scale,
+  ) {
+    final g = sub.model;
+    final by = state.widget.colorBy;
+    final byHub = by == ColorBy.hub;
+    final byTag = by == ColorBy.tagGroup;
+    final groups = <int, List<Offset>>{};
     for (var k = 0; k < sub.length; k++) {
-      final c = sub.model.node(sub.nodes[k]).cluster;
-      if (c >= 10) continue;
-      byCluster
-          .putIfAbsent(c, () => [])
-          .add(Offset(pos[2 * k], pos[2 * k + 1]));
+      final n = g.node(sub.nodes[k]);
+      final int c;
+      if (byHub) {
+        final h = n.homeHub;
+        c = h == null ? -1 : (g.hubRank[h] ?? -1);
+      } else if (byTag) {
+        final t = g.homeTag(sub.nodes[k]);
+        c = t == null ? -1 : (g.tagGroupRank[t] ?? -1);
+      } else {
+        c = n.cluster;
+      }
+      if (c < 0 || c >= 10) continue;
+      groups.putIfAbsent(c, () => []).add(Offset(pos[2 * k], pos[2 * k + 1]));
     }
-    for (final MapEntry(key: c, value: pts) in byCluster.entries) {
+    final labels = <_HullLabel>[];
+    for (final MapEntry(key: c, value: pts) in groups.entries) {
       if (pts.length < 3) continue;
-      final hull = convexHull(corePoints(pts));
+      final core = corePoints(pts);
+      final hull = convexHull(core);
       if (hull.length < 3) continue;
       final path = Path()..addPolygon(hull, true);
       final color = palette[c];
@@ -777,6 +840,65 @@ class _NetworkPainter extends CustomPainter {
           ..strokeWidth = 28 / scale
           ..strokeJoin = StrokeJoin.round,
       );
+      if (byHub || byTag) {
+        var cx = 0.0, cy = 0.0, x0 = double.infinity, x1 = -double.infinity;
+        for (final p in core) {
+          cx += p.dx;
+          cy += p.dy;
+          x0 = math.min(x0, p.dx);
+          x1 = math.max(x1, p.dx);
+        }
+        labels.add(
+          _HullLabel(
+            c,
+            byHub ? g.node(g.hubOrder[c]).title : g.tagLabel(g.tagGroups[c]),
+            Offset(cx / core.length, cy / core.length),
+            (x1 - x0) * scale,
+          ),
+        );
+      }
+    }
+    return labels;
+  }
+
+  /// Hub titles at the hull centroids, only when the hull is wide enough on screen.
+  void _paintHullLabels(
+    Canvas canvas,
+    Size size,
+    SubGraph sub,
+    List<_HullLabel> labels,
+  ) {
+    if (labels.isEmpty) return;
+    final s = state;
+    var entry = _hullLabels[sub];
+    if (entry == null || entry.$1 != colors.muted) {
+      entry = _hullLabels[sub] = (colors.muted, <int, TextPainter>{});
+    }
+    for (final l in labels) {
+      if (l.screenWidth < 90) continue;
+      final at = l.center * s._scale + s._offset;
+      if (at.dx < -100 ||
+          at.dy < -30 ||
+          at.dx > size.width + 100 ||
+          at.dy > size.height + 30) {
+        continue;
+      }
+      final tp = entry.$2[l.group] ??= TextPainter(
+        text: TextSpan(
+          text: l.title,
+          style: TextStyle(
+            fontFamily: uiFont,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: colors.muted,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+        textScaler: textScaler,
+      )..layout(maxWidth: 200);
+      tp.paint(canvas, at - Offset(tp.width / 2, tp.height / 2));
     }
   }
 
@@ -813,6 +935,7 @@ class _NetworkPainter extends CustomPainter {
           k == focus ||
           (brainAct != null && brainAct > 0.15) ||
           screenR >= (compact ? 7 : (sub.length > 200 ? 8.5 : 5.5)) ||
+          (!compact && sub.model.isHub(sub.nodes[k]) && screenR >= 5) ||
           (sub.length <= 40 && !compact)) {
         candidates.add(k);
       }
@@ -883,6 +1006,15 @@ class _NetworkPainter extends CustomPainter {
   @override
   bool shouldRepaint(_NetworkPainter old) =>
       old.colors != colors || !identical(old.state, state);
+}
+
+/// A hub title to draw at a hull centroid (world position, screen width of the hull).
+class _HullLabel {
+  const _HullLabel(this.group, this.title, this.center, this.screenWidth);
+  final int group;
+  final String title;
+  final Offset center;
+  final double screenWidth;
 }
 
 /// Growable float buffer reused across frames.

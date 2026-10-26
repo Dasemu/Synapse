@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 
-enum CompletionKind { page, tag, block }
+enum CompletionKind { page, tag, block, command }
 
-/// An autocomplete trigger under the caret: `[[query`, `#query` or `((query`.
+/// An autocomplete trigger under the caret: `[[query`, `#query`, `((query` or `/query`.
 class CompletionQuery {
   const CompletionQuery(this.kind, this.start, this.query);
 
@@ -39,6 +39,121 @@ class CompletionItem {
 
 bool _ws(String c) => c.trim().isEmpty;
 
+/// A `/command`. `insert` is the text it produces; `|` marks where the caret lands (end of
+/// the text when absent). `then` re-opens autocomplete afterwards (the link commands).
+class SlashCommand {
+  const SlashCommand(
+    this.name,
+    this.label,
+    this.insert, {
+    this.keywords = '',
+    this.then = false,
+  });
+  final String name;
+  final String label;
+  final String insert;
+  final String keywords;
+  final bool then;
+
+  /// Today's date as a journal title, for `/today`.
+  static String today() {
+    final d = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  String text() => insert.replaceAll('{today}', today());
+}
+
+const slashCommands = [
+  SlashCommand(
+    'link',
+    'Link to a page',
+    '[[|]]',
+    keywords: 'page wiki',
+    then: true,
+  ),
+  SlashCommand(
+    'ref',
+    'Reference a block',
+    '((|))',
+    keywords: 'block',
+    then: true,
+  ),
+  SlashCommand('url', 'Web link', '[|](https://)', keywords: 'http markdown'),
+  SlashCommand('image', 'Image', '![|](https://)', keywords: 'picture img'),
+  SlashCommand('bold', 'Bold', '**|**', keywords: 'strong'),
+  SlashCommand('italic', 'Italic', '*|*', keywords: 'emphasis'),
+  SlashCommand('strike', 'Strikethrough', '~~|~~', keywords: 'delete'),
+  SlashCommand('highlight', 'Highlight', '==|==', keywords: 'mark'),
+  SlashCommand('code', 'Inline code', '`|`', keywords: 'mono'),
+  SlashCommand('codeblock', 'Code block', '```\n|\n```', keywords: 'fence'),
+  SlashCommand('h1', 'Heading 1', '# |', keywords: 'title'),
+  SlashCommand('h2', 'Heading 2', '## |', keywords: 'title'),
+  SlashCommand('h3', 'Heading 3', '### |', keywords: 'title'),
+  SlashCommand('todo', 'Task', 'TODO |', keywords: 'task checkbox'),
+  SlashCommand('quote', 'Quote', '> |', keywords: 'blockquote'),
+  SlashCommand('divider', 'Divider', '---', keywords: 'rule line hr'),
+  SlashCommand(
+    'today',
+    "Link to today's journal",
+    '[[{today}]]',
+    keywords: 'date',
+  ),
+  SlashCommand('tag', 'Tag', '#|', keywords: 'hashtag', then: true),
+];
+
+/// Commands matching `query` (name prefix first, then name/label/keyword substrings).
+List<SlashCommand> matchCommands(String query, {int limit = 8}) {
+  final q = query.toLowerCase();
+  final starts = <SlashCommand>[];
+  final rest = <SlashCommand>[];
+  for (final c in slashCommands) {
+    if (c.name.startsWith(q)) {
+      starts.add(c);
+    } else if ('${c.label} ${c.keywords}'.toLowerCase().contains(q)) {
+      rest.add(c);
+    }
+  }
+  return [...starts, ...rest].take(limit).toList();
+}
+
+/// Wraps the selection in `open`/`close` (or inserts the pair with the caret between). If the
+/// selection is already wrapped, unwraps it.
+TextEditingValue wrapSelection(TextEditingValue v, String open, String close) {
+  final sel = v.selection;
+  if (!sel.isValid) return v;
+  final t = v.text;
+  final inner = t.substring(sel.start, sel.end);
+  if (!sel.isCollapsed &&
+      sel.start >= open.length &&
+      sel.end + close.length <= t.length &&
+      t.substring(sel.start - open.length, sel.start) == open &&
+      t.substring(sel.end, sel.end + close.length) == close) {
+    return TextEditingValue(
+      text:
+          t.substring(0, sel.start - open.length) +
+          inner +
+          t.substring(sel.end + close.length),
+      selection: TextSelection(
+        baseOffset: sel.start - open.length,
+        extentOffset: sel.end - open.length,
+      ),
+    );
+  }
+  final text =
+      t.substring(0, sel.start) + open + inner + close + t.substring(sel.end);
+  return TextEditingValue(
+    text: text,
+    selection: sel.isCollapsed
+        ? TextSelection.collapsed(offset: sel.start + open.length)
+        : TextSelection(
+            baseOffset: sel.start + open.length,
+            extentOffset: sel.end + open.length,
+          ),
+  );
+}
+
 /// Finds the autocomplete trigger that the caret is in, if any.
 CompletionQuery? detectCompletion(String text, int caret) {
   if (caret < 0 || caret > text.length) return null;
@@ -69,6 +184,15 @@ CompletionQuery? detectCompletion(String text, int caret) {
       ),
     );
   }
+  final slash = before.lastIndexOf('/');
+  if (slash >= 0 && (slash == 0 || _ws(before[slash - 1]))) {
+    final q = before.substring(slash + 1);
+    if (!q.contains(RegExp(r'\s'))) {
+      consider(
+        CompletionQuery(CompletionKind.command, lineStart + slash + 1, q),
+      );
+    }
+  }
   final hash = before.lastIndexOf('#');
   if (hash >= 0 && (hash == 0 || _ws(before[hash - 1]))) {
     final q = before.substring(hash + 1);
@@ -98,6 +222,19 @@ TextEditingValue applyCompletion(
   final head = text.substring(0, q.start);
   var tail = text.substring(end);
   switch (q.kind) {
+    case CompletionKind.command:
+      final cmd = slashCommands.firstWhere((c) => c.name == item.value);
+      final body = cmd.text();
+      final at = body.indexOf('|');
+      final clean = body.replaceFirst('|', '');
+      // `head` still ends with the `/`.
+      final before = head.substring(0, head.length - 1);
+      return TextEditingValue(
+        text: before + clean + tail,
+        selection: TextSelection.collapsed(
+          offset: before.length + (at < 0 ? clean.length : at),
+        ),
+      );
     case CompletionKind.page:
       if (tail.startsWith(']]')) tail = tail.substring(2);
       final t = '$head${item.value}]]';

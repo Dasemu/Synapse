@@ -11,6 +11,9 @@ export '../rust/api/dto.dart';
 /// in-memory implementation. Keeping the UI on this interface (instead of the generated
 /// opaque class) is what makes the editor testable without the native library.
 abstract class GraphBackend {
+  /// Name of the notes store (shown at the centre of the tree view).
+  String get graphName;
+
   /// Today's date in the graph clock, `YYYY-MM-DD`.
   String today();
 
@@ -54,6 +57,52 @@ abstract class GraphBackend {
   String? assetPath(String hash);
   Future<AssetDto> putAssetFile(String path, {String? mime});
 
+  /// Hub (folder) structure of the whole graph.
+  Future<HubsDto> hubs();
+  Future<PageStructure> pageStructure(String pageId);
+  Future<PageDto> createHub(String title, String description);
+
+  /// Tags are pages of kind `tag` (topics); a page can have any number. Types are plain
+  /// names saying what a page is.
+  Future<PageDto> setPageTags(String pageId, List<String> tags);
+  Future<PageDto> addPageTag(String pageId, String tag);
+  Future<PageDto> removePageTag(String pageId, String tag);
+
+  Future<PageDto> setPageTypes(String pageId, List<String> types);
+  Future<PageDto> addPageType(String pageId, String type);
+  Future<PageDto> removePageType(String pageId, String type);
+
+  /// Types in use (most used first), then the seeded suggestions not used yet.
+  Future<List<TagDto>> typeCatalog();
+
+  /// Tag pages, most used first.
+  Future<List<TagDto>> tagCatalog();
+  Future<List<PageBrief>> pagesWithTag(String tag);
+
+  /// Id of the hub's template page (opens like a note; may be empty).
+  Future<String> hubTemplate(String hubId);
+
+  /// Creates a note in the hub, starting from a copy of the hub's template.
+  Future<PageDto> createPageFromTemplate(String hubId, String title);
+  Future<PageDto> setHubDescription(String hubId, String description);
+
+  /// Membership is stored on the member: it lists the hub among its parents.
+  Future<void> addToHub(String pageId, String hubId);
+  Future<void> removeFromHub(String pageId, String hubId);
+  Future<HubPreviewDto> hubConversionPreview(String pageId);
+  Future<PageDto> convertToHub(
+    String pageId,
+    String title,
+    String description,
+    List<String> memberIds, {
+    String? keepOutlineAs,
+  });
+  Future<PageDto> convertToNote(String pageId);
+
+  /// Logseq leftovers that can be removed, and their removal. Returns the number deleted.
+  Future<List<LegacyCandidate>> legacyCandidates();
+  Future<int> purgePages(List<String> ids);
+
   /// The whole page-level graph (cached by the core until the graph changes).
   Future<GraphData> graphData();
 
@@ -89,12 +138,20 @@ class _FfiLayout implements LayoutEngine {
 }
 
 class FfiGraphBackend implements GraphBackend {
-  FfiGraphBackend(this._g);
+  FfiGraphBackend(this._g, this.graphName);
 
   final SynapseGraph _g;
 
-  static Future<FfiGraphBackend> open(String dir) async =>
-      FfiGraphBackend(await SynapseGraph.open(dir: dir));
+  @override
+  final String graphName;
+
+  static Future<FfiGraphBackend> open(String dir) async {
+    final parts = dir.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty);
+    return FfiGraphBackend(
+      await SynapseGraph.open(dir: dir),
+      parts.isEmpty ? 'Graph' : parts.last,
+    );
+  }
 
   @override
   String today() => _g.today();
@@ -182,6 +239,81 @@ class FfiGraphBackend implements GraphBackend {
   @override
   Future<AssetDto> putAssetFile(String path, {String? mime}) =>
       _g.putAssetFile(path: path, mime: mime);
+
+  @override
+  Future<HubsDto> hubs() => _g.hubs();
+  @override
+  Future<PageStructure> pageStructure(String pageId) =>
+      _g.pageStructure(pageId: pageId);
+  @override
+  Future<PageDto> setPageTags(String pageId, List<String> tags) =>
+      _g.setPageTags(pageId: pageId, tags: tags);
+  @override
+  Future<PageDto> addPageTag(String pageId, String tag) =>
+      _g.addPageTag(pageId: pageId, tag: tag);
+  @override
+  Future<PageDto> removePageTag(String pageId, String tag) =>
+      _g.removePageTag(pageId: pageId, tag: tag);
+  @override
+  Future<PageDto> setPageTypes(String pageId, List<String> types) =>
+      _g.setPageTypes(pageId: pageId, types: types);
+  @override
+  Future<PageDto> addPageType(String pageId, String type) =>
+      _g.addPageType(pageId: pageId, ty: type);
+  @override
+  Future<PageDto> removePageType(String pageId, String type) =>
+      _g.removePageType(pageId: pageId, ty: type);
+  @override
+  Future<List<TagDto>> typeCatalog() => _g.typeCatalog();
+
+  @override
+  Future<List<TagDto>> tagCatalog() => _g.tagCatalog();
+  @override
+  Future<List<PageBrief>> pagesWithTag(String tag) => _g.pagesWithTag(tag: tag);
+
+  @override
+  Future<String> hubTemplate(String hubId) => _g.hubTemplate(hubId: hubId);
+
+  @override
+  Future<PageDto> createPageFromTemplate(String hubId, String title) =>
+      _g.createPageFromTemplate(hubId: hubId, title: title);
+
+  @override
+  Future<PageDto> createHub(String title, String description) =>
+      _g.createHub(title: title, description: description);
+  @override
+  Future<PageDto> setHubDescription(String hubId, String description) =>
+      _g.setHubDescription(hubId: hubId, description: description);
+  @override
+  Future<void> addToHub(String pageId, String hubId) =>
+      _g.addToHub(pageId: pageId, hubId: hubId);
+  @override
+  Future<void> removeFromHub(String pageId, String hubId) =>
+      _g.removeFromHub(pageId: pageId, hubId: hubId);
+  @override
+  Future<HubPreviewDto> hubConversionPreview(String pageId) =>
+      _g.hubConversionPreview(pageId: pageId);
+  @override
+  Future<PageDto> convertToHub(
+    String pageId,
+    String title,
+    String description,
+    List<String> memberIds, {
+    String? keepOutlineAs,
+  }) => _g.convertToHub(
+    pageId: pageId,
+    title: title,
+    description: description,
+    memberIds: memberIds,
+    keepOutlineAs: keepOutlineAs,
+  );
+  @override
+  Future<PageDto> convertToNote(String pageId) =>
+      _g.convertToNote(pageId: pageId);
+  @override
+  Future<List<LegacyCandidate>> legacyCandidates() => _g.legacyCandidates();
+  @override
+  Future<int> purgePages(List<String> ids) => _g.purgePages(ids: ids);
 
   @override
   Future<GraphData> graphData() => _g.graphData();

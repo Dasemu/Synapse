@@ -1,7 +1,7 @@
 # Logseq import
 
 Crate `synapse-import`: `import_logseq(src, &graph, &ImportOptions, progress) -> Report`.
-CLI: `cargo run --release -p synapse-import --example import -- <logseq_dir> <graph_dir> [--skip-existing]`.
+CLI: `cargo run --release -p synapse-import --example import -- <logseq_dir> <graph_dir> [--skip-existing] [--keep-legacy]`.
 
 ## Pipeline
 1. **Scan** `pages/`, `journals/` (`.md`, `.org`) and `assets/` (recursive). Settings are read from
@@ -22,6 +22,14 @@ CLI: `cargo run --release -p synapse-import --example import -- <logseq_dir> <gr
   `collapsed:: true` sets the flag.
 - Assets: `../assets/x%20y.png` → `asset://<blake3>` in place (`![alt](asset://…)`; `?`/`#`
   suffixes kept). Missing files are left as is and reported.
+- Logseq's organisational files `contents`, `card`, `favorites` and `hls__*` (PDF highlights)
+  are skipped (`ImportOptions::skip_legacy_pages`, default on; `--keep-legacy` in the CLI); other
+  built-in names (`TODO`, `NOW`, ...) import normally. Skipped paths go to
+  `Report::skipped_legacy`, and empty stubs with those titles that refs created *in this import*
+  are removed (pages that existed before are never touched). Purging other legacy pages is a
+  manual action in the app (`legacy_candidates` / `purge_pages`).
+- Hubs (Synapse-only pages without blocks, see `architecture.md`) are never written by a
+  re-import: the file is skipped with a warning.
 - `.org` files: one raw root block per top-level heading, no parsing; listed in `Report::org_files`.
 - Timestamps: page `created_at` = file birth time (≤ mtime), `updated_at` = mtime; blocks inherit
   them. `origin_journal` = earliest journal referencing the page (aliases resolved), else the
@@ -45,7 +53,7 @@ The importer records what it wrote in two local tables (`import_pages`: source f
 
 ## Report / progress
 `Progress { phase, done, total }` (phases: Scanning, Assets, Parsing, Pages, Blocks) and
-`Report { pages, journals, blocks, assets, bytes, updated, unchanged, org_files, warnings }`.
+`Report { pages, journals, blocks, assets, bytes, updated, unchanged, org_files, skipped_legacy, warnings }`.
 
 ## Known limits
 - Not parsed: org-mode syntax, whiteboards, `draws/`, namespace parent stubs, Logseq queries.

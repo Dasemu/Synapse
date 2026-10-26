@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
+import '../state/keymap.dart';
 import '../state/outline_controller.dart';
 import '../state/outline_ops.dart';
 import '../theme/theme.dart';
@@ -512,6 +513,12 @@ class _BlockEditorState extends State<BlockEditor> {
     final seq = ++_searchSeq;
     final backend = c.backend;
     Future<List<CompletionItem>> search() async {
+      if (q.kind == CompletionKind.command) {
+        return [
+          for (final cmd in matchCommands(q.query))
+            CompletionItem('/${cmd.name}', cmd.name, detail: cmd.label),
+        ];
+      }
       if (q.kind == CompletionKind.block) {
         final hits = await backend.searchBlocks(q.query, limit: 8);
         return [
@@ -564,10 +571,35 @@ class _BlockEditorState extends State<BlockEditor> {
     final q = _query;
     if (q == null || i >= _items.length) return;
     final v = applyCompletion(_text.text, q, _items[i]);
+    final again =
+        q.kind == CompletionKind.command &&
+        slashCommands.firstWhere((c) => c.name == _items[i].value).then;
     _closeCompletion();
     _text.value = v;
     _last = v;
     c.setText(n, v.text);
+    // `/link` leaves the caret inside `[[]]`: go straight on to the page picker.
+    if (again) _updateCompletion();
+  }
+
+  /// Applies an editor formatting shortcut to the selection; false if `a` is not one.
+  bool _format(AppAction a) {
+    final (open, close) = switch (a) {
+      AppAction.bold => ('**', '**'),
+      AppAction.italic => ('*', '*'),
+      AppAction.strike => ('~~', '~~'),
+      AppAction.highlight => ('==', '=='),
+      AppAction.code => ('`', '`'),
+      AppAction.link => ('[[', ']]'),
+      _ => ('', ''),
+    };
+    if (open.isEmpty) return false;
+    final v = wrapSelection(_text.value, open, close);
+    _text.value = v;
+    _last = v;
+    c.setText(n, v.text);
+    _updateCompletion();
+    return true;
   }
 
   // -------------------------------------------------------------- keys
@@ -618,6 +650,14 @@ class _BlockEditorState extends State<BlockEditor> {
     final collapsed = sel.isValid && sel.isCollapsed;
     final caret = sel.isValid ? sel.extentOffset : _text.text.length;
     final len = _text.text.length;
+
+    if (ctrl || alt) {
+      final bound = AppScope.read(context).keymap.actionFor(
+        Combo(key, ctrl: ctrl, shift: shift, alt: alt),
+        editor: true,
+      );
+      if (bound != null && _format(bound)) return KeyEventResult.handled;
+    }
 
     if (_completing) {
       if (key == LogicalKeyboardKey.arrowDown) {
@@ -842,6 +882,8 @@ class CompletionPopup extends StatelessWidget {
                               ? Icons.add_rounded
                               : kind == CompletionKind.block
                               ? Icons.notes_rounded
+                              : kind == CompletionKind.command
+                              ? Icons.bolt_rounded
                               : kind == CompletionKind.tag
                               ? Icons.tag_rounded
                               : Icons.description_outlined,
