@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -336,5 +335,105 @@ void main() {
     await app.modules.suspend();
     expect(b.moduleRequests.last.$2['op'], 'suspend');
     expect(app.modules.macroVersion, greaterThan(before));
+  });
+
+  testWidgets('a file cannot pose as a bundled module', (tester) async {
+    final b = MemoryBackend()..inspectResult = vault();
+    pickModuleFile = () async => Uint8List(4);
+    await pump(tester, b, route: const SettingsRoute(), height: 3000);
+    await tester.tap(find.byKey(const ValueKey('module-install-file')));
+    await settle(tester);
+    expect(
+      find.textContaining('reserved for modules included'),
+      findsOneWidget,
+    );
+    expect(find.text('Install Secrets 0.1.0?'), findsNothing);
+    expect(b.installedModules, isEmpty);
+  });
+
+  testWidgets('installing over existing data warns in the consent dialog', (
+    tester,
+  ) async {
+    final m = vault();
+    final b = MemoryBackend()
+      ..inspectResult = ModuleDto(
+        id: 'acme.notes',
+        name: 'Notes',
+        version: '1',
+        description: '',
+        author: 'Acme',
+        permissions: const ['storage'],
+        views: const [],
+        macros: const [],
+        enabled: true,
+        size: m.size,
+      )
+      ..moduleData.add('acme.notes');
+    pickModuleFile = () async => Uint8List(4);
+    await pump(tester, b, route: const SettingsRoute(), height: 3000);
+    await tester.tap(find.byKey(const ValueKey('module-install-file')));
+    await settle(tester);
+    expect(find.text('Install Notes 1?'), findsOneWidget);
+    expect(find.textContaining('already holds data'), findsOneWidget);
+  });
+
+  testWidgets('suspending clears a copied secret from the clipboard', (
+    tester,
+  ) async {
+    final writes = mockClipboard(tester);
+    final b = MemoryBackend();
+    b.installedModules['synapse.secrets'] = vault();
+    final app = await pump(tester, b);
+    await app.modules.applyEffects({
+      'effects': [
+        {
+          'copy': {'text': 'hunter2', 'clear_after_ms': 30000},
+        },
+      ],
+    });
+    await app.modules.suspend();
+    expect(writes, ['hunter2', '']);
+    // The pending timer was cancelled: nothing more happens later.
+    await tester.pump(const Duration(seconds: 31));
+    expect(writes, ['hunter2', '']);
+  });
+
+  testWidgets('fields start empty on a new screen even with a reused id', (
+    tester,
+  ) async {
+    final b = MemoryBackend();
+    b.installedModules['synapse.secrets'] = vault();
+    var screen = 'edit';
+    b.moduleHandlers['synapse.secrets'] = (req) {
+      if (req['op'] == 'event') screen = 'locked';
+      return {
+        'ui': {
+          'type': 'column',
+          'key': screen,
+          'children': [
+            {
+              'type': 'field',
+              'id': 'password',
+              'label': screen == 'edit' ? 'Password' : 'Master password',
+              'value': '',
+              'secret': true,
+            },
+            {'type': 'button', 'label': 'Go', 'action': 'go'},
+          ],
+        },
+      };
+    };
+    await pump(
+      tester,
+      b,
+      route: const ModuleRoute('synapse.secrets', 'vault', title: 'Secrets'),
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'typed');
+    await tester.tap(find.text('Go'));
+    await settle(tester);
+    final field = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Master password'),
+    );
+    expect(field.controller!.text, '');
   });
 }

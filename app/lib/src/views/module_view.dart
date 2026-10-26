@@ -87,8 +87,18 @@ class _ModuleViewState extends State<ModuleView> {
     });
   }
 
+  /// The `key` of the last tree: a different one is another screen.
+  Object? _screen;
+
   /// Applies field values from the new tree and drops controllers of fields that are gone.
+  /// On a new screen every field starts from the tree, so text typed on one screen (a
+  /// password) never carries over to a field with the same id on another.
   void _syncFields(Map<String, dynamic> tree) {
+    if (tree['key'] != _screen) {
+      _screen = tree['key'];
+      _sent.clear();
+      _hidden.clear();
+    }
     final seen = <String>{};
     void walk(Object? w) {
       if (w is List) {

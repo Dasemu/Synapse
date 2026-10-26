@@ -51,6 +51,12 @@ impl SynapseGraph {
         Ok(self.modules.call(&id, &req)?.to_string())
     }
 
+    /// Whether the graph already holds data for module `id` (a module installed under that id
+    /// can read it; the consent dialog warns about it).
+    pub fn module_has_data(&self, id: String) -> Result<bool> {
+        Ok(self.modules.has_data(&id)?)
+    }
+
     /// Stops a module's running instance (dropping its in-memory state).
     pub fn stop_module(&self, id: String) {
         self.modules.stop(&id);

@@ -132,6 +132,10 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Sends a JSON request to a module and returns its JSON response.
   Future<String> moduleCall({required String id, required String request});
 
+  /// Whether the graph already holds data for module `id` (a module installed under that id
+  /// can read it; the consent dialog warns about it).
+  Future<bool> moduleHasData({required String id});
+
   /// Installed modules, by name.
   Future<List<ModuleDto>> modules();
 

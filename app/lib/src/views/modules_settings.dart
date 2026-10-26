@@ -98,8 +98,14 @@ class ModulesSettings extends StatelessWidget {
   }
 }
 
-/// Reads the module, asks for consent to its permissions and installs it.
-Future<void> installModuleBytes(BuildContext context, Uint8List bytes) async {
+/// Reads the module, asks for consent to its permissions and installs it. Ids starting with
+/// `synapse.` are reserved for the modules bundled with the app ([bundled]), so a file cannot
+/// pose as one of them and inherit its data.
+Future<void> installModuleBytes(
+  BuildContext context,
+  Uint8List bytes, {
+  bool bundled = false,
+}) async {
   final modules = AppScope.read(context).modules;
   final messenger = ScaffoldMessenger.of(context);
   final ModuleDto m;
@@ -111,11 +117,27 @@ Future<void> installModuleBytes(BuildContext context, Uint8List bytes) async {
     );
     return;
   }
-  if (!context.mounted) return;
+  if (!bundled && m.id.startsWith('synapse.')) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '${m.id}: ids starting with "synapse." are reserved for modules included '
+          'with Synapse.',
+        ),
+      ),
+    );
+    return;
+  }
   final previous = modules.byId(m.id);
+  final existingData = previous == null && await modules.hasData(m.id);
+  if (!context.mounted) return;
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => _ConsentDialog(module: m, previous: previous),
+    builder: (ctx) => _ConsentDialog(
+      module: m,
+      previous: previous,
+      existingData: existingData,
+    ),
   );
   if (ok != true) return;
   try {
@@ -136,9 +158,16 @@ String _message(Object e) {
 }
 
 class _ConsentDialog extends StatelessWidget {
-  const _ConsentDialog({required this.module, this.previous});
+  const _ConsentDialog({
+    required this.module,
+    this.previous,
+    this.existingData = false,
+  });
   final ModuleDto module;
   final ModuleDto? previous;
+
+  /// The graph already holds data under this module id, which it will be able to read.
+  final bool existingData;
 
   @override
   Widget build(BuildContext context) {
@@ -163,6 +192,15 @@ class _ConsentDialog extends StatelessWidget {
               if (m.description.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(m.description),
+              ],
+              if (existingData) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'This graph already holds data of a module with the id ${m.id} '
+                  '(from another device or an earlier install). This module will be '
+                  'able to read it. Install it only if you trust where it comes from.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ],
               const SizedBox(height: 16),
               Text(
@@ -402,7 +440,9 @@ class _BundledModule extends StatelessWidget {
             key: ValueKey('module-install-$id'),
             onPressed: () async {
               final bytes = await loadBundledModule(asset);
-              if (context.mounted) await installModuleBytes(context, bytes);
+              if (context.mounted) {
+                await installModuleBytes(context, bytes, bundled: true);
+              }
             },
             child: const Text('Install'),
           ),

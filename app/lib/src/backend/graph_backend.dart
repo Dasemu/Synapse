@@ -155,6 +155,10 @@ abstract class GraphBackend {
 
   /// Drops a module's running instance (its in-memory state, e.g. unlocked keys).
   Future<void> stopModule(String id);
+
+  /// Whether the graph already holds data for module [id] (synced or left by an earlier
+  /// install); a module installed under that id can read it.
+  Future<bool> moduleHasData(String id);
 }
 
 class _FfiLayout implements LayoutEngine {
@@ -411,4 +415,6 @@ class FfiGraphBackend implements GraphBackend {
 
   @override
   Future<void> stopModule(String id) => _g.stopModule(id: id);
+  @override
+  Future<bool> moduleHasData(String id) => _g.moduleHasData(id: id);
 }

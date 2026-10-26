@@ -42,6 +42,9 @@ class ModulesController extends ChangeNotifier {
 
   final _timers = <String, Timer>{};
   Timer? _clipboardTimer;
+
+  /// Text a module copied with a clear delay, until it is cleared.
+  String? _clipboardSecret;
   bool _disposed = false;
 
   Iterable<ModuleDto> get enabled => installed.where((m) => m.enabled);
@@ -75,6 +78,14 @@ class ModulesController extends ChangeNotifier {
   }
 
   Future<ModuleDto> inspect(Uint8List wasm) => backend.inspectModule(wasm);
+
+  Future<bool> hasData(String id) async {
+    try {
+      return await backend.moduleHasData(id);
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<ModuleDto> install(Uint8List wasm, List<String> granted) async {
     final m = await backend.installModule(wasm, granted);
@@ -129,8 +140,10 @@ class ModulesController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The app is going to the background: modules lock what they hold (e.g. the vault).
+  /// The app is going to the background: modules lock what they hold (e.g. the vault), and a
+  /// secret still on the clipboard is cleared (a backgrounded app cannot rely on its timer).
   Future<void> suspend() async {
+    await clearClipboard();
     var changed = false;
     for (final m in enabled.toList()) {
       final r = await call(m.id, {'op': 'suspend'});
@@ -156,14 +169,10 @@ class ModulesController extends ChangeNotifier {
         await Clipboard.setData(ClipboardData(text: text));
         final ms = copy['clear_after_ms'];
         _clipboardTimer?.cancel();
+        _clipboardSecret = null;
         if (ms is int && ms > 0) {
-          _clipboardTimer = Timer(Duration(milliseconds: ms), () async {
-            // Only clear what we put there.
-            final now = await Clipboard.getData(Clipboard.kTextPlain);
-            if (now?.text == text) {
-              await Clipboard.setData(const ClipboardData(text: ''));
-            }
-          });
+          _clipboardSecret = text;
+          _clipboardTimer = Timer(Duration(milliseconds: ms), clearClipboard);
         }
       }
       if (e['toast'] is String) toasts.add(e['toast'] as String);
@@ -176,13 +185,32 @@ class ModulesController extends ChangeNotifier {
     return (toasts: toasts, openView: openView);
   }
 
+  /// Clears the clipboard if it still holds the secret a module copied (or if it cannot be
+  /// read, as on Android in the background: then clearing is the safe choice).
+  Future<void> clearClipboard() async {
+    final secret = _clipboardSecret;
+    _clipboardTimer?.cancel();
+    _clipboardSecret = null;
+    if (secret == null) return;
+    String? now;
+    var readable = true;
+    try {
+      now = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    } catch (_) {
+      readable = false;
+    }
+    if (!readable || now == null || now == secret) {
+      await Clipboard.setData(const ClipboardData(text: ''));
+    }
+  }
+
   @override
   void dispose() {
     _disposed = true;
     for (final t in _timers.values) {
       t.cancel();
     }
-    _clipboardTimer?.cancel();
+    clearClipboard().ignore();
     super.dispose();
   }
 }

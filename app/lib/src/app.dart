@@ -22,8 +22,10 @@ class _SynapseAppState extends State<SynapseApp> {
         ..loadTypeIcons()
         ..modules.load();
 
-  /// On phones, modules lock what they hold (the secrets vault) when the app is paused.
+  /// Modules lock what they hold (the secrets vault) when the app is hidden (minimised,
+  /// another app in front) or paused.
   late final _lifecycle = AppLifecycleListener(
+    onHide: () => _state.modules.suspend(),
     onPause: () => _state.modules.suspend(),
   );
 

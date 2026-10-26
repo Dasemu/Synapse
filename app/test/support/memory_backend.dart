@@ -73,6 +73,11 @@ class MemoryBackend implements GraphBackend {
   @override
   Future<void> stopModule(String id) async => stoppedModules.add(id);
 
+  /// Module ids with data in the graph.
+  final moduleData = <String>{};
+  @override
+  Future<bool> moduleHasData(String id) async => moduleData.contains(id);
+
   static ModuleDto withEnabled(ModuleDto m, bool enabled) => ModuleDto(
     id: m.id,
     name: m.name,
