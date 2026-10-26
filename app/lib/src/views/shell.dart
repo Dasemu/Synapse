@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart'
+    show kBackMouseButton, kForwardMouseButton;
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
@@ -65,73 +67,84 @@ class _ShellState extends State<Shell> {
         for (final e in actions.entries)
           ...Map.fromEntries(activators(app.keymap.of(e.key), e.value)),
       },
-      child: Focus(
-        autofocus: true,
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final narrow = box.maxWidth < 760;
-            final sidebar = _Sidebar(
-              onNavigate: () {
-                if (narrow) _scaffold.currentState?.closeDrawer();
-              },
-            );
-            return Scaffold(
-              key: _scaffold,
-              drawer: narrow
-                  ? Drawer(backgroundColor: colors.surface, child: sidebar)
-                  : null,
-              body: Row(
-                children: [
-                  if (!narrow)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
-                      width: _sidebar ? 248 : 0,
-                      child: ClipRect(
-                        child: OverflowBox(
-                          alignment: Alignment.topLeft,
-                          minWidth: 248,
-                          maxWidth: 248,
-                          child: sidebar,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _TopBar(
-                          narrow: narrow,
-                          onMenu: () => narrow
-                              ? _scaffold.currentState?.openDrawer()
-                              : setState(() => _sidebar = !_sidebar),
-                        ),
-                        if (!narrow) const TabStrip(),
-                        Expanded(
-                          child: KeyedSubtree(
-                            key: ValueKey((app.tab.uid, route, app.generation)),
-                            child: switch (route) {
-                              JournalsRoute() => const JournalsView(),
-                              TimelineRoute() => const GraphView(
-                                mode: GraphMode.timeline,
-                              ),
-                              GraphRoute() => GraphView(
-                                mode: route.mode,
-                                focusId: route.focusId,
-                              ),
-                              AllPagesRoute() => const AllPagesView(),
-                              SettingsRoute() => const SettingsView(),
-                              TagRoute() => TagView(name: route.name),
-                              PageTarget() => PageScreen(target: route),
-                            },
+      // The mouse's back/forward side buttons work like the arrows, as in a browser.
+      child: Listener(
+        onPointerDown: (e) {
+          if (e.buttons & kBackMouseButton != 0) app.back();
+          if (e.buttons & kForwardMouseButton != 0) app.forward();
+        },
+        child: Focus(
+          autofocus: true,
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final narrow = box.maxWidth < 760;
+              final sidebar = _Sidebar(
+                onNavigate: () {
+                  if (narrow) _scaffold.currentState?.closeDrawer();
+                },
+              );
+              return Scaffold(
+                key: _scaffold,
+                drawer: narrow
+                    ? Drawer(backgroundColor: colors.surface, child: sidebar)
+                    : null,
+                body: Row(
+                  children: [
+                    if (!narrow)
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        width: _sidebar ? 248 : 0,
+                        child: ClipRect(
+                          child: OverflowBox(
+                            alignment: Alignment.topLeft,
+                            minWidth: 248,
+                            maxWidth: 248,
+                            child: sidebar,
                           ),
                         ),
-                      ],
+                      ),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _TopBar(
+                            narrow: narrow,
+                            onMenu: () => narrow
+                                ? _scaffold.currentState?.openDrawer()
+                                : setState(() => _sidebar = !_sidebar),
+                          ),
+                          if (!narrow) const TabStrip(),
+                          Expanded(
+                            child: KeyedSubtree(
+                              key: ValueKey((
+                                app.tab.uid,
+                                route,
+                                app.generation,
+                              )),
+                              child: switch (route) {
+                                JournalsRoute() => const JournalsView(),
+                                TimelineRoute() => const GraphView(
+                                  mode: GraphMode.timeline,
+                                ),
+                                GraphRoute() => GraphView(
+                                  mode: route.mode,
+                                  focusId: route.focusId,
+                                ),
+                                AllPagesRoute() => const AllPagesView(),
+                                SettingsRoute() => const SettingsView(),
+                                TagRoute() => TagView(name: route.name),
+                                PageTarget() => PageScreen(target: route),
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

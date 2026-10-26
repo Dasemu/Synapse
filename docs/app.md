@@ -149,6 +149,9 @@ Both are plain names with no page, shown as one row of pills under the title.
   same-name type or tag; "Rename" there never renames the hub itself.
 - In the graph every tag is a virtual node drawn as a hollow accent ring and linked to its
   pages with a separate edge kind (TAGGED); tapping one opens its tag view.
+  A hub's implicit tag (or a tag named like a hub) has no ring of its own: the hub node
+  stands for it.
+- The mouse's back/forward side buttons move through the tab's history, like the arrows.
 
 ## Hubs, namespaces and cleanup
 - **Hub** (folder icon): a page kind, not a note: no outline, a title, a short description
@@ -170,9 +173,10 @@ Both are plain names with no page, shown as one row of pills under the title.
   note that keeps the original outline; title clashes are shown inline) and "Add to hub…".
 - Every page's `⋯` menu (notes and hubs) ends with "Delete page…": the same confirmation as
   All pages; tabs showing it step back (or fall back to Journals) and recents drop it.
-- All pages ▸ "Clean up": dialog listing legacy Logseq pages (`contents`, `hls__...`, pages
-  with `type:: system`, ...) with checkboxes; "Delete (n)" removes only the checked ones
-  and their blocks.
+- All pages ▸ "Clean up": dialog listing empty pages (no text in any block, not a hub, no
+  type, tags or description; all preselected) and legacy Logseq pages (`contents`,
+  `hls__...`, pages with `type:: system`, ...) with checkboxes and "Select all/none";
+  "Delete (n)" removes only the checked ones and their blocks.
 
 ## Page sidebar and All pages
 - The sidebar icon next to a note's `⋯` menu toggles a right sidebar (collapsed by default,

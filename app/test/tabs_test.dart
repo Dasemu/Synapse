@@ -177,6 +177,26 @@ void main() {
       expect(app.route, isA<JournalsRoute>());
     });
 
+    testWidgets('mouse back/forward buttons walk the history', (tester) async {
+      final app = await pump(tester, demo());
+      app.go(const AllPagesRoute());
+      await settle(tester);
+      Future<void> press(int button) async {
+        final mouse = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: button,
+        );
+        await mouse.down(const Offset(800, 500));
+        await mouse.up();
+        await settle(tester);
+      }
+
+      await press(kBackMouseButton);
+      expect(app.route, isA<JournalsRoute>());
+      await press(kForwardMouseButton);
+      expect(app.route, isA<AllPagesRoute>());
+    });
+
     testWidgets('strip shows titles; middle-click closes, plus opens', (
       tester,
     ) async {
