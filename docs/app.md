@@ -147,6 +147,20 @@ Both are plain names with no page, shown as one row of pills under the title.
 - **Hub as tag**: a note's direct hub also counts as a tag of the same name (not shown as a
   chip, not stored in the tags). It lists in that tag's view and graph node and merges with a
   same-name type or tag; "Rename" there never renames the hub itself.
+- **Type emoji**: each type can have an emoji, stored in the graph (synced, in history). It is
+  shown before the names of pages of that type: page title, All pages, quick switcher,
+  recents, tabs, hub members, tag view (also its title when the tag is a type), linked
+  references, related pages, the type pill and picker, and the tree view labels. Never in the
+  network graph. `AppState.typeIcons` caches type → emoji (`loadTypeIcons`, at start and
+  after edits); list DTOs carry `pageType` and `TypeIcon` (`widgets/type_icon.dart`) looks
+  it up.
+- **Tags & types view** (sidebar, under All pages; also a tab route): "Types" lists every type
+  with its emoji, page count and seeded suggestions; the emoji button opens a picker (curated
+  grid by category, a field to paste any single emoji, "Remove emoji"); "New type" creates a
+  type with no pages; the `⋯` menu renames (keeps the emoji) or deletes (confirms how many
+  pages lose it). "Tags" lists every tag with its count and sources (listed, type, hub);
+  explicit tags can be renamed or deleted, tags that only come from a type or a hub show a
+  lock explaining where to change them. Tapping a name opens its tag view.
 - In the graph every tag is a virtual node drawn as a hollow accent ring and linked to its
   pages with a separate edge kind (TAGGED); tapping one opens its tag view.
   A hub's implicit tag (or a tag named like a hub) has no ring of its own: the hub node

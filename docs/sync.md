@@ -105,6 +105,13 @@ runtime (`start()` spawns onto the current one). After local edits call `trigger
 - **Uploads** only complete when the server reports the blob stored (`HEAD` 200); `202`/`409`
   responses make the client resume until done.
 
+## Op kinds
+`upsert_page`, `delete_page`, `upsert_block`, `delete_block`, `put_asset`, `set_alias` and
+`put_type_def` (type metadata: name, emoji, tombstone; LWW per type name key, schema v8).
+A client too old to know an op kind cannot parse a pull batch containing it: its sync stops
+with an error (local edits stay pending) until it is updated. The protocol version was not
+bumped for `put_type_def`, so update every client together with the server.
+
 ## Limits / not in v1
 - Per-user tokens and per-graph ACLs: `auth::Principal` already carries a graph allow-list;
   only the token source (env list) is implemented.
