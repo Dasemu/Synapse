@@ -141,7 +141,7 @@ fn secrets_vault_end_to_end() {
     {
         let g = graph.lock().unwrap();
         let rows = g.module_data_list(SECRETS, "").unwrap();
-        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows.len(), 3, "pointer, header, entry: {rows:?}");
         for (_, v) in &rows {
             assert!(!v.contains("hunter2") && !v.contains("GitHub") && !v.contains("dario"));
         }
@@ -222,7 +222,7 @@ fn secrets_vault_end_to_end() {
             .module_data_list(SECRETS, "")
             .unwrap()
             .len(),
-        2
+        3
     );
     reg.install(&wasm, &m.permissions).unwrap();
     reg.uninstall(SECRETS, true).unwrap();
@@ -469,5 +469,243 @@ fn a_swapped_file_cannot_gain_permissions() {
     assert!(matches!(
         reg.call("test.echo", &json!({ "fn": "now" })),
         Err(Error::Denied(_))
+    ));
+}
+
+fn ops_of(g: &Arc<Mutex<Graph>>) -> Vec<(String, synapse_core::Op)> {
+    g.lock()
+        .unwrap()
+        .ops_since(0, 100_000)
+        .unwrap()
+        .into_iter()
+        .filter(|r| matches!(r.op, synapse_core::Op::PutModuleData { .. }))
+        .map(|r| (r.hlc, r.op))
+        .collect()
+}
+
+fn sync(from: &Arc<Mutex<Graph>>, to: &Arc<Mutex<Graph>>) {
+    let ops = ops_of(from);
+    let g = to.lock().unwrap();
+    for (hlc, op) in &ops {
+        g.apply_remote(hlc, op).unwrap();
+    }
+}
+
+fn keys(g: &Arc<Mutex<Graph>>) -> Vec<String> {
+    g.lock()
+        .unwrap()
+        .module_data_list(SECRETS, "")
+        .unwrap()
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect()
+}
+
+#[test]
+fn two_vaults_set_up_before_syncing_merge_on_unlock() {
+    let (_a_dir, a_graph, a) = setup();
+    let (_b_dir, b_graph, b) = setup();
+    let wasm = secrets_wasm();
+    let perms = a.inspect(&wasm).unwrap().permissions;
+    a.install(&wasm, &perms).unwrap();
+    b.install(&wasm, &perms).unwrap();
+    for (reg, name) in [(&a, "From A"), (&b, "From B")] {
+        event(
+            reg,
+            "setup",
+            json!({ "password": "correct horse", "confirm": "correct horse" }),
+            "",
+        );
+        event(reg, "new", json!({}), "");
+        event(reg, "save", json!({ "name": name, "password": "pw" }), "");
+    }
+    sync(&a_graph, &b_graph);
+    sync(&b_graph, &a_graph);
+    // B's data key may have lost the pointer: writing with it is refused until unlocked again.
+    for reg in [&a, &b] {
+        reg.stop(SECRETS);
+        let r = event(reg, "unlock", json!({ "password": "correct horse" }), "");
+        let t = ui_text(&r);
+        assert!(t.contains("From A") && t.contains("From B"), "{t}");
+    }
+    // One header is left on each replica after syncing again.
+    sync(&a_graph, &b_graph);
+    sync(&b_graph, &a_graph);
+    for g in [&a_graph, &b_graph] {
+        let headers = keys(g)
+            .into_iter()
+            .filter(|k| k.starts_with("vault/"))
+            .count();
+        assert_eq!(headers, 1, "{:?}", keys(g));
+    }
+}
+
+#[test]
+fn a_device_whose_key_was_replaced_must_unlock_again_before_writing() {
+    let (_a_dir, a_graph, a) = setup();
+    let (_b_dir, b_graph, b) = setup();
+    let wasm = secrets_wasm();
+    let perms = a.inspect(&wasm).unwrap().permissions;
+    a.install(&wasm, &perms).unwrap();
+    b.install(&wasm, &perms).unwrap();
+    event(
+        &a,
+        "setup",
+        json!({ "password": "correct horse", "confirm": "correct horse" }),
+        "",
+    );
+    sync(&a_graph, &b_graph);
+    event(&b, "unlock", json!({ "password": "correct horse" }), "");
+    // A changes the password: the data key rotates.
+    event(&a, "change_password", json!({}), "");
+    event(
+        &a,
+        "save_password",
+        json!({ "current": "correct horse", "new": "battery staple", "confirm": "battery staple" }),
+        "",
+    );
+    sync(&a_graph, &b_graph);
+    // B still holds the old key; saving with it is refused and B locks.
+    event(&b, "new", json!({}), "");
+    let r = event(&b, "save", json!({ "name": "Late", "password": "x" }), "");
+    assert!(ui_text(&r).contains("changed on another device"), "{r}");
+    assert!(!keys(&b_graph).iter().any(|k| k.starts_with("entry/")));
+    let r = event(&b, "unlock", json!({ "password": "correct horse" }), "");
+    assert!(ui_text(&r).contains("Wrong password"));
+    let r = event(&b, "unlock", json!({ "password": "battery staple" }), "");
+    assert!(!ui_text(&r).contains("Wrong password"));
+}
+
+#[test]
+fn changing_the_password_rotates_the_data_key() {
+    let (_dir, graph, reg) = setup();
+    let wasm = secrets_wasm();
+    reg.install(&wasm, &reg.inspect(&wasm).unwrap().permissions)
+        .unwrap();
+    event(
+        &reg,
+        "setup",
+        json!({ "password": "correct horse", "confirm": "correct horse" }),
+        "",
+    );
+    event(&reg, "new", json!({}), "");
+    event(
+        &reg,
+        "save",
+        json!({ "name": "Bank", "password": "s3cret" }),
+        "",
+    );
+    let before = keys(&graph);
+    let entry_before = graph
+        .lock()
+        .unwrap()
+        .module_data_list(SECRETS, "entry/")
+        .unwrap();
+    event(&reg, "change_password", json!({}), "");
+    event(
+        &reg,
+        "save_password",
+        json!({ "current": "correct horse", "new": "battery staple", "confirm": "battery staple" }),
+        "",
+    );
+    let after = keys(&graph);
+    let old_header = before.iter().find(|k| k.starts_with("vault/")).unwrap();
+    assert!(!after.contains(old_header), "old header deleted: {after:?}");
+    let entry_after = graph
+        .lock()
+        .unwrap()
+        .module_data_list(SECRETS, "entry/")
+        .unwrap();
+    assert_ne!(entry_before[0].1, entry_after[0].1, "entry re-sealed");
+    reg.stop(SECRETS);
+    let r = event(&reg, "unlock", json!({ "password": "battery staple" }), "");
+    assert!(ui_text(&r).contains("Bank"));
+}
+
+#[test]
+fn synced_headers_with_weak_kdf_parameters_are_ignored() {
+    let (_dir, graph, reg) = setup();
+    let wasm = secrets_wasm();
+    reg.install(&wasm, &reg.inspect(&wasm).unwrap().permissions)
+        .unwrap();
+    let weak = json!({ "v": 1, "key_id": "aa", "kdf": { "memory_kib": 8, "iterations": 1, "lanes": 1 }, "salt": "c2FsdHNhbHRzYWx0", "key": "AAAA" });
+    graph
+        .lock()
+        .unwrap()
+        .set_module_data(SECRETS, "vault/aa", Some(&weak.to_string()))
+        .unwrap();
+    let r = reg
+        .call(SECRETS, &json!({ "op": "render", "view": "vault" }))
+        .unwrap();
+    assert!(ui_text(&r).contains("Create vault"), "{r}");
+}
+
+/// Calls `kv.set` in a loop with the request stored at offset 0 (a data segment).
+fn flood_module() -> String {
+    let req = r#"{"fn":"kv.set","key":"k","value":"0123456789012345678901234567890123456789"}"#;
+    format!(
+        r#"
+(module
+  (import "synapse" "call" (func $call (param i32 i32) (result i32)))
+  (memory (export "memory") 2)
+  (data (i32.const 0) "{}")
+  (func (export "syn_alloc") (param i32) (result i32) i32.const 4096)
+  (func (export "syn_handle") (param i32 i32)
+    (loop $l
+      i32.const 0
+      i32.const {}
+      call $call
+      drop
+      br $l)))
+"#,
+        req.replace('"', "\\\""),
+        req.len()
+    )
+}
+
+#[test]
+fn host_calls_are_metered() {
+    let (_dir, graph, reg) = setup();
+    let wasm = wat_module(&flood_module(), manifest("test.flood", &["storage"]));
+    reg.install(&wasm, &[Permission::Storage]).unwrap();
+    let t = std::time::Instant::now();
+    assert!(matches!(
+        reg.call("test.flood", &json!({})),
+        Err(Error::Module(_))
+    ));
+    assert!(t.elapsed() < std::time::Duration::from_secs(20));
+    let writes = ops_of(&graph).len();
+    assert!(
+        writes <= synapse_modules::MAX_HOST_CALLS as usize,
+        "{writes}"
+    );
+}
+
+#[test]
+fn tables_are_capped() {
+    let (_dir, _graph, reg) = setup();
+    let wat = r#"
+(module
+  (table 50000000 funcref)
+  (memory (export "memory") 1)
+  (func (export "syn_alloc") (param i32) (result i32) i32.const 1024)
+  (func (export "syn_handle") (param i32 i32)))
+"#;
+    let wasm = wat_module(wat, manifest("test.table", &[]));
+    reg.install(&wasm, &[]).unwrap();
+    assert!(reg.call("test.table", &json!({})).is_err());
+}
+
+#[test]
+fn a_macro_name_belongs_to_one_module() {
+    let (_dir, _graph, reg) = setup();
+    let mut m = manifest("test.one", &[]);
+    m["macros"] = json!(["secret"]);
+    reg.install(&wat_module(ECHO, m), &[]).unwrap();
+    let mut m = manifest("test.two", &[]);
+    m["macros"] = json!(["secret"]);
+    assert!(matches!(
+        reg.install(&wat_module(ECHO, m), &[]),
+        Err(Error::Invalid(_))
     ));
 }

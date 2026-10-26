@@ -11,7 +11,11 @@ mod host;
 pub mod manifest;
 mod registry;
 
-pub use host::{FUEL_PER_REQUEST, MAX_MEMORY, MAX_MESSAGE, Running};
+pub use host::{
+    FUEL_PER_BYTE, FUEL_PER_HOST_CALL, FUEL_PER_REQUEST, MAX_DERIVES, MAX_HOST_CALLS, MAX_MEMORY,
+    MAX_MESSAGE, MAX_STORAGE_BYTES, MAX_STORAGE_ENTRIES, MAX_TABLE_ELEMENTS, MAX_WRITE_BYTES,
+    Running,
+};
 pub use manifest::{API_VERSION, MANIFEST_SECTION, Manifest, Permission, ViewDecl};
 pub use registry::{ModuleInfo, Registry};
 

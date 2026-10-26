@@ -12,12 +12,20 @@ use zeroize::Zeroizing;
 pub const KEY_LEN: usize = 32;
 pub const NONCE_LEN: usize = 24;
 /// Upper bounds for Argon2id parameters a module may ask for (memory in KiB).
-pub const MAX_KDF_MEMORY_KIB: u32 = 256 * 1024;
+pub const MAX_KDF_MEMORY_KIB: u32 = 128 * 1024;
 pub const MAX_KDF_ITERATIONS: u32 = 10;
 pub const MAX_KDF_LANES: u32 = 4;
 /// Largest plaintext or ciphertext handled in one call.
 pub const MAX_CRYPTO_INPUT: usize = 1 << 20;
 const MAX_KEYS: usize = 64;
+/// Associated data prefix reserved for key wrapping, so data sealed with [`Keyring::seal`]
+/// can never be unwrapped as a key (importing a key the module knows) and a wrapped key can
+/// never be opened as data (exporting it).
+const WRAP_AAD: &[u8] = b"synapse.wrap\0";
+
+fn wrap_aad(aad: &[u8]) -> Vec<u8> {
+    [WRAP_AAD, aad].concat()
+}
 
 type Key = Zeroizing<[u8; KEY_LEN]>;
 
@@ -89,6 +97,13 @@ impl Keyring {
 
     /// Encrypts with a fresh random nonce; returns `nonce || ciphertext`.
     pub fn seal(&self, key: u32, plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
+        if aad.starts_with(WRAP_AAD) {
+            return Err(Error::Invalid("reserved associated data".into()));
+        }
+        self.seal_raw(key, plaintext, aad)
+    }
+
+    fn seal_raw(&self, key: u32, plaintext: &[u8], aad: &[u8]) -> Result<Vec<u8>> {
         if plaintext.len() > MAX_CRYPTO_INPUT {
             return Err(Error::Invalid("plaintext too large".into()));
         }
@@ -111,6 +126,13 @@ impl Keyring {
 
     /// Decrypts `nonce || ciphertext`; fails when the key, data or associated data is wrong.
     pub fn open(&self, key: u32, data: &[u8], aad: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
+        if aad.starts_with(WRAP_AAD) {
+            return Err(Error::Invalid("reserved associated data".into()));
+        }
+        self.open_raw(key, data, aad)
+    }
+
+    fn open_raw(&self, key: u32, data: &[u8], aad: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
         if data.len() < NONCE_LEN || data.len() > MAX_CRYPTO_INPUT + NONCE_LEN + 16 {
             return Err(Error::Decrypt);
         }
@@ -129,12 +151,12 @@ impl Keyring {
     /// Encrypts key `target` with key `kek` (key wrapping).
     pub fn wrap(&self, kek: u32, target: u32, aad: &[u8]) -> Result<Vec<u8>> {
         let t = self.get(target)?.clone();
-        self.seal(kek, t.as_ref(), aad)
+        self.seal_raw(kek, t.as_ref(), &wrap_aad(aad))
     }
 
     /// Decrypts a wrapped key and returns a handle to it.
     pub fn unwrap_key(&mut self, kek: u32, data: &[u8], aad: &[u8]) -> Result<u32> {
-        let plain = self.open(kek, data, aad)?;
+        let plain = self.open_raw(kek, data, &wrap_aad(aad))?;
         let bytes: [u8; KEY_LEN] = plain.as_slice().try_into().map_err(|_| Error::Decrypt)?;
         self.insert(Zeroizing::new(bytes))
     }
@@ -184,6 +206,12 @@ mod tests {
         assert!(k.open(dek2, &tampered, b"entry/1").is_err());
         // Fresh nonce each time.
         assert_ne!(ct, k.seal(dek, b"hunter2", b"entry/1").unwrap());
+
+        // Wrapped keys and sealed data cannot be confused.
+        assert!(k.open(same, &wrapped, b"vault").is_err());
+        let sealed_key = k.seal(kek, &[7u8; KEY_LEN], b"vault").unwrap();
+        assert!(k.unwrap_key(same, &sealed_key, b"vault").is_err());
+        assert!(k.seal(kek, b"x", b"synapse.wrap\0vault").is_err());
 
         k.forget(dek2);
         assert!(k.open(dek2, &ct, b"entry/1").is_err());

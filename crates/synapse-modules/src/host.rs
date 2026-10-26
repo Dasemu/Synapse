@@ -32,6 +32,20 @@ pub const FUEL_PER_REQUEST: u64 = 1_000_000_000;
 pub const MAX_MEMORY: usize = 64 << 20;
 /// Largest request, response or host-call payload.
 pub const MAX_MESSAGE: usize = 4 << 20;
+/// Host calls are not free: each costs this much fuel plus [`FUEL_PER_BYTE`] per byte in and
+/// out, so a loop of host calls runs out of fuel like any other loop.
+pub const FUEL_PER_HOST_CALL: u64 = 200_000;
+pub const FUEL_PER_BYTE: u64 = 20;
+/// Hard caps per request, whatever the fuel: host calls, bytes written to storage and key
+/// derivations (Argon2 is memory-hard and slow on purpose).
+pub const MAX_HOST_CALLS: u32 = 5_000;
+pub const MAX_WRITE_BYTES: usize = 16 << 20;
+pub const MAX_DERIVES: u32 = 3;
+/// Storage quota per module (all its live entries).
+pub const MAX_STORAGE_BYTES: u64 = 64 << 20;
+pub const MAX_STORAGE_ENTRIES: u64 = 50_000;
+/// Table elements per instance (tables live outside linear memory).
+pub const MAX_TABLE_ELEMENTS: usize = 10_000;
 
 pub(crate) struct HostState {
     manifest: Manifest,
@@ -41,6 +55,10 @@ pub(crate) struct HostState {
     response: Option<Vec<u8>>,
     limits: StoreLimits,
     log: Vec<String>,
+    /// Usage in the current request (reset by [`Running::request`]).
+    calls: u32,
+    written: usize,
+    derives: u32,
 }
 
 pub(crate) fn engine() -> Engine {
@@ -66,6 +84,16 @@ fn memory_of(caller: &Caller<'_, HostState>) -> Result<Memory, wasmi::Error> {
         .get_export("memory")
         .and_then(|e| e.into_memory())
         .ok_or_else(|| wasmi::Error::new("module exports no memory"))
+}
+
+/// Takes the cost of a host call (and its payload) out of the request's fuel.
+fn charge(caller: &mut Caller<'_, HostState>, bytes: usize) -> Result<(), wasmi::Error> {
+    let cost = FUEL_PER_HOST_CALL + FUEL_PER_BYTE * bytes as u64;
+    let fuel = caller.get_fuel()?;
+    if fuel < cost {
+        return Err(wasmi::Error::new("out of fuel"));
+    }
+    caller.set_fuel(fuel - cost)
 }
 
 fn read_bytes(caller: &Caller<'_, HostState>, ptr: i32, len: i32) -> Result<Vec<u8>, wasmi::Error> {
@@ -98,8 +126,13 @@ impl Running {
                 .instances(1)
                 .memories(1)
                 .tables(4)
+                .table_elements(MAX_TABLE_ELEMENTS)
+                .trap_on_grow_failure(true)
                 .build(),
             log: Vec::new(),
+            calls: 0,
+            written: 0,
+            derives: 0,
         };
         let mut store = Store::new(engine, state);
         store.limiter(|s| &mut s.limits);
@@ -113,6 +146,12 @@ impl Running {
                  len: i32|
                  -> Result<i32, wasmi::Error> {
                     let req = read_bytes(&caller, ptr, len)?;
+                    let state = caller.data_mut();
+                    state.calls += 1;
+                    if state.calls > MAX_HOST_CALLS {
+                        return Err(wasmi::Error::new("too many host calls in one request"));
+                    }
+                    charge(&mut caller, req.len())?;
                     let reply = match dispatch(caller.data_mut(), &req) {
                         Ok(v) => json!({ "ok": v }),
                         Err(e) => json!({ "error": e.to_string() }),
@@ -122,6 +161,7 @@ impl Running {
                     if bytes.len() > MAX_MESSAGE {
                         return Err(wasmi::Error::new("host reply too large"));
                     }
+                    charge(&mut caller, bytes.len())?;
                     let n = bytes.len() as i32;
                     caller.data_mut().pending = bytes;
                     Ok(n)
@@ -187,7 +227,12 @@ impl Running {
         self.store
             .set_fuel(FUEL_PER_REQUEST)
             .map_err(|e| Error::Host(e.to_string()))?;
-        self.store.data_mut().response = None;
+        let state = self.store.data_mut();
+        state.response = None;
+        state.pending.clear();
+        state.calls = 0;
+        state.written = 0;
+        state.derives = 0;
         let ptr = self
             .alloc
             .call(&mut self.store, bytes.len() as i32)
@@ -301,21 +346,52 @@ fn dispatch(state: &mut HostState, req: &[u8]) -> Result<Value> {
                 Some(Value::String(s)) => Some(s.as_str()),
                 Some(_) => return Err(Error::Invalid("value must be a string or null".into())),
             };
-            graph(state).set_module_data(&id, key, value)?;
+            let size = key.len() + value.map_or(0, str::len);
+            if state.written + size > MAX_WRITE_BYTES {
+                return Err(Error::Invalid(
+                    "too much data written in one request".into(),
+                ));
+            }
+            state.written += size;
+            let g = graph(state);
+            if let Some(v) = value {
+                let (count, bytes) = g.module_data_usage(&id)?;
+                let old = g.module_data(&id, key)?;
+                let new_count = count + u64::from(old.is_none());
+                let new_bytes = bytes - old.map_or(0, |o| (key.len() + o.len()) as u64)
+                    + (key.len() + v.len()) as u64;
+                if new_count > MAX_STORAGE_ENTRIES || new_bytes > MAX_STORAGE_BYTES {
+                    return Err(Error::Invalid("the module's storage quota is full".into()));
+                }
+            }
+            g.set_module_data(&id, key, value)?;
             Ok(Value::Null)
         }
         "kv.list" => {
             need(state, Permission::Storage)?;
             let prefix = args.get("prefix").and_then(Value::as_str).unwrap_or("");
             let rows = graph(state).module_data_list(&id, prefix)?;
-            Ok(Value::Array(
-                rows.into_iter()
-                    .map(|(k, v)| json!({ "key": k, "value": v }))
-                    .collect(),
-            ))
+            let mut total = 0;
+            let mut out = Vec::with_capacity(rows.len());
+            for (k, v) in rows {
+                total += k.len() + v.len() + 32;
+                if total > MAX_MESSAGE - 1024 {
+                    return Err(Error::Invalid(
+                        "too much data to list at once; use a narrower prefix".into(),
+                    ));
+                }
+                out.push(json!({ "key": k, "value": v }));
+            }
+            Ok(Value::Array(out))
         }
         "crypto.derive" => {
             need(state, Permission::Crypto)?;
+            state.derives += 1;
+            if state.derives > MAX_DERIVES {
+                return Err(Error::Invalid(
+                    "too many key derivations in one request".into(),
+                ));
+            }
             let h = state.keys.derive(
                 arg_str(&args, "password")?,
                 &arg_b64(&args, "salt")?,

@@ -66,6 +66,16 @@ impl Graph {
         Ok(rows)
     }
 
+    /// Number of live entries of `module` and their total size (keys plus values, bytes).
+    pub fn module_data_usage(&self, module: &str) -> Result<(u64, u64)> {
+        Ok(self.row(
+            "SELECT count(*), coalesce(sum(length(CAST(key AS BLOB)) + length(CAST(value AS BLOB))), 0)
+             FROM module_data WHERE module=?1 AND value IS NOT NULL",
+            params![module],
+            |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64)),
+        )?)
+    }
+
     /// Sets (`Some`) or deletes (`None`) an entry, logged as [`Op::PutModuleData`]. Deleting an
     /// unset key is a no-op.
     pub fn set_module_data(&self, module: &str, key: &str, value: Option<&str>) -> Result<()> {

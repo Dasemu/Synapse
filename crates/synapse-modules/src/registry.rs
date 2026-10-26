@@ -108,6 +108,23 @@ impl Registry {
             )));
         }
         let mut state = self.lock_state();
+        // A block macro belongs to one module: another installed module claiming the same
+        // name would silently receive (and could spoof) its blocks.
+        for other in self.list_locked(&state) {
+            if other.manifest.id == manifest.id {
+                continue;
+            }
+            if let Some(m) = manifest
+                .macros
+                .iter()
+                .find(|m| other.manifest.macros.contains(m))
+            {
+                return Err(Error::Invalid(format!(
+                    "the macro {{{{{m}}}}} is already used by the module {}",
+                    other.manifest.name
+                )));
+            }
+        }
         std::fs::create_dir_all(&self.dir)?;
         let path = self.wasm_path(&manifest.id);
         let tmp = path.with_extension("wasm.tmp");
@@ -122,6 +139,9 @@ impl Registry {
             },
         );
         self.save(&state)?;
+        // Never wait for a module slot while holding the state lock: `call` takes them in
+        // the opposite order.
+        drop(state);
         // Drop a running older version.
         *self
             .slot(&manifest.id)
@@ -137,12 +157,23 @@ impl Registry {
     /// Installed modules, by name. A module whose file is missing or broken is skipped.
     pub fn list(&self) -> Vec<ModuleInfo> {
         let state = self.lock_state().clone();
+        self.list_locked(&state)
+    }
+
+    /// Whether the graph already holds data for module `id` (synced from another device or
+    /// left by an earlier install): a module installed under that id can read it.
+    pub fn has_data(&self, id: &str) -> Result<bool> {
+        let g = self.graph.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(g.module_data_usage(id)?.0 > 0)
+    }
+
+    fn list_locked(&self, state: &BTreeMap<String, Entry>) -> Vec<ModuleInfo> {
         let mut out: Vec<ModuleInfo> = state
-            .into_iter()
+            .iter()
             .filter_map(|(id, e)| {
-                let bytes = std::fs::read(self.wasm_path(&id)).ok()?;
+                let bytes = std::fs::read(self.wasm_path(id)).ok()?;
                 let manifest = Manifest::from_wasm(&bytes).ok()?;
-                (manifest.id == id).then_some(ModuleInfo {
+                (&manifest.id == id).then_some(ModuleInfo {
                     manifest,
                     enabled: e.enabled,
                     size: bytes.len() as u64,
@@ -160,6 +191,7 @@ impl Registry {
             .ok_or_else(|| Error::NotFound(id.to_string()))?;
         e.enabled = enabled;
         self.save(&state)?;
+        drop(state);
         if !enabled {
             self.stop(id);
         }
@@ -174,6 +206,7 @@ impl Registry {
             return Err(Error::NotFound(id.to_string()));
         }
         self.save(&state)?;
+        drop(state);
         self.stop(id);
         let _ = std::fs::remove_file(self.wasm_path(id));
         if delete_data {
@@ -187,12 +220,14 @@ impl Registry {
 
     /// Drops the running instance (its in-memory state, such as unlocked keys, is lost).
     pub fn stop(&self, id: &str) {
-        if let Some(slot) = self
+        // Release the map before waiting for a busy module, so other modules keep working.
+        let slot = self
             .loaded
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .get(id)
-        {
+            .cloned();
+        if let Some(slot) = slot {
             *slot.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
     }
@@ -224,6 +259,14 @@ impl Registry {
         }
         let slot = self.slot(id);
         let mut guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+        // Disabled or removed while we waited for the slot: do not start it again.
+        let entry = match self.lock_state().get(id) {
+            Some(e) if e.enabled => e.clone(),
+            _ => {
+                *guard = None;
+                return Err(Error::Invalid(format!("module {id} is disabled")));
+            }
+        };
         if guard.is_none() {
             let bytes = std::fs::read(self.wasm_path(id))?;
             let manifest = Manifest::from_wasm(&bytes)?;
