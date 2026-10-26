@@ -1090,6 +1090,30 @@ fn renaming_a_type_keeps_its_icon_and_removing_drops_it() {
 }
 
 #[test]
+fn tag_catalog_says_where_each_tag_comes_from() {
+    let (_d, g) = graph();
+    let h = hub(&g, "Anime");
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.add_to_hub(a, h).unwrap();
+    g.add_page_tag(a, "idea").unwrap();
+    g.set_page_type(b, Some("Idea")).unwrap();
+    g.add_page_tag(b, "idea").unwrap();
+    let cat = g.tag_catalog().unwrap();
+    let get = |n: &str| cat.iter().find(|t| t.name.eq_ignore_ascii_case(n)).unwrap();
+    let idea = get("idea");
+    assert_eq!(
+        (idea.count, idea.explicit, idea.typed, idea.from_hub),
+        (2, 2, 1, 0)
+    );
+    let anime = get("anime");
+    assert_eq!(
+        (anime.count, anime.explicit, anime.typed, anime.from_hub),
+        (1, 0, 0, 1)
+    );
+}
+
+#[test]
 fn type_definitions_sync_last_writer_wins() {
     let (_a, a) = graph();
     let (_b, b) = graph();

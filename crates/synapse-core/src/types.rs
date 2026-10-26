@@ -116,6 +116,7 @@ impl Graph {
                 count: *count,
                 suggested: suggested(k),
                 icon: live_icon(k),
+                ..Default::default()
             })
             .collect();
         out.sort_by(|a, b| {
@@ -135,6 +136,7 @@ impl Graph {
             count: 0,
             suggested: false,
             icon: d.icon.clone(),
+            ..Default::default()
         }));
         for s in SUGGESTED_TYPES {
             let k = title_key(s);
@@ -145,6 +147,7 @@ impl Graph {
                     count: 0,
                     suggested: true,
                     icon: def.and_then(|d| d.icon.clone()),
+                    ..Default::default()
                 });
             }
         }

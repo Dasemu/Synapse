@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 pub const MAX_TAG_CHARS: usize = 48;
 
 /// A tag with the number of pages filed under it (explicitly or through a type).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TagInfo {
     pub name: String,
     pub count: u32,
@@ -25,6 +25,12 @@ pub struct TagInfo {
     pub suggested: bool,
     /// Emoji of the type ([`crate::TypeDef::icon`]; types only).
     pub icon: Option<String>,
+    /// Pages listing it among their explicit tags (`tag_catalog` only).
+    pub explicit: u32,
+    /// Pages having it as their type (`tag_catalog` only).
+    pub typed: u32,
+    /// Pages carrying it because their hub has this title (`tag_catalog` only).
+    pub from_hub: u32,
 }
 
 /// Cleans a tag name: leading `#` dropped, whitespace collapsed. `None` when nothing is left.
@@ -137,7 +143,7 @@ impl Graph {
     /// Every tag in use (listed, implied by a type or by the page's hub): spelling of its first
     /// page, with its page count. Most used first, then by name.
     pub fn tag_catalog(&self) -> Result<Vec<TagInfo>> {
-        let mut used: HashMap<String, (String, u32)> = HashMap::new();
+        let mut used: HashMap<String, TagInfo> = HashMap::new();
         let mut sources = schema::tag_sources(self.conn(), None)?;
         sources.sort_by(|a, b| a.id.cmp(&b.id));
         for src in sources {
@@ -145,19 +151,19 @@ impl Graph {
             for t in src.names() {
                 let key = title_key(t);
                 if seen.insert(key.clone()) {
-                    used.entry(key).or_insert((t.clone(), 0)).1 += 1;
+                    let info = used.entry(key.clone()).or_insert_with(|| TagInfo {
+                        name: t.clone(),
+                        ..Default::default()
+                    });
+                    info.count += 1;
+                    let is = |n: &String| title_key(n) == key;
+                    info.explicit += u32::from(src.tags.iter().any(is));
+                    info.typed += u32::from(src.types.iter().take(1).any(is));
+                    info.from_hub += u32::from(src.hub.iter().any(is));
                 }
             }
         }
-        let mut out: Vec<TagInfo> = used
-            .into_values()
-            .map(|(name, count)| TagInfo {
-                name,
-                count,
-                suggested: false,
-                icon: None,
-            })
-            .collect();
+        let mut out: Vec<TagInfo> = used.into_values().collect();
         out.sort_by(|a, b| {
             b.count
                 .cmp(&a.count)
