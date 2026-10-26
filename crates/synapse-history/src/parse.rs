@@ -1,4 +1,4 @@
-//! Parser for the Markdown files produced by [`crate::export`] (and plain Logseq pages).
+//! Parser for the Markdown files produced by [`crate::export`] (and plain outline pages).
 
 use crate::export::{DESCRIPTION_PROP, HUBS_PROP, KIND_PROP, TAGS_PROP, TYPES_PROP, parse_value};
 use serde_json::Value;
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn logseq_space_indent() {
+    fn space_indent() {
         let p = parse_page("- a\n  - b\n    - c\n  - d\n");
         let d: Vec<_> = p.blocks.iter().map(|b| b.depth).collect();
         assert_eq!(d, [0, 1, 2, 1]);

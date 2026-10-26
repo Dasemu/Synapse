@@ -26,7 +26,7 @@ fn at(g: &Graph, ms: i64) {
 }
 
 #[test]
-fn export_is_deterministic_and_logseq_shaped() {
+fn export_is_deterministic_and_outline_shaped() {
     let (_d, g, _h) = setup();
     let p = add(&g, "Project/Alpha", &["first", "second"]);
     let first = g.page_tree(p.id).unwrap()[0].1.clone();

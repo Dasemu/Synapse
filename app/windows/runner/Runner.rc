@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dasemu" "\0"
-            VALUE "FileDescription", "synapse" "\0"
+            VALUE "FileDescription", "Synapse" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "synapse" "\0"
+            VALUE "InternalName", "Synapse" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 dasemu. All rights reserved." "\0"
             VALUE "OriginalFilename", "synapse.exe" "\0"
-            VALUE "ProductName", "synapse" "\0"
+            VALUE "ProductName", "Synapse" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

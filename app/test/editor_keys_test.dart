@@ -169,7 +169,7 @@ void main() {
     await tester.pump();
     expect(h.local, [(0, 'a'), (1, 'b'), (1, 'c')]);
 
-    // Outdenting `b` adopts `c` (Logseq's direct outdenting).
+    // Outdenting `b` adopts `c` (direct outdenting).
     await edit(tester, h, 'b');
     await withShift(tester, LogicalKeyboardKey.tab);
     expect(h.local, [(0, 'a'), (0, 'b'), (1, 'c')]);

@@ -1,4 +1,4 @@
-//! Logseq task syntax <-> VTODO fields.
+//! Synapse task syntax <-> VTODO fields.
 //!
 //! ```text
 //! TODO [#A] Pay rent

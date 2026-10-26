@@ -1,5 +1,5 @@
 name: synapse
-description: "Synapse: a native, Logseq-like second brain."
+description: "Synapse: a native second brain: outliner notes with linked pages and journals."
 publish_to: 'none'
 version: 0.1.0+1
 

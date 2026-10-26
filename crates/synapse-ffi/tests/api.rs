@@ -45,7 +45,7 @@ fn indent_and_outdent_keep_visual_order() {
     assert_eq!(shape(&rows), vec![(0, "a"), (1, "b"), (1, "c"), (1, "d")]);
     assert!(rows[0].has_children);
 
-    // Outdenting `c` adopts `d` as its child (Logseq's direct outdenting).
+    // Outdenting `c` adopts `d` as its child (direct outdenting).
     let rows = g.outdent_block(ids[2].clone()).unwrap();
     assert_eq!(shape(&rows), vec![(0, "a"), (1, "b"), (0, "c"), (1, "d")]);
 

@@ -1,7 +1,7 @@
 # Synapse
 
 ## Overview
-Native "second brain" notes app (Logseq-like outliner with linked pages and journals) for
+Native "second brain" notes app (outliner with linked pages and journals, in the vein of Logseq) for
 Android, Linux and Windows. Rust core shared by a Flutter client (via flutter_rust_bridge)
 and an optional self-hosted sync server. Local-only (standalone graph) or client-server
 (online graph). No webviews.
