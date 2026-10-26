@@ -23,6 +23,7 @@ impl TestServer {
             update_token: None,
             update_script: "/nonexistent".into(),
             max_clock_skew: Duration::from_secs(600),
+            mcp: None,
         };
         let server = synapse_server::start(&cfg).await.unwrap();
         Self { server, _dir: dir }

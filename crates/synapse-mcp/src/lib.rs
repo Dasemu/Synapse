@@ -12,6 +12,8 @@
 //! busy) through the normal `Graph` API, so every change is logged as ops and syncs.
 //! Journals are read-only: write tools refuse journal pages.
 
+pub use rmcp;
+
 pub mod params;
 pub mod text;
 pub mod tools;

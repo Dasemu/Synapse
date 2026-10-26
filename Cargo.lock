@@ -3508,6 +3508,7 @@ dependencies = [
  "serde",
  "serde_json",
  "synapse-core",
+ "synapse-mcp",
  "synapse-sync",
  "tempfile",
  "tokio",
