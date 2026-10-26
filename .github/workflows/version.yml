@@ -6,6 +6,11 @@ on:
 permissions:
   contents: write
 
+# Pushes to main and development in quick succession must not bump or merge back concurrently.
+concurrency:
+  group: version
+  cancel-in-progress: false
+
 jobs:
   bump:
     if: >-
@@ -24,6 +29,9 @@ jobs:
           git config user.name "version-bot"
           git config user.email "version-bot@noreply.local"
           branch="$GITHUB_REF_NAME"
+          # Bump on top of the branch tip, which an earlier run may have moved.
+          git fetch origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
           IFS=. read -r MA MI PA < VERSION
           if [ "$branch" = development ]; then
             PA=$((PA + 1))
@@ -32,7 +40,7 @@ jobs:
             zero=0000000000000000000000000000000000000000
             # MINOR bump only if every non-merge commit in this push is already on development.
             if [ -n "$BEFORE" ] && [ "$BEFORE" != "$zero" ] &&
-               [ -z "$(git rev-list --no-merges "$BEFORE..HEAD" --not origin/development)" ]; then
+               [ -z "$(git rev-list --no-merges "$BEFORE..$GITHUB_SHA" --not origin/development)" ]; then
               MI=$((MI + 1)); PA=0
             else
               PA=$((PA + 1))
@@ -44,7 +52,9 @@ jobs:
           git push origin HEAD:"$branch"
           if [ "$branch" = main ]; then
             main_sha=$(git rev-parse HEAD)
+            git fetch origin development
             git checkout -B development origin/development
-            git merge --no-ff -m "chore: merge main into development [skip ci]" "$main_sha"
+            # main's VERSION wins if development bumped in the meantime.
+            git merge --no-ff -X theirs -m "chore: merge main into development [skip ci]" "$main_sha"
             git push origin development
           fi
