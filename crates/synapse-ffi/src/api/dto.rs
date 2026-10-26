@@ -50,6 +50,28 @@ pub struct TagDto {
     pub count: u32,
     /// One of the seeded suggestions.
     pub suggested: bool,
+    /// Emoji of a type (types only).
+    pub icon: Option<String>,
+    /// Pages listing it as an explicit tag (tags only).
+    pub explicit: u32,
+    /// Pages having it as their type (tags only).
+    pub typed: u32,
+    /// Pages carrying it through their hub (tags only; hub tags cannot be renamed or removed).
+    pub from_hub: u32,
+}
+
+impl From<synapse_core::TagInfo> for TagDto {
+    fn from(t: synapse_core::TagInfo) -> Self {
+        Self {
+            name: t.name,
+            count: t.count,
+            suggested: t.suggested,
+            icon: t.icon,
+            explicit: t.explicit,
+            typed: t.typed,
+            from_hub: t.from_hub,
+        }
+    }
 }
 
 /// One row of the outline, in pre-order.
@@ -110,6 +132,8 @@ pub struct BacklinkGroup {
     pub page_id: String,
     pub page_title: String,
     pub is_journal: bool,
+    /// Type of the referencing page (for its icon).
+    pub page_type: Option<String>,
     pub blocks: Vec<BlockDto>,
 }
 
@@ -119,6 +143,8 @@ pub struct PageBrief {
     pub title: String,
     pub is_journal: bool,
     pub is_hub: bool,
+    /// The page's type (the UI shows its icon next to the title).
+    pub page_type: Option<String>,
 }
 
 impl From<&Page> for PageBrief {
@@ -128,6 +154,7 @@ impl From<&Page> for PageBrief {
             title: p.title.clone(),
             is_journal: p.is_journal(),
             is_hub: p.is_hub(),
+            page_type: p.page_type().map(String::from),
         }
     }
 }
@@ -185,6 +212,8 @@ pub struct TitleHit {
     /// The matched title or alias.
     pub title: String,
     pub is_alias: bool,
+    /// Type of the page (for its icon).
+    pub page_type: Option<String>,
 }
 
 /// A block matching a search (`((` autocomplete, quick switcher content results).
@@ -240,6 +269,8 @@ pub struct GraphNode {
     /// A virtual tag node (not a page, no outline): `id` is `tag:<title_key>`, `title` the
     /// display name, `degree` the number of pages carrying the tag.
     pub is_tag: bool,
+    /// The page's type (tree labels show its icon; the network view does not).
+    pub page_type: Option<String>,
 }
 
 /// The whole page-level graph, edges as parallel arrays (cheap to move across the FFI).

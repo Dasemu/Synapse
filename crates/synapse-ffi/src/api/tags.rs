@@ -42,11 +42,7 @@ impl SynapseGraph {
             .lock()
             .tag_catalog()?
             .into_iter()
-            .map(|t| TagDto {
-                name: t.name,
-                count: t.count,
-                suggested: t.suggested,
-            })
+            .map(TagDto::from)
             .collect())
     }
 
@@ -72,17 +68,34 @@ impl SynapseGraph {
         )?))
     }
 
-    /// Types in use (most used first) followed by the seeded suggestions not used yet.
+    /// Adds a type to the vocabulary even if no page uses it; returns its spelling.
+    pub fn create_type(&self, name: String) -> Result<String> {
+        Ok(self.lock().create_type(&name)?)
+    }
+
+    /// Sets (or with `None` clears) the emoji of a type, defining the type if needed.
+    pub fn set_type_icon(&self, name: String, icon: Option<String>) -> Result<()> {
+        Ok(self.lock().set_type_icon(&name, icon.as_deref())?)
+    }
+
+    /// Renames a type (and same-name tags), keeping its icon; returns the pages changed.
+    pub fn rename_type(&self, old: String, new: String) -> Result<u32> {
+        Ok(self.lock().rename_type(&old, &new)? as u32)
+    }
+
+    /// Deletes a type: its pages lose it and its icon is dropped; returns the pages changed.
+    pub fn remove_type(&self, name: String) -> Result<u32> {
+        Ok(self.lock().remove_type(&name)? as u32)
+    }
+
+    /// Types in use (most used first), then defined unused types, then the seeded suggestions
+    /// not used yet; each with its icon.
     pub fn type_catalog(&self) -> Result<Vec<TagDto>> {
         Ok(self
             .lock()
             .type_catalog()?
             .into_iter()
-            .map(|t| TagDto {
-                name: t.name,
-                count: t.count,
-                suggested: t.suggested,
-            })
+            .map(TagDto::from)
             .collect())
     }
 }

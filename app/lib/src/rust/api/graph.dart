@@ -58,6 +58,9 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String title,
   });
 
+  /// Adds a type to the vocabulary even if no page uses it; returns its spelling.
+  Future<String> createType({required String name});
+
   /// Deletes a block and its subtree.
   Future<List<BlockDto>> deleteBlock({required String id});
 
@@ -183,11 +186,17 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// of pages changed.
   Future<int> removeTag({required String name});
 
+  /// Deletes a type: its pages lose it and its icon is dropped; returns the pages changed.
+  Future<int> removeType({required String name});
+
   Future<PageDto> renamePage({required String id, required String newTitle});
 
   /// Renames a tag in the `tags` and `types` of every page carrying it; returns the number of
   /// pages changed.
   Future<int> renameTag({required String old, required String new_});
+
+  /// Renames a type (and same-name tags), keeping its icon; returns the pages changed.
+  Future<int> renameType({required String old, required String new_});
 
   /// Blocks whose text contains `query` (for `((` autocomplete), most recent first.
   Future<List<BlockHit>> searchBlocks({
@@ -220,6 +229,9 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// typed.
   Future<PageDto> setPageType({required String pageId, String? pageType});
 
+  /// Sets (or with `None` clears) the emoji of a type, defining the type if needed.
+  Future<void> setTypeIcon({required String name, String? icon});
+
   /// Every tag in use (listed or implied by a type) with its number of pages, most used first.
   Future<List<TagDto>> tagCatalog();
 
@@ -229,7 +241,8 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Today's date (graph clock) as `YYYY-MM-DD`.
   String today();
 
-  /// Types in use (most used first) followed by the seeded suggestions not used yet.
+  /// Types in use (most used first), then defined unused types, then the seeded suggestions
+  /// not used yet; each with its icon.
   Future<List<TagDto>> typeCatalog();
 
   /// Replaces a block's Markdown (the debounced save while typing).

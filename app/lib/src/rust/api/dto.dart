@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 class AssetDto {
   final String hash;
@@ -43,12 +43,16 @@ class BacklinkGroup {
   final String pageId;
   final String pageTitle;
   final bool isJournal;
+
+  /// Type of the referencing page (for its icon).
+  final String? pageType;
   final List<BlockDto> blocks;
 
   const BacklinkGroup({
     required this.pageId,
     required this.pageTitle,
     required this.isJournal,
+    this.pageType,
     required this.blocks,
   });
 
@@ -57,6 +61,7 @@ class BacklinkGroup {
       pageId.hashCode ^
       pageTitle.hashCode ^
       isJournal.hashCode ^
+      pageType.hashCode ^
       blocks.hashCode;
 
   @override
@@ -67,6 +72,7 @@ class BacklinkGroup {
           pageId == other.pageId &&
           pageTitle == other.pageTitle &&
           isJournal == other.isJournal &&
+          pageType == other.pageType &&
           blocks == other.blocks;
 }
 
@@ -266,6 +272,9 @@ class GraphNode {
   /// display name, `degree` the number of pages carrying the tag.
   final bool isTag;
 
+  /// The page's type (tree labels show its icon; the network view does not).
+  final String? pageType;
+
   const GraphNode({
     required this.id,
     required this.title,
@@ -280,6 +289,7 @@ class GraphNode {
     this.homeHub,
     required this.tags,
     required this.isTag,
+    this.pageType,
   });
 
   @override
@@ -296,7 +306,8 @@ class GraphNode {
       isHub.hashCode ^
       homeHub.hashCode ^
       tags.hashCode ^
-      isTag.hashCode;
+      isTag.hashCode ^
+      pageType.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -315,7 +326,8 @@ class GraphNode {
           isHub == other.isHub &&
           homeHub == other.homeHub &&
           tags == other.tags &&
-          isTag == other.isTag;
+          isTag == other.isTag &&
+          pageType == other.pageType;
 }
 
 /// A hub (folder-like page) with its members.
@@ -518,16 +530,24 @@ class PageBrief {
   final bool isJournal;
   final bool isHub;
 
+  /// The page's type (the UI shows its icon next to the title).
+  final String? pageType;
+
   const PageBrief({
     required this.id,
     required this.title,
     required this.isJournal,
     required this.isHub,
+    this.pageType,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^ title.hashCode ^ isJournal.hashCode ^ isHub.hashCode;
+      id.hashCode ^
+      title.hashCode ^
+      isJournal.hashCode ^
+      isHub.hashCode ^
+      pageType.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -537,7 +557,8 @@ class PageBrief {
           id == other.id &&
           title == other.title &&
           isJournal == other.isJournal &&
-          isHub == other.isHub;
+          isHub == other.isHub &&
+          pageType == other.pageType;
 }
 
 /// Everything the page view needs in one call.
@@ -753,14 +774,37 @@ class TagDto {
   /// One of the seeded suggestions.
   final bool suggested;
 
+  /// Emoji of a type (types only).
+  final String? icon;
+
+  /// Pages listing it as an explicit tag (tags only).
+  final int explicit;
+
+  /// Pages having it as their type (tags only).
+  final int typed;
+
+  /// Pages carrying it through their hub (tags only; hub tags cannot be renamed or removed).
+  final int fromHub;
+
   const TagDto({
     required this.name,
     required this.count,
     required this.suggested,
+    this.icon,
+    required this.explicit,
+    required this.typed,
+    required this.fromHub,
   });
 
   @override
-  int get hashCode => name.hashCode ^ count.hashCode ^ suggested.hashCode;
+  int get hashCode =>
+      name.hashCode ^
+      count.hashCode ^
+      suggested.hashCode ^
+      icon.hashCode ^
+      explicit.hashCode ^
+      typed.hashCode ^
+      fromHub.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -769,7 +813,11 @@ class TagDto {
           runtimeType == other.runtimeType &&
           name == other.name &&
           count == other.count &&
-          suggested == other.suggested;
+          suggested == other.suggested &&
+          icon == other.icon &&
+          explicit == other.explicit &&
+          typed == other.typed &&
+          fromHub == other.fromHub;
 }
 
 class TimelineDayDto {
@@ -831,14 +879,19 @@ class TitleHit {
   final String title;
   final bool isAlias;
 
+  /// Type of the page (for its icon).
+  final String? pageType;
+
   const TitleHit({
     required this.pageId,
     required this.title,
     required this.isAlias,
+    this.pageType,
   });
 
   @override
-  int get hashCode => pageId.hashCode ^ title.hashCode ^ isAlias.hashCode;
+  int get hashCode =>
+      pageId.hashCode ^ title.hashCode ^ isAlias.hashCode ^ pageType.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -847,5 +900,6 @@ class TitleHit {
           runtimeType == other.runtimeType &&
           pageId == other.pageId &&
           title == other.title &&
-          isAlias == other.isAlias;
+          isAlias == other.isAlias &&
+          pageType == other.pageType;
 }

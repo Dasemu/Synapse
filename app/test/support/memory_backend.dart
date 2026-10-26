@@ -267,7 +267,11 @@ class MemoryBackend implements GraphBackend {
   Future<List<BlockDto>> outline(String pageId) async => _dto(pageId);
 
   @override
-  Future<List<BacklinkGroup>> backlinks(String pageId) async => [];
+  Future<List<BacklinkGroup>> backlinks(String pageId) async =>
+      backlinkGroups[pageId] ?? [];
+
+  /// Linked references returned by `backlinks`, by target page id (tests fill it).
+  final backlinkGroups = <String, List<BacklinkGroup>>{};
   @override
   Future<List<RelatedDto>> related(String pageId, {int limit = 12}) async => [];
   @override
@@ -286,7 +290,14 @@ class MemoryBackend implements GraphBackend {
           (p) => p.journalDate == null && p.title.toLowerCase().contains(q),
         )
         .take(limit)
-        .map((p) => TitleHit(pageId: p.id, title: p.title, isAlias: false))
+        .map(
+          (p) => TitleHit(
+            pageId: p.id,
+            title: p.title,
+            isAlias: false,
+            pageType: p.pageType,
+          ),
+        )
         .toList();
   }
 
@@ -335,6 +346,7 @@ class MemoryBackend implements GraphBackend {
     title: p.title,
     isJournal: p.journalDate != null,
     isHub: p.isHub,
+    pageType: p.pageType,
   );
 
   void _put(
@@ -499,27 +511,158 @@ class MemoryBackend implements GraphBackend {
     return pages[pageId]!;
   }
 
+  /// Type definitions like the core's `type_defs`: key -> (name, icon, removed).
+  final typeDefs = <String, ({String name, String? icon, bool removed})>{};
+
+  ({String name, String? icon, bool removed})? _liveDef(String name) {
+    final d = typeDefs[_tagKey(name)];
+    return d == null || d.removed ? null : d;
+  }
+
   @override
   Future<List<TagDto>> typeCatalog() async {
     final used = <String, TagDto>{};
     for (final p in pages.values) {
       for (final t in [if (p.pageType != null) p.pageType!]) {
         final k = _tagKey(t);
-        used[k] = TagDto(
-          name: used[k]?.name ?? t,
-          count: (used[k]?.count ?? 0) + 1,
+        used[k] = _tag(
+          used[k]?.name ?? t,
+          (used[k]?.count ?? 0) + 1,
           suggested: suggestedTypes.contains(k),
+          icon: _liveDef(k)?.icon,
         );
       }
     }
     final out = used.values.toList()
-      ..sort((a, b) => b.count.compareTo(a.count));
+      ..sort((a, b) {
+        final c = b.count.compareTo(a.count);
+        return c != 0 ? c : _tagKey(a.name).compareTo(_tagKey(b.name));
+      });
+    final unused =
+        typeDefs.entries
+            .where(
+              (e) =>
+                  !e.value.removed &&
+                  !used.containsKey(e.key) &&
+                  !suggestedTypes.contains(e.key),
+            )
+            .map((e) => e.value)
+            .toList()
+          ..sort((a, b) => _tagKey(a.name).compareTo(_tagKey(b.name)));
+    out.addAll(unused.map((d) => _tag(d.name, 0, icon: d.icon)));
     for (final s in suggestedTypes) {
-      if (!used.containsKey(s)) {
-        out.add(TagDto(name: s, count: 0, suggested: true));
+      final d = typeDefs[s];
+      if (!used.containsKey(s) && !(d?.removed ?? false)) {
+        out.add(_tag(d?.name ?? s, 0, suggested: true, icon: d?.icon));
       }
     }
     return out;
+  }
+
+  TagDto _tag(
+    String name,
+    int count, {
+    bool suggested = false,
+    String? icon,
+    int explicit = 0,
+    int typed = 0,
+    int fromHub = 0,
+  }) => TagDto(
+    name: name,
+    count: count,
+    suggested: suggested,
+    icon: icon,
+    explicit: explicit,
+    typed: typed,
+    fromHub: fromHub,
+  );
+
+  String _typeName(String raw) {
+    final n = _normTag(raw);
+    if (n.isEmpty) throw Exception('Empty type name');
+    return n;
+  }
+
+  /// Spelling of a type: its definition, else a page using it, else [name].
+  String _typeSpelling(String name) {
+    final d = _liveDef(name);
+    if (d != null) return d.name;
+    for (final p in pages.values) {
+      if (p.pageType != null && _tagKey(p.pageType!) == _tagKey(name)) {
+        return p.pageType!;
+      }
+    }
+    return name;
+  }
+
+  @override
+  Future<String> createType(String name) async {
+    final n = _typeName(name);
+    final d = _liveDef(n);
+    if (d != null) return d.name;
+    final spelled = _typeSpelling(n);
+    typeDefs[_tagKey(n)] = (name: spelled, icon: null, removed: false);
+    return spelled;
+  }
+
+  @override
+  Future<void> setTypeIcon(String name, String? icon) async {
+    final n = _typeName(name);
+    final i = icon?.trim();
+    if (i != null &&
+        i.isNotEmpty &&
+        (i.runes.length > 16 ||
+            i.contains(RegExp(r'\s')) ||
+            i.runes.every((r) => r < 128))) {
+      throw Exception('Not an emoji icon');
+    }
+    typeDefs[_tagKey(n)] = (
+      name: _typeSpelling(n),
+      icon: (i == null || i.isEmpty) ? null : i,
+      removed: false,
+    );
+  }
+
+  @override
+  Future<int> renameType(String old, String new_) async {
+    _typeName(new_);
+    await createType(old);
+    return renameTag(old, new_);
+  }
+
+  /// Moves a live type definition to [name] (`renameTag`, like the core).
+  void _renameTypeDef(String old, String name) {
+    final d = _liveDef(old);
+    if (d == null) return;
+    if (_tagKey(old) == _tagKey(name)) {
+      typeDefs[_tagKey(name)] = (name: name, icon: d.icon, removed: false);
+      return;
+    }
+    final target = _liveDef(name);
+    typeDefs[_tagKey(name)] = (
+      name: name,
+      icon: target?.icon ?? d.icon,
+      removed: false,
+    );
+    typeDefs[_tagKey(old)] = (name: d.name, icon: null, removed: true);
+  }
+
+  @override
+  Future<int> removeType(String name) async {
+    final n = _typeName(name);
+    var count = 0;
+    for (final p in pages.values.toList()) {
+      if (p.pageType != null && _tagKey(p.pageType!) == _tagKey(n)) {
+        _put(p, clearType: true);
+        count++;
+      }
+    }
+    typeDefs[_tagKey(n)] = (
+      name: typeDefs[_tagKey(n)]?.name ?? n,
+      icon: null,
+      removed: true,
+    );
+    return count;
   }
 
   @override
@@ -537,12 +680,17 @@ class MemoryBackend implements GraphBackend {
   Future<List<TagDto>> tagCatalog() async {
     final used = <String, TagDto>{};
     for (final p in pages.values) {
+      final hub = _hubTag(p);
       for (final t in allTags(p)) {
         final k = _tagKey(t);
-        used[k] = TagDto(
-          name: used[k]?.name ?? t,
-          count: (used[k]?.count ?? 0) + 1,
-          suggested: false,
+        final prev = used[k];
+        bool isK(String? x) => x != null && _tagKey(x) == k;
+        used[k] = _tag(
+          prev?.name ?? t,
+          (prev?.count ?? 0) + 1,
+          explicit: (prev?.explicit ?? 0) + (p.tags.any(isK) ? 1 : 0),
+          typed: (prev?.typed ?? 0) + (isK(p.pageType) ? 1 : 0),
+          fromHub: (prev?.fromHub ?? 0) + (isK(hub) ? 1 : 0),
         );
       }
     }
@@ -581,6 +729,7 @@ class MemoryBackend implements GraphBackend {
       _put(p, tags: tags, pageType: hasType ? name : null);
       n++;
     }
+    _renameTypeDef(old, name);
     return n;
   }
 
@@ -985,6 +1134,7 @@ class MemoryBackend implements GraphBackend {
             homeHub: home[ids[i]] == null ? null : index[home[ids[i]]!],
             tags: allTags(pages[ids[i]]!),
             isTag: false,
+            pageType: pages[ids[i]]!.pageType,
           ),
         for (var j = 0; j < tagKeys.length; j++)
           GraphNode(

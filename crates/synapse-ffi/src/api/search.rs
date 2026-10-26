@@ -23,6 +23,7 @@ impl SynapseGraph {
                     page_id: p.id.to_string(),
                     title: p.title.clone(),
                     is_alias: false,
+                    page_type: p.page_type().map(String::from),
                 })
                 .collect());
         }
@@ -52,13 +53,15 @@ impl SynapseGraph {
         hits.truncate(limit as usize);
         let mut out = Vec::with_capacity(hits.len());
         for (_, _, title, id) in hits {
-            let is_alias = g
-                .get_page(id)?
+            let page = g.get_page(id)?;
+            let is_alias = page
+                .as_ref()
                 .is_some_and(|p| title_key(&p.title) != title_key(&title));
             out.push(TitleHit {
                 page_id: id.to_string(),
                 title,
                 is_alias,
+                page_type: page.and_then(|p| p.page_type().map(String::from)),
             });
         }
         Ok(out)

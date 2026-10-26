@@ -154,6 +154,23 @@ impl Graph {
         Ok(out)
     }
 
+    /// The type of every typed page.
+    pub fn all_page_types(&self) -> Result<HashMap<PageId, String>> {
+        let mut st = self
+            .conn()
+            .prepare_cached("SELECT id, types FROM pages WHERE types != '[]'")?;
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        let mut out = HashMap::new();
+        for row in rows {
+            let (id, types) = row?;
+            let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+            if let Some(t) = types.into_iter().next() {
+                out.insert(crate::store::parse_id(&id)?, t);
+            }
+        }
+        Ok(out)
+    }
+
     /// Every stored type definition (removed ones included), by name key.
     pub fn type_defs(&self) -> Result<HashMap<String, TypeDef>> {
         let mut st = self

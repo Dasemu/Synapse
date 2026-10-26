@@ -507,6 +507,52 @@ fn page_type_and_tag_renaming_round_trip_through_the_api() {
 }
 
 #[test]
+fn type_icons_and_page_types_reach_the_ui_dtos() {
+    let (_d, g) = open();
+    let (a, _) = page_with(&g, "Ana", &["x"]);
+    let (b, _) = page_with(&g, "Notes", &["about [[Ana]]"]);
+    g.set_page_type(a.clone(), Some("persona".into())).unwrap();
+    g.set_page_type(b.clone(), Some("idea".into())).unwrap();
+    g.set_type_icon("persona".into(), Some("🧑".into()))
+        .unwrap();
+    assert!(
+        g.set_type_icon("persona".into(), Some("xy".into()))
+            .is_err()
+    );
+    assert_eq!(g.create_type(" Libro ".into()).unwrap(), "Libro");
+    let cat = g.type_catalog().unwrap();
+    let persona = cat.iter().find(|t| t.name == "persona").unwrap();
+    assert_eq!((persona.count, persona.icon.as_deref()), (1, Some("🧑")));
+    assert!(cat.iter().any(|t| t.name == "Libro" && t.count == 0));
+    assert!(cat.iter().any(|t| t.name == "sueño" && t.count == 0));
+
+    // Lists of pages carry the page type, so the UI can look up its icon.
+    let hits = g.search_titles("Ana".into(), 5).unwrap();
+    assert_eq!(hits[0].page_type.as_deref(), Some("persona"));
+    let bl = g.backlinks(a.clone()).unwrap();
+    assert_eq!(bl[0].page_type.as_deref(), Some("idea"));
+    let briefs = g.pages_with_tag("persona".into()).unwrap();
+    assert_eq!(briefs[0].page_type.as_deref(), Some("persona"));
+    let data = g.graph_data().unwrap();
+    let node = data.nodes.iter().find(|n| n.id == a).unwrap();
+    assert_eq!(node.page_type.as_deref(), Some("persona"));
+
+    // Rename keeps the icon; remove drops the type from its pages.
+    assert_eq!(g.rename_type("persona".into(), "Gente".into()).unwrap(), 1);
+    let cat = g.type_catalog().unwrap();
+    let gente = cat.iter().find(|t| t.name == "Gente").unwrap();
+    assert_eq!(gente.icon.as_deref(), Some("🧑"));
+    assert_eq!(g.remove_type("Gente".into()).unwrap(), 1);
+    assert!(g.page(a).unwrap().unwrap().page.page_type.is_none());
+
+    // The tag catalog says where tags come from.
+    g.add_page_tag(b.clone(), "idea".into()).unwrap();
+    let tags = g.tag_catalog().unwrap();
+    let idea = tags.iter().find(|t| t.name == "idea").unwrap();
+    assert_eq!((idea.explicit, idea.typed, idea.from_hub), (1, 1, 0));
+}
+
+#[test]
 fn a_hub_tag_and_a_same_name_type_need_no_tag_node_beside_the_hub() {
     let (_d, g) = open();
     let hub = g.create_hub("Anime".into(), String::new()).unwrap();

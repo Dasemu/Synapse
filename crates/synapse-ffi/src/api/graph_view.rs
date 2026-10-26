@@ -83,6 +83,11 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         .into_iter()
         .map(|(id, t)| (id.to_string(), t))
         .collect();
+    let mut page_types: HashMap<String, String> = g
+        .all_page_types()?
+        .into_iter()
+        .map(|(id, t)| (id.to_string(), t))
+        .collect();
     {
         let mut st = conn.prepare(
             "SELECT id, title, journal_date, origin_journal, created_at FROM pages
@@ -100,6 +105,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         })?;
         for row in rows {
             let (id, title, journal_date, origin_journal, created_at) = row?;
+            let page_type = page_types.remove(&id);
             let tags = page_tags.get(&id).cloned().unwrap_or_default();
             index.insert(id.clone(), nodes.len() as u32);
             nodes.push(GraphNode {
@@ -116,6 +122,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
                 home_hub: None,
                 tags,
                 is_tag: false,
+                page_type,
             });
         }
     }
@@ -328,6 +335,7 @@ fn tagged(
                 home_hub: None,
                 tags: Vec::new(),
                 is_tag: true,
+                page_type: None,
             });
             nodes.len() as u32 - 1
         });
