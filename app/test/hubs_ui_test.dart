@@ -241,6 +241,30 @@ void main() {
     expect(() => b.addToHub(fun.id, tv.id), throwsException);
   });
 
+  testWidgets('a page can be deleted from its menu, after confirming', (
+    tester,
+  ) async {
+    final b = demo();
+    final games = byTitle(b, 'Games');
+    final app = await pump(tester, b, route: PageTarget(id: games.id));
+    await tester.tap(find.byKey(const ValueKey('page-menu')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('page-delete')));
+    await settle(tester);
+    // Cancel keeps it.
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+    expect(b.pages.containsKey(games.id), isTrue);
+    await tester.tap(find.byKey(const ValueKey('page-menu')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('page-delete')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('confirm-delete')));
+    await settle(tester);
+    expect(b.pages.containsKey(games.id), isFalse);
+    expect(app.route, isNot(PageTarget(id: games.id)));
+  });
+
   testWidgets('note page: In chips can be removed, no hub pill', (
     tester,
   ) async {

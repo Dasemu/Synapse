@@ -164,6 +164,8 @@ Both are plain names with no page, shown as one row of pills under the title.
 - Notes: namespace breadcrumb, "In: ..." chips with a × to leave a hub, and a `⋯` menu
   with "Convert to hub…" (dialog: shortened title, description, member checklist, optional
   note that keeps the original outline; title clashes are shown inline) and "Add to hub…".
+- Every page's `⋯` menu (notes and hubs) ends with "Delete page…": the same confirmation as
+  All pages; tabs showing it step back (or fall back to Journals) and recents drop it.
 - All pages ▸ "Clean up": dialog listing legacy Logseq pages (`contents`, `hls__...`, pages
   with `type:: system`, ...) with checkboxes; "Delete (n)" removes only the checked ones
   and their blocks.
