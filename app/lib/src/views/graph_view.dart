@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../backend/graph_backend.dart';
 import '../graph/graph_model.dart';
 import '../graph/network_canvas.dart';
 import '../graph/tree_canvas.dart';
