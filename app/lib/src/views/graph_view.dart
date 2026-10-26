@@ -442,6 +442,9 @@ class _GraphViewState extends State<GraphView> {
         model: m,
         onTap: _open,
         name: AppScope.read(context).backend.graphName,
+        typeIcon: AppScope.read(context).typeIcon,
+        // Subscribes: icon edits (or icons loaded after a cold start) reach the labels.
+        iconsVersion: AppScope.of(context).iconsVersion,
       );
     }
     final sub = _sub;

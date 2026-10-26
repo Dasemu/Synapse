@@ -2,7 +2,7 @@
 
 use crate::Result;
 use crate::error::Error;
-use crate::export::{self, JOURNALS_DIR, MANIFEST, PAGES_DIR};
+use crate::export::{self, JOURNALS_DIR, MANIFEST, PAGES_DIR, TYPES_FILE};
 use crate::repo::{CommitInfo, Files, Repo};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -202,7 +202,7 @@ impl History {
                         Op::DeletePage { id } => touched.extend(graph.hub_members(id)?),
                         // Deletions and moves do not say which page lost a block; those
                         // pages are caught by the `updated_at` scan below.
-                        Op::DeleteBlock { .. } | Op::PutAsset { .. } => {}
+                        Op::DeleteBlock { .. } | Op::PutAsset { .. } | Op::PutTypeDef { .. } => {}
                         // The previous owner of an alias is unknown.
                         Op::SetAlias { .. } => everything = true,
                     }
@@ -270,6 +270,22 @@ impl History {
             .write_blob(export::render_manifest(graph.conn())?.as_bytes())?;
         let assets_changed = old_files.get(MANIFEST) != Some(&manifest);
         files.insert(MANIFEST.to_string(), manifest);
+        let types = match export::render_types(graph)? {
+            Some(text) => Some(self.repo.write_blob(text.as_bytes())?),
+            None => None,
+        };
+        let types_changed = old_files.get(TYPES_FILE) != types.as_ref();
+        match types {
+            Some(oid) => files.insert(TYPES_FILE.to_string(), oid),
+            None => files.remove(TYPES_FILE),
+        };
+        let other = if assets_changed {
+            Some("assets updated")
+        } else if types_changed {
+            Some("types updated")
+        } else {
+            None
+        };
         if self.opts.include_blobs {
             self.add_blobs(graph, &mut files)?;
         }
@@ -284,7 +300,7 @@ impl History {
             self.save_state(&new_state)?;
             return Ok(None);
         }
-        let message = commit_message(&created, &edited, &deleted, assets_changed, seq_now);
+        let message = commit_message(&created, &edited, &deleted, other, seq_now);
         let id = self.repo.commit(&files, &message, now_ms / 1000)?;
         self.save_state(&new_state)?;
         Ok(Some(self.repo.commit_info(id)?.into()))
@@ -430,7 +446,7 @@ fn commit_message(
     created: &BTreeSet<String>,
     edited: &BTreeSet<String>,
     deleted: &BTreeSet<String>,
-    assets: bool,
+    other: Option<&str>,
     seq: i64,
 ) -> String {
     let plural = |n: usize| if n == 1 { "page" } else { "pages" };
@@ -445,7 +461,7 @@ fn commit_message(
         parts.push(format!("{} deleted", deleted.len()));
     }
     if parts.is_empty() {
-        parts.push(if assets { "assets updated" } else { "snapshot" }.to_string());
+        parts.push(other.unwrap_or("snapshot").to_string());
     }
     let mut titles: Vec<&String> = edited.iter().chain(created).chain(deleted).collect();
     titles.sort();

@@ -183,12 +183,43 @@ pub struct OpRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Op {
-    UpsertPage { page: Page },
-    DeletePage { id: PageId },
-    UpsertBlock { block: Block },
-    DeleteBlock { id: BlockId },
-    PutAsset { asset: Asset },
-    SetAlias { alias: String, page: Option<PageId> },
+    UpsertPage {
+        page: Page,
+    },
+    DeletePage {
+        id: PageId,
+    },
+    UpsertBlock {
+        block: Block,
+    },
+    DeleteBlock {
+        id: BlockId,
+    },
+    PutAsset {
+        asset: Asset,
+    },
+    SetAlias {
+        alias: String,
+        page: Option<PageId>,
+    },
+    /// Metadata of a type name (its icon), last writer wins per [`title_key`] of the name.
+    PutTypeDef {
+        def: TypeDef,
+    },
+}
+
+/// Graph-wide metadata of a type name: types are names, not pages, so this is where their
+/// icon lives (`type_defs` table, synced by [`Op::PutTypeDef`]). A definition also keeps a
+/// type in the vocabulary while no page uses it. `removed` is a tombstone: the type was
+/// deleted (it also hides a seeded suggestion of that name).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypeDef {
+    pub name: String,
+    /// An emoji (a short string) shown next to the names of pages of this type.
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub removed: bool,
 }
 
 /// Fields for creating a page; defaults come from the graph clock.

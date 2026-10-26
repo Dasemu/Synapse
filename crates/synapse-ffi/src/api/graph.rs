@@ -209,15 +209,23 @@ impl SynapseGraph {
             if !seen.insert(bl.block.id) {
                 continue;
             }
-            let i = *index.entry(bl.block.page_id).or_insert_with(|| {
-                groups.push(BacklinkGroup {
-                    page_id: bl.block.page_id.to_string(),
-                    page_title: bl.page_title.clone(),
-                    is_journal: parse_day(&bl.page_title).is_some(),
-                    blocks: Vec::new(),
-                });
-                groups.len() - 1
-            });
+            let i = match index.get(&bl.block.page_id) {
+                Some(&i) => i,
+                None => {
+                    let page_type = g
+                        .get_page(bl.block.page_id)?
+                        .and_then(|p| p.page_type().map(String::from));
+                    groups.push(BacklinkGroup {
+                        page_id: bl.block.page_id.to_string(),
+                        page_title: bl.page_title.clone(),
+                        is_journal: parse_day(&bl.page_title).is_some(),
+                        page_type,
+                        blocks: Vec::new(),
+                    });
+                    index.insert(bl.block.page_id, groups.len() - 1);
+                    groups.len() - 1
+                }
+            };
             groups[i].blocks.push(BlockDto::new(0, &bl.block, false));
         }
         Ok(groups)

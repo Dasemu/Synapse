@@ -16,10 +16,10 @@ class SynapseApp extends StatefulWidget {
 }
 
 class _SynapseAppState extends State<SynapseApp> {
-  late final AppState _state = AppState(
-    widget.backend,
-    settings: widget.settings,
-  )..loadRecent();
+  late final AppState _state =
+      AppState(widget.backend, settings: widget.settings)
+        ..loadRecent()
+        ..loadTypeIcons();
 
   @override
   void dispose() {

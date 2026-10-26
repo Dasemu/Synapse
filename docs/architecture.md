@@ -37,6 +37,18 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
 - **A page has at most one type** (`Page.types`, 0 or 1 entries; `Page::page_type()`), a name
   saying what the page is. It implies a tag of the same name. API: `set_page_type(page,
   Option<&str>)`, `type_catalog` (types in use by count, then the seeded `SUGGESTED_TYPES`).
+- **Type definitions** (schema v8): graph-wide metadata of a type name lives in
+  `type_defs(type_key, name, icon, removed, hlc)` (`TypeDef`), synced with its own op
+  `Op::PutTypeDef { def }`, last writer wins per name key (like `SetAlias`). It carries the
+  type's emoji (`icon`, a short non-ASCII string, `normalize_icon`) and keeps a type in the
+  vocabulary while no page uses it; `removed` is a tombstone (it also hides a seeded
+  suggestion of that name). API: `create_type`, `set_type_icon(name, Option<&str>)`,
+  `rename_type` (`rename_tag` plus keeping an unused type), `remove_type` (clears the type
+  from its pages, tombstones the definition), `type_defs`, `all_page_types`. `rename_tag`
+  moves the definition to the new name (a target with its own icon keeps it). `type_catalog`
+  lists used types, then defined unused ones, then remaining suggestions, each with its icon;
+  `tag_catalog` counts per tag the pages listing it (`explicit`), typed with it (`typed`)
+  and carrying it through their hub (`from_hub`).
 - **A page's direct hub is an implicit tag**, like its type: members of hub "Anime" are filed
   under "Anime" (`page_tags`, `pages_with_tag`, `tag_catalog`, the graph's tag node). It is
   not stored in `Page.tags` and merges with a same-name type or tag. Only the direct hub
@@ -50,7 +62,8 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
   A tag named like a hub in the graph uses the hub's node instead; its members, already
   linked by `CONTAINS`, get no `TAGGED` edge.
 - Known limitations: replicas still on the old schema may overwrite tags with stale values (LWW per page), and `rename_tag` is a bulk page edit, so concurrent edits on another replica can undo part of it.
-- Exports use `synapse-tags::` and `synapse-type::` (see `history.md`).
+- Exports use `synapse-tags::` and `synapse-type::` (see `history.md`); type definitions go
+  to `types.json`.
 
 ## Hubs and namespaces (`synapse-core::structure`)
 Two orthogonal ways to organise pages.

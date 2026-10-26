@@ -1,6 +1,6 @@
 //! Deterministic Markdown export of pages.
 //!
-//! Layout: `pages/<encoded title>.md`, `journals/YYYY_MM_DD.md`, `assets.json`.
+//! Layout: `pages/<encoded title>.md`, `journals/YYYY_MM_DD.md`, `assets.json`, `types.json`.
 //! A page file starts with page properties (`key:: value`, aliases as `alias:: a, b`),
 //! then one `- ` bullet per block, nested with tabs. Block properties follow the content;
 //! blocks referenced by `((uuid))` carry an `id::` property. Hubs carry `synapse-kind:: hub`
@@ -16,6 +16,8 @@ use synapse_core::{Block, BlockId, Graph, Page, Properties};
 pub const PAGES_DIR: &str = "pages";
 pub const JOURNALS_DIR: &str = "journals";
 pub const MANIFEST: &str = "assets.json";
+/// Type definitions (names with their emoji icon), see [`render_types`].
+pub const TYPES_FILE: &str = "types.json";
 /// Page property marking a hub or tag page (`synapse-kind:: hub|tag`); notes omit it.
 pub const KIND_PROP: &str = "synapse-kind";
 /// Page property holding a hub's description.
@@ -240,6 +242,35 @@ pub fn referenced_blocks(conn: &Connection) -> Result<HashSet<BlockId>> {
         }
     }
     Ok(set)
+}
+
+/// One entry of [`TYPES_FILE`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeEntry {
+    pub name: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+}
+
+/// Type definitions (`types.json`): the live ones (not removed), sorted by name key, so it is
+/// deterministic. `None` when there are none (the file is left out).
+pub fn render_types(graph: &Graph) -> Result<Option<String>> {
+    let defs: std::collections::BTreeMap<String, synapse_core::TypeDef> =
+        graph.type_defs()?.into_iter().collect();
+    let list: Vec<TypeEntry> = defs
+        .into_values()
+        .filter(|d| !d.removed)
+        .map(|d| TypeEntry {
+            name: d.name,
+            icon: d.icon,
+        })
+        .collect();
+    if list.is_empty() {
+        return Ok(None);
+    }
+    let mut s = serde_json::to_string_pretty(&list).map_err(Error::from)?;
+    s.push('\n');
+    Ok(Some(s))
 }
 
 /// Asset manifest (`assets.json`): sorted by hash, so it is deterministic.

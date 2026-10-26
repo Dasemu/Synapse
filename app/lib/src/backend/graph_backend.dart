@@ -70,8 +70,21 @@ abstract class GraphBackend {
 
   Future<PageDto> setPageType(String pageId, String? type);
 
-  /// Types in use (most used first), then the seeded suggestions not used yet.
+  /// Types in use (most used first), then types defined but unused, then the seeded
+  /// suggestions not used yet; each with its emoji icon (`TagDto.icon`).
   Future<List<TagDto>> typeCatalog();
+
+  /// Adds a type to the vocabulary even with no pages; returns its spelling.
+  Future<String> createType(String name);
+
+  /// Sets (or with `null` clears) the emoji of a type. Synced with the graph.
+  Future<void> setTypeIcon(String name, String? icon);
+
+  /// Renames a type (and same-name tags), keeping its icon; returns the pages changed.
+  Future<int> renameType(String old, String new_);
+
+  /// Deletes a type: its pages lose it and its icon goes; returns the pages changed.
+  Future<int> removeType(String name);
 
   /// Every tag in use (listed or implied by a type), most used first.
   Future<List<TagDto>> tagCatalog();
@@ -270,6 +283,16 @@ class FfiGraphBackend implements GraphBackend {
   Future<int> removeTag(String name) => _g.removeTag(name: name);
   @override
   Future<List<TagDto>> typeCatalog() => _g.typeCatalog();
+  @override
+  Future<String> createType(String name) => _g.createType(name: name);
+  @override
+  Future<void> setTypeIcon(String name, String? icon) =>
+      _g.setTypeIcon(name: name, icon: icon);
+  @override
+  Future<int> renameType(String old, String new_) =>
+      _g.renameType(old: old, new_: new_);
+  @override
+  Future<int> removeType(String name) => _g.removeType(name: name);
 
   @override
   Future<List<TagDto>> tagCatalog() => _g.tagCatalog();

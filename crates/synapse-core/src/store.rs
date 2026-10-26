@@ -1161,6 +1161,19 @@ impl Graph {
                     true
                 }
             }
+            Op::PutTypeDef { def } => {
+                let local: Option<String> = self
+                    .row(
+                        "SELECT hlc FROM type_defs WHERE type_key=?1",
+                        [title_key(&def.name)],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                local.is_none_or(|l| hlc > l.as_str()) && {
+                    self.write_type_def_row(def, hlc)?;
+                    true
+                }
+            }
         };
         if applied {
             self.log(hlc, op)?;
@@ -1401,6 +1414,22 @@ impl Graph {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    /// Stores a type definition row (no op logged), keyed by the name's [`title_key`].
+    pub(crate) fn write_type_def_row(&self, def: &TypeDef, hlc: &str) -> Result<()> {
+        self.exec(
+            "INSERT OR REPLACE INTO type_defs(type_key, name, icon, removed, hlc)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                title_key(&def.name),
+                def.name.trim(),
+                def.icon,
+                def.removed,
+                hlc
+            ],
+        )?;
         Ok(())
     }
 

@@ -115,11 +115,18 @@ class _TabItemState extends State<_TabItem> {
             ),
             child: Row(
               children: [
-                Icon(
-                  widget.tab.icon,
-                  size: 13,
-                  color: active ? colors.accent : colors.faint,
-                ),
+                if (app.tabTypeIcon(widget.tab) case final emoji?)
+                  Text(
+                    emoji,
+                    key: const ValueKey('type-icon'),
+                    style: const TextStyle(fontSize: 12.5, height: 1.15),
+                  )
+                else
+                  Icon(
+                    widget.tab.icon,
+                    size: 13,
+                    color: active ? colors.accent : colors.faint,
+                  ),
                 const SizedBox(width: 7),
                 Expanded(
                   child: Text(
@@ -215,7 +222,13 @@ Future<void> showTabsSheet(BuildContext context) {
                     dense: true,
                     selected: i == app.activeTab,
                     selectedColor: colors.accent,
-                    leading: Icon(tabs[i].icon, size: 18),
+                    leading: switch (app.tabTypeIcon(tabs[i])) {
+                      final String emoji => Text(
+                        emoji,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      null => Icon(tabs[i].icon, size: 18),
+                    },
                     title: Text(
                       tabs[i].title,
                       maxLines: 1,

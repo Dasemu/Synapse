@@ -161,6 +161,7 @@ Future<T?> showNameDialog<T>(
   required String confirm,
   required Future<T> Function(String name) submit,
   String hint = 'Title',
+  String initial = '',
 }) => showDialog<T>(
   context: context,
   builder: (_) => _NameDialog<T>(
@@ -168,6 +169,7 @@ Future<T?> showNameDialog<T>(
     confirm: confirm,
     submit: submit,
     hint: hint,
+    initial: initial,
   ),
 );
 
@@ -177,8 +179,10 @@ class _NameDialog<T> extends StatefulWidget {
     required this.confirm,
     required this.submit,
     required this.hint,
+    this.initial = '',
   });
   final String heading;
+  final String initial;
   final String confirm;
   final String hint;
   final Future<T> Function(String) submit;
@@ -188,7 +192,7 @@ class _NameDialog<T> extends StatefulWidget {
 }
 
 class _NameDialogState<T> extends State<_NameDialog<T>> {
-  final _text = TextEditingController();
+  late final _text = TextEditingController(text: widget.initial);
   String? _error;
   bool _busy = false;
 

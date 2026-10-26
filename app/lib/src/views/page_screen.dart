@@ -5,6 +5,7 @@ import '../editor/outline_view.dart';
 import '../state/app_state.dart';
 import '../state/outline_controller.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
 import '../widgets/pickers.dart';
@@ -239,6 +240,10 @@ class _Header extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: TypeIcon(page.pageType, size: 26, gap: 10),
+                ),
                 Expanded(child: TitleField(page: page)),
                 IconButton(
                   key: const ValueKey('page-sidebar-toggle'),
@@ -471,16 +476,24 @@ class _LinkedReferences extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextLink(
-                    group.isJournal
-                        ? longDate(group.pageTitle)
-                        : group.pageTitle,
-                    onTap: () => app.openId(group.pageId),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: colors.ink,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TypeIcon(group.pageType),
+                      Flexible(
+                        child: TextLink(
+                          group.isJournal
+                              ? longDate(group.pageTitle)
+                              : group.pageTitle,
+                          onTap: () => app.openId(group.pageId),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colors.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   for (final b in group.blocks)
@@ -544,13 +557,25 @@ class RelatedPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextLink(
-                      x.page.isJournal ? longDate(x.page.title) : x.page.title,
-                      icon: x.page.isJournal
-                          ? Icons.calendar_today_outlined
-                          : Icons.description_outlined,
-                      onTap: () => app.openId(x.page.id),
-                      style: TextStyle(fontSize: 13.5, color: colors.ink),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TypeIcon(x.page.pageType),
+                        Flexible(
+                          child: TextLink(
+                            x.page.isJournal
+                                ? longDate(x.page.title)
+                                : x.page.title,
+                            icon: app.typeIcon(x.page.pageType) != null
+                                ? null
+                                : x.page.isJournal
+                                ? Icons.calendar_today_outlined
+                                : Icons.description_outlined,
+                            onTap: () => app.openId(x.page.id),
+                            style: TextStyle(fontSize: 13.5, color: colors.ink),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     ClipRRect(

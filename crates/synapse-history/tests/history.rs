@@ -372,6 +372,38 @@ fn tags_round_trip_through_snapshots() {
 }
 
 #[test]
+fn type_icons_round_trip_through_snapshots() {
+    let (_d, g, mut h) = setup();
+    let note = add(&g, "Ada", &["body"]);
+    g.set_page_type(note.id, Some("persona")).unwrap();
+    let s0 = h.snapshot(&g, T0 + 100).unwrap().unwrap();
+    assert!(h.file(&s0.id, export::TYPES_FILE).unwrap().is_none());
+
+    at(&g, T0 + 200);
+    g.set_type_icon("persona", Some("🧑")).unwrap();
+    g.create_type("Libro").unwrap();
+    let s1 = h.snapshot(&g, T0 + 500).unwrap().unwrap();
+    assert_eq!(s1.summary, "types updated");
+    let json = h.file(&s1.id, export::TYPES_FILE).unwrap().unwrap();
+    assert!(json.contains("\"Libro\"") && json.contains("🧑"), "{json}");
+
+    at(&g, T0 + 1000);
+    g.set_type_icon("persona", Some("👤")).unwrap();
+    g.set_type_icon("lugar", Some("📍")).unwrap();
+    h.restore_graph(&g, &s1.id, T0 + 2000).unwrap();
+    let icon = |name: &str| {
+        g.type_catalog()
+            .unwrap()
+            .into_iter()
+            .find(|t| t.name == name)
+            .and_then(|t| t.icon)
+    };
+    assert_eq!(icon("persona").as_deref(), Some("🧑"));
+    assert_eq!(icon("lugar"), None);
+    assert!(g.type_catalog().unwrap().iter().any(|t| t.name == "Libro"));
+}
+
+#[test]
 fn hubs_round_trip_kind_description_and_memberships() {
     let (_d, g, mut h) = setup();
     let top = g.create_hub("Top", "All my stuff,\nin one place").unwrap();

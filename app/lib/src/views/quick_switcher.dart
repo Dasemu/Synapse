@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 
 /// Ctrl+K: jump to a page by title or alias, to a page whose blocks contain the text, or
 /// create it.
@@ -168,6 +169,7 @@ class _QuickSwitcherState extends State<QuickSwitcher> {
                         onMiddle: () => _open(i, newTab: true),
                         icon: Icons.description_outlined,
                         title: _hits[i].title,
+                        pageType: _hits[i].pageType,
                         detail: _hits[i].isAlias ? 'alias' : null,
                       ),
                     if (_blocks.isNotEmpty)
@@ -217,6 +219,7 @@ class _Item extends StatelessWidget {
     required this.onMiddle,
     this.detail,
     this.snippet,
+    this.pageType,
   });
   final bool selected;
   final VoidCallback onTap;
@@ -224,6 +227,9 @@ class _Item extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? detail;
+
+  /// Type of the page hit (its emoji goes before the title).
+  final String? pageType;
 
   /// Matching text shown under the title (content results).
   final Widget? snippet;
@@ -254,11 +260,18 @@ class _Item extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14, color: colors.ink),
+                    Row(
+                      children: [
+                        TypeIcon(pageType),
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 14, color: colors.ink),
+                          ),
+                        ),
+                      ],
                     ),
                     if (snippet != null) ...[
                       const SizedBox(height: 2),
