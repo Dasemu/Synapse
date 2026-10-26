@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 465538383;
+  int get rustContentHash => -1472342481;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -121,12 +121,6 @@ abstract class RustLibApi extends BaseApi {
     required SynapseGraph that,
     required String pageId,
     required String tag,
-  });
-
-  Future<PageDto> crateApiGraphSynapseGraphAddPageType({
-    required SynapseGraph that,
-    required String pageId,
-    required String ty,
   });
 
   Future<void> crateApiGraphSynapseGraphAddToHub({
@@ -345,16 +339,21 @@ abstract class RustLibApi extends BaseApi {
     required String tag,
   });
 
-  Future<PageDto> crateApiGraphSynapseGraphRemovePageType({
+  Future<int> crateApiGraphSynapseGraphRemoveTag({
     required SynapseGraph that,
-    required String pageId,
-    required String ty,
+    required String name,
   });
 
   Future<PageDto> crateApiGraphSynapseGraphRenamePage({
     required SynapseGraph that,
     required String id,
     required String newTitle,
+  });
+
+  Future<int> crateApiGraphSynapseGraphRenameTag({
+    required SynapseGraph that,
+    required String old,
+    required String new_,
   });
 
   Future<List<BlockHit>> crateApiGraphSynapseGraphSearchBlocks({
@@ -387,10 +386,10 @@ abstract class RustLibApi extends BaseApi {
     required List<String> tags,
   });
 
-  Future<PageDto> crateApiGraphSynapseGraphSetPageTypes({
+  Future<PageDto> crateApiGraphSynapseGraphSetPageType({
     required SynapseGraph that,
     required String pageId,
-    required List<String> types,
+    String? pageType,
   });
 
   Future<List<TagDto>> crateApiGraphSynapseGraphTagCatalog({
@@ -714,46 +713,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PageDto> crateApiGraphSynapseGraphAddPageType({
-    required SynapseGraph that,
-    required String pageId,
-    required String ty,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
-            that,
-            serializer,
-          );
-          sse_encode_String(pageId, serializer);
-          sse_encode_String(ty, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 8,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_page_dto,
-          decodeErrorData: sse_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiGraphSynapseGraphAddPageTypeConstMeta,
-        argValues: [that, pageId, ty],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiGraphSynapseGraphAddPageTypeConstMeta =>
-      const TaskConstMeta(
-        debugName: "SynapseGraph_add_page_type",
-        argNames: ["that", "pageId", "ty"],
-      );
-
-  @override
   Future<void> crateApiGraphSynapseGraphAddToHub({
     required SynapseGraph that,
     required String pageId,
@@ -772,7 +731,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 8,
             port: port_,
           );
         },
@@ -810,7 +769,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 9,
             port: port_,
           );
         },
@@ -845,7 +804,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_String(hash, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_String,
@@ -881,7 +840,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 11,
             port: port_,
           );
         },
@@ -919,7 +878,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 12,
             port: port_,
           );
         },
@@ -965,7 +924,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 13,
             port: port_,
           );
         },
@@ -1010,7 +969,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 14,
             port: port_,
           );
         },
@@ -1050,7 +1009,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 15,
             port: port_,
           );
         },
@@ -1090,7 +1049,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 16,
             port: port_,
           );
         },
@@ -1128,7 +1087,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 17,
             port: port_,
           );
         },
@@ -1166,7 +1125,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1197,7 +1156,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1228,7 +1187,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1266,7 +1225,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1304,7 +1263,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1338,7 +1297,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1373,7 +1332,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1415,7 +1374,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1453,7 +1412,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1491,7 +1450,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1531,7 +1490,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1567,7 +1526,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1609,7 +1568,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1649,7 +1608,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1691,7 +1650,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1722,7 +1681,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1758,7 +1717,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1796,7 +1755,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1834,7 +1793,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1872,7 +1831,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1910,7 +1869,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1948,7 +1907,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1986,7 +1945,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 40,
             port: port_,
           );
         },
@@ -2024,7 +1983,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 41,
             port: port_,
           );
         },
@@ -2066,7 +2025,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2106,7 +2065,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 43,
             port: port_,
           );
         },
@@ -2146,7 +2105,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 45,
+            funcId: 44,
             port: port_,
           );
         },
@@ -2186,7 +2145,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 46,
+            funcId: 45,
             port: port_,
           );
         },
@@ -2224,7 +2183,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 47,
+            funcId: 46,
             port: port_,
           );
         },
@@ -2264,7 +2223,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 48,
+            funcId: 47,
             port: port_,
           );
         },
@@ -2304,7 +2263,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 49,
+            funcId: 48,
             port: port_,
           );
         },
@@ -2326,10 +2285,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PageDto> crateApiGraphSynapseGraphRemovePageType({
+  Future<int> crateApiGraphSynapseGraphRemoveTag({
     required SynapseGraph that,
-    required String pageId,
-    required String ty,
+    required String name,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -2339,30 +2297,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_String(pageId, serializer);
-          sse_encode_String(ty, serializer);
+          sse_encode_String(name, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 50,
+            funcId: 49,
             port: port_,
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_page_dto,
+          decodeSuccessData: sse_decode_u_32,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiGraphSynapseGraphRemovePageTypeConstMeta,
-        argValues: [that, pageId, ty],
+        constMeta: kCrateApiGraphSynapseGraphRemoveTagConstMeta,
+        argValues: [that, name],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiGraphSynapseGraphRemovePageTypeConstMeta =>
+  TaskConstMeta get kCrateApiGraphSynapseGraphRemoveTagConstMeta =>
       const TaskConstMeta(
-        debugName: "SynapseGraph_remove_page_type",
-        argNames: ["that", "pageId", "ty"],
+        debugName: "SynapseGraph_remove_tag",
+        argNames: ["that", "name"],
       );
 
   @override
@@ -2384,7 +2341,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 51,
+            funcId: 50,
             port: port_,
           );
         },
@@ -2403,6 +2360,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "SynapseGraph_rename_page",
         argNames: ["that", "id", "newTitle"],
+      );
+
+  @override
+  Future<int> crateApiGraphSynapseGraphRenameTag({
+    required SynapseGraph that,
+    required String old,
+    required String new_,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerSynapseGraph(
+            that,
+            serializer,
+          );
+          sse_encode_String(old, serializer);
+          sse_encode_String(new_, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 51,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGraphSynapseGraphRenameTagConstMeta,
+        argValues: [that, old, new_],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGraphSynapseGraphRenameTagConstMeta =>
+      const TaskConstMeta(
+        debugName: "SynapseGraph_rename_tag",
+        argNames: ["that", "old", "new_"],
       );
 
   @override
@@ -2606,10 +2603,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PageDto> crateApiGraphSynapseGraphSetPageTypes({
+  Future<PageDto> crateApiGraphSynapseGraphSetPageType({
     required SynapseGraph that,
     required String pageId,
-    required List<String> types,
+    String? pageType,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -2620,7 +2617,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_String(pageId, serializer);
-          sse_encode_list_String(types, serializer);
+          sse_encode_opt_String(pageType, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -2632,17 +2629,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_page_dto,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiGraphSynapseGraphSetPageTypesConstMeta,
-        argValues: [that, pageId, types],
+        constMeta: kCrateApiGraphSynapseGraphSetPageTypeConstMeta,
+        argValues: [that, pageId, pageType],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiGraphSynapseGraphSetPageTypesConstMeta =>
+  TaskConstMeta get kCrateApiGraphSynapseGraphSetPageTypeConstMeta =>
       const TaskConstMeta(
-        debugName: "SynapseGraph_set_page_types",
-        argNames: ["that", "pageId", "types"],
+        debugName: "SynapseGraph_set_page_type",
+        argNames: ["that", "pageId", "pageType"],
       );
 
   @override
@@ -3044,8 +3041,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   GraphNode dco_decode_graph_node(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 12)
-      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return GraphNode(
       id: dco_decode_String(arr[0]),
       title: dco_decode_String(arr[1]),
@@ -3059,6 +3056,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       isHub: dco_decode_bool(arr[9]),
       homeHub: dco_decode_opt_box_autoadd_u_32(arr[10]),
       tags: dco_decode_list_String(arr[11]),
+      isTag: dco_decode_bool(arr[12]),
     );
   }
 
@@ -3352,8 +3350,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PageDto dco_decode_page_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 11)
-      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return PageDto(
       id: dco_decode_String(arr[0]),
       title: dco_decode_String(arr[1]),
@@ -3364,8 +3362,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       isHub: dco_decode_bool(arr[6]),
       description: dco_decode_String(arr[7]),
       tags: dco_decode_list_String(arr[8]),
-      isTag: dco_decode_bool(arr[9]),
-      types: dco_decode_list_String(arr[10]),
+      pageType: dco_decode_opt_String(arr[9]),
     );
   }
 
@@ -3746,6 +3743,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_isHub = sse_decode_bool(deserializer);
     var var_homeHub = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_tags = sse_decode_list_String(deserializer);
+    var var_isTag = sse_decode_bool(deserializer);
     return GraphNode(
       id: var_id,
       title: var_title,
@@ -3759,6 +3757,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       isHub: var_isHub,
       homeHub: var_homeHub,
       tags: var_tags,
+      isTag: var_isTag,
     );
   }
 
@@ -4198,8 +4197,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_isHub = sse_decode_bool(deserializer);
     var var_description = sse_decode_String(deserializer);
     var var_tags = sse_decode_list_String(deserializer);
-    var var_isTag = sse_decode_bool(deserializer);
-    var var_types = sse_decode_list_String(deserializer);
+    var var_pageType = sse_decode_opt_String(deserializer);
     return PageDto(
       id: var_id,
       title: var_title,
@@ -4210,8 +4208,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       isHub: var_isHub,
       description: var_description,
       tags: var_tags,
-      isTag: var_isTag,
-      types: var_types,
+      pageType: var_pageType,
     );
   }
 
@@ -4551,6 +4548,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.isHub, serializer);
     sse_encode_opt_box_autoadd_u_32(self.homeHub, serializer);
     sse_encode_list_String(self.tags, serializer);
+    sse_encode_bool(self.isTag, serializer);
   }
 
   @protected
@@ -4960,8 +4958,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.isHub, serializer);
     sse_encode_String(self.description, serializer);
     sse_encode_list_String(self.tags, serializer);
-    sse_encode_bool(self.isTag, serializer);
-    sse_encode_list_String(self.types, serializer);
+    sse_encode_opt_String(self.pageType, serializer);
   }
 
   @protected
@@ -5145,13 +5142,6 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
         that: this,
         pageId: pageId,
         tag: tag,
-      );
-
-  Future<PageDto> addPageType({required String pageId, required String ty}) =>
-      RustLib.instance.api.crateApiGraphSynapseGraphAddPageType(
-        that: this,
-        pageId: pageId,
-        ty: ty,
       );
 
   /// Puts a page in a hub (no-op when it already is). Fails for journals, non-hub targets,
@@ -5366,7 +5356,7 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
       .api
       .crateApiGraphSynapseGraphPageStructure(that: this, pageId: pageId);
 
-  /// Pages carrying a tag, most recently updated first.
+  /// Pages carrying a tag (listed or via their type), most recently updated first.
   Future<List<PageBrief>> pagesWithTag({required String tag}) => RustLib
       .instance
       .api
@@ -5432,14 +5422,10 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
     tag: tag,
   );
 
-  Future<PageDto> removePageType({
-    required String pageId,
-    required String ty,
-  }) => RustLib.instance.api.crateApiGraphSynapseGraphRemovePageType(
-    that: this,
-    pageId: pageId,
-    ty: ty,
-  );
+  /// Removes the explicit tag from every page (types of that name stay); returns the number
+  /// of pages changed.
+  Future<int> removeTag({required String name}) => RustLib.instance.api
+      .crateApiGraphSynapseGraphRemoveTag(that: this, name: name);
 
   Future<PageDto> renamePage({required String id, required String newTitle}) =>
       RustLib.instance.api.crateApiGraphSynapseGraphRenamePage(
@@ -5447,6 +5433,13 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
         id: id,
         newTitle: newTitle,
       );
+
+  /// Renames a tag in the `tags` and `types` of every page carrying it; returns the number of
+  /// pages changed.
+  Future<int> renameTag({required String old, required String new_}) => RustLib
+      .instance
+      .api
+      .crateApiGraphSynapseGraphRenameTag(that: this, old: old, new_: new_);
 
   /// Blocks whose text contains `query` (for `((` autocomplete), most recent first.
   Future<List<BlockHit>> searchBlocks({
@@ -5485,8 +5478,8 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
     description: description,
   );
 
-  /// Replaces the tags of a page (each title gets a tag page if it has none). Journals,
-  /// templates and tag pages cannot be tagged.
+  /// Replaces the tags of a page (names only, stored sorted). Journals and templates cannot
+  /// be tagged.
   Future<PageDto> setPageTags({
     required String pageId,
     required List<String> tags,
@@ -5496,17 +5489,16 @@ class SynapseGraphImpl extends RustOpaque implements SynapseGraph {
     tags: tags,
   );
 
-  /// Replaces the types of a page. Journals and templates cannot be typed.
-  Future<PageDto> setPageTypes({
-    required String pageId,
-    required List<String> types,
-  }) => RustLib.instance.api.crateApiGraphSynapseGraphSetPageTypes(
-    that: this,
-    pageId: pageId,
-    types: types,
-  );
+  /// Sets (or with `None` clears) the single type of a page. Journals and templates cannot be
+  /// typed.
+  Future<PageDto> setPageType({required String pageId, String? pageType}) =>
+      RustLib.instance.api.crateApiGraphSynapseGraphSetPageType(
+        that: this,
+        pageId: pageId,
+        pageType: pageType,
+      );
 
-  /// Every tag page with its number of pages, most used first.
+  /// Every tag in use (listed or implied by a type) with its number of pages, most used first.
   Future<List<TagDto>> tagCatalog() =>
       RustLib.instance.api.crateApiGraphSynapseGraphTagCatalog(that: this);
 

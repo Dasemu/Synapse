@@ -17,8 +17,6 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<PageDto> addPageTag({required String pageId, required String tag});
 
-  Future<PageDto> addPageType({required String pageId, required String ty});
-
   /// Puts a page in a hub (no-op when it already is). Fails for journals, non-hub targets,
   /// the hub itself and memberships that would create a cycle.
   Future<void> addToHub({required String pageId, required String hubId});
@@ -148,7 +146,7 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Hub and namespace context of a page.
   Future<PageStructure> pageStructure({required String pageId});
 
-  /// Pages carrying a tag, most recently updated first.
+  /// Pages carrying a tag (listed or via their type), most recently updated first.
   Future<List<PageBrief>> pagesWithTag({required String tag});
 
   /// Deletes pages and their blocks in one transaction. Returns how many existed.
@@ -180,9 +178,15 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<PageDto> removePageTag({required String pageId, required String tag});
 
-  Future<PageDto> removePageType({required String pageId, required String ty});
+  /// Removes the explicit tag from every page (types of that name stay); returns the number
+  /// of pages changed.
+  Future<int> removeTag({required String name});
 
   Future<PageDto> renamePage({required String id, required String newTitle});
+
+  /// Renames a tag in the `tags` and `types` of every page carrying it; returns the number of
+  /// pages changed.
+  Future<int> renameTag({required String old, required String new_});
 
   /// Blocks whose text contains `query` (for `((` autocomplete), most recent first.
   Future<List<BlockHit>> searchBlocks({
@@ -204,20 +208,18 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String description,
   });
 
-  /// Replaces the tags of a page (each title gets a tag page if it has none). Journals,
-  /// templates and tag pages cannot be tagged.
+  /// Replaces the tags of a page (names only, stored sorted). Journals and templates cannot
+  /// be tagged.
   Future<PageDto> setPageTags({
     required String pageId,
     required List<String> tags,
   });
 
-  /// Replaces the types of a page. Journals and templates cannot be typed.
-  Future<PageDto> setPageTypes({
-    required String pageId,
-    required List<String> types,
-  });
+  /// Sets (or with `None` clears) the single type of a page. Journals and templates cannot be
+  /// typed.
+  Future<PageDto> setPageType({required String pageId, String? pageType});
 
-  /// Every tag page with its number of pages, most used first.
+  /// Every tag in use (listed or implied by a type) with its number of pages, most used first.
   Future<List<TagDto>> tagCatalog();
 
   /// Timeline data for `[from, to]` (oldest first) with titles of every page it mentions.

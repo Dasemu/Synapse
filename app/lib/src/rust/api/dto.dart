@@ -246,7 +246,7 @@ class GraphNode {
   /// Community (Louvain), numbered by size: 0 is the largest.
   final int cluster;
 
-  /// Node index of the tag this page uses most, if any.
+  /// Node index of the tag (page or virtual tag node) this page uses most, if any.
   final int? primaryTag;
 
   /// The page is a hub (`PageKind::Hub`).
@@ -255,8 +255,12 @@ class GraphNode {
   /// Node index of the deepest hub containing this page (a hub: itself).
   final int? homeHub;
 
-  /// Tag names of the page (see `PageDto::tags`), for grouping by tag.
+  /// Tag names of the page, listed or implied by its types, for grouping by tag.
   final List<String> tags;
+
+  /// A virtual tag node (not a page, no outline): `id` is `tag:<title_key>`, `title` the
+  /// display name, `degree` the number of pages carrying the tag.
+  final bool isTag;
 
   const GraphNode({
     required this.id,
@@ -271,6 +275,7 @@ class GraphNode {
     required this.isHub,
     this.homeHub,
     required this.tags,
+    required this.isTag,
   });
 
   @override
@@ -286,7 +291,8 @@ class GraphNode {
       primaryTag.hashCode ^
       isHub.hashCode ^
       homeHub.hashCode ^
-      tags.hashCode;
+      tags.hashCode ^
+      isTag.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -304,7 +310,8 @@ class GraphNode {
           primaryTag == other.primaryTag &&
           isHub == other.isHub &&
           homeHub == other.homeHub &&
-          tags == other.tags;
+          tags == other.tags &&
+          isTag == other.isTag;
 }
 
 /// A hub (folder-like page) with its members.
@@ -586,14 +593,12 @@ class PageDto {
   /// Hub description (empty for notes).
   final String description;
 
-  /// Titles of the tag pages this page is filed under, in the order they were added.
+  /// Tag names (no pages) this page lists, sorted by name; its type implies a tag too.
   final List<String> tags;
 
-  /// The page is a tag page (a topic that other pages are filed under).
-  final bool isTag;
-
-  /// Type names ("persona", "lugar"...: plain names, not pages), in the order added.
-  final List<String> types;
+  /// The page's single type ("persona", "lugar"...: a name, not a page); it implies a tag of
+  /// the same name.
+  final String? pageType;
 
   const PageDto({
     required this.id,
@@ -605,8 +610,7 @@ class PageDto {
     required this.isHub,
     required this.description,
     required this.tags,
-    required this.isTag,
-    required this.types,
+    this.pageType,
   });
 
   @override
@@ -620,8 +624,7 @@ class PageDto {
       isHub.hashCode ^
       description.hashCode ^
       tags.hashCode ^
-      isTag.hashCode ^
-      types.hashCode;
+      pageType.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -637,8 +640,7 @@ class PageDto {
           isHub == other.isHub &&
           description == other.description &&
           tags == other.tags &&
-          isTag == other.isTag &&
-          types == other.types;
+          pageType == other.pageType;
 }
 
 /// Hub and namespace context of one page.

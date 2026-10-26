@@ -399,7 +399,7 @@ fn legacy_candidates_and_purge() {
 }
 
 #[test]
-fn tags_are_pages_and_their_own_edge_kind() {
+fn tags_are_virtual_graph_nodes_with_their_own_edge_kind() {
     let (_d, g) = open();
     let (a, _) = page_with(&g, "Rust", &["x"]);
     let (b, _) = page_with(&g, "Go", &["y"]);
@@ -407,13 +407,13 @@ fn tags_are_pages_and_their_own_edge_kind() {
     for (p, tags) in [
         (&a, vec!["tecnología", "idea"]),
         (&b, vec!["Tecnología", "idea"]),
-        (&c, vec!["lugar"]),
     ] {
         g.set_page_tags(p.clone(), tags.into_iter().map(String::from).collect())
             .unwrap();
     }
+    g.set_page_type(c.clone(), Some("lugar".into())).unwrap();
+    g.set_page_type(b.clone(), Some("Idea".into())).unwrap();
     let data = g.graph_data().unwrap();
-    let idx = |id: &str| data.nodes.iter().position(|n| n.id == id).unwrap() as u32;
     let title = |i: u32| data.nodes[i as usize].title.clone();
     let mut tagged: Vec<(String, String)> = (0..data.kinds.len())
         .filter(|&e| data.kinds[e] == edge_kind::TAGGED)
@@ -430,35 +430,46 @@ fn tags_are_pages_and_their_own_edge_kind() {
             pair("Rust", "idea"),
             pair("Rust", "tecnología"),
         ],
-        "each page points at its tag pages"
+        "each page points at its tags, including the one its type implies, once"
     );
-    // The tag page is a real node that counts backlinks, and the DTOs flag it.
-    let tp = &data.nodes[data
+    // Tags are virtual: no page behind them, flagged, with the page count as degree.
+    let tag = data
         .nodes
         .iter()
-        .position(|n| n.title == "tecnología")
-        .unwrap()];
-    assert_eq!(tp.backlinks, 2);
-    assert!(g.page(tp.id.clone()).unwrap().unwrap().page.is_tag);
+        .find(|n| n.is_tag && n.title == "tecnología");
+    let tag = tag.expect("tag node");
+    assert_eq!(tag.id, "tag:tecnología");
+    assert_eq!((tag.degree, tag.journal_date.clone()), (2, None));
+    assert!(g.page(tag.id.clone()).is_err() || g.page(tag.id.clone()).unwrap().is_none());
+    assert_eq!(data.nodes.iter().filter(|n| n.is_tag).count(), 3);
+    let go = data.nodes.iter().find(|n| n.title == "Go").unwrap();
     assert_eq!(
-        idx(&a),
-        data.nodes.iter().position(|n| n.id == a).unwrap() as u32
+        go.tags,
+        ["idea", "Tecnología"],
+        "tags, with the type's tag once"
     );
     let cat = g.tag_catalog().unwrap();
     assert_eq!((cat[0].name.as_str(), cat[0].count), ("idea", 2));
+    assert_eq!(g.pages_with_tag("IDEA".into()).unwrap().len(), 2);
 }
 
 #[test]
-fn types_round_trip_through_the_api() {
+fn page_type_and_tag_renaming_round_trip_through_the_api() {
     let (_d, g) = open();
     let (a, _) = page_with(&g, "Ana", &["x"]);
-    let p = g.add_page_type(a.clone(), "persona".into()).unwrap();
-    assert_eq!(p.types, ["persona"]);
+    let p = g.set_page_type(a.clone(), Some("persona".into())).unwrap();
+    assert_eq!(p.page_type.as_deref(), Some("persona"));
+    let p = g.set_page_type(a.clone(), Some("lugar".into())).unwrap();
+    assert_eq!(p.page_type.as_deref(), Some("lugar"));
     assert!(g.type_catalog().unwrap().iter().any(|t| t.name == "lugar"));
-    assert!(
-        g.remove_page_type(a, "PERSONA".into())
-            .unwrap()
-            .types
-            .is_empty()
+    g.add_page_tag(a.clone(), "web".into()).unwrap();
+    assert_eq!(g.rename_tag("lugar".into(), "sitio".into()).unwrap(), 1);
+    assert_eq!(g.rename_tag("web".into(), "red".into()).unwrap(), 1);
+    let p = g.page(a.clone()).unwrap().unwrap().page;
+    assert_eq!(
+        (p.page_type.as_deref(), p.tags),
+        (Some("sitio"), vec!["red".to_string()])
     );
+    assert_eq!(g.remove_tag("red".into()).unwrap(), 1);
+    assert!(g.set_page_type(a, None).unwrap().page_type.is_none());
 }
