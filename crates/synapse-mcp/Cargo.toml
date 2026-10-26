@@ -1,0 +1,31 @@
+[package]
+name = "synapse-mcp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "MCP (Model Context Protocol) server over a Synapse graph: stdio binary + Streamable HTTP service"
+
+[lib]
+name = "synapse_mcp"
+
+[[bin]]
+name = "synapse-mcp"
+path = "src/main.rs"
+
+[dependencies]
+synapse-core.workspace = true
+# Logseq-style Markdown outline parser (write tools turn Markdown into nested blocks).
+synapse-import = { path = "../synapse-import" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+rusqlite.workspace = true
+# Request parts (the HTTP server passes the graph to tools through their extensions).
+http = "1"
+# Official MCP SDK: protocol types, tool router/schemas, stdio and Streamable HTTP transports.
+rmcp = { version = "3.7", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+
+[dev-dependencies]
+tempfile = "3"
