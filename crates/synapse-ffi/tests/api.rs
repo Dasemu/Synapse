@@ -1,4 +1,4 @@
-use synapse_ffi::api::dto::{BlockDto, Place, PlaceKind};
+use synapse_ffi::api::dto::{BlockDto, Place, PlaceKind, edge_kind};
 use synapse_ffi::api::graph::SynapseGraph;
 
 fn open() -> (tempfile::TempDir, SynapseGraph) {
@@ -184,4 +184,281 @@ fn assets_round_trip() {
     let path = g.asset_path(a.hash.clone()).unwrap();
     assert_eq!(std::fs::read(path).unwrap(), b"png");
     assert!(g.asset_path("zz".into()).is_none());
+}
+
+#[test]
+fn hubs_structure_and_graph_nodes() {
+    let (_d, g) = open();
+    let media = g.create_hub("Media".into(), " All media ".into()).unwrap();
+    assert!(media.is_hub);
+    assert_eq!(media.description, "All media");
+    let media = media.id;
+    let books = g
+        .create_hub("Media/Books".into(), String::new())
+        .unwrap()
+        .id;
+    let (novel, _) = page_with(&g, "Novel", &["text"]);
+    let (film, _) = page_with(&g, "Film", &["text"]);
+    let (note, _) = page_with(&g, "Note", &["plain text"]);
+    g.add_to_hub(books.clone(), media.clone()).unwrap();
+    g.add_to_hub(film.clone(), media.clone()).unwrap();
+    g.add_to_hub(novel.clone(), books.clone()).unwrap();
+    g.add_to_hub(novel.clone(), books.clone()).unwrap(); // no-op
+
+    // Rules surface as readable errors.
+    let err = g.add_to_hub(media.clone(), books.clone()).unwrap_err();
+    assert!(err.to_string().contains("cycle"), "{err}");
+    assert!(
+        g.add_to_hub(note.clone(), film.clone()).is_err(),
+        "not a hub"
+    );
+    assert!(g.add_to_hub(media.clone(), media.clone()).is_err(), "self");
+    let today = g.open_page(g.today()).unwrap().page.id;
+    assert!(g.add_to_hub(today, media.clone()).is_err(), "journal");
+    let err = g
+        .insert_block(
+            media.clone(),
+            place(PlaceKind::LastChildOf, None),
+            "x".into(),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("hubs have no blocks"), "{err}");
+
+    let hubs = g.hubs().unwrap();
+    let titles: Vec<&str> = hubs.hubs.iter().map(|h| h.title.as_str()).collect();
+    assert_eq!(titles, ["Media", "Media/Books"]);
+    assert_eq!(hubs.roots, std::slice::from_ref(&media));
+    let m = &hubs.hubs[0];
+    assert_eq!((m.depth, m.description.as_str()), (0, "All media"));
+    let names: Vec<&str> = m.members.iter().map(|p| p.title.as_str()).collect();
+    assert_eq!(names, ["Media/Books", "Film"], "sub-hubs first");
+    assert!(m.members[0].is_hub && !m.members[1].is_hub);
+    assert_eq!(m.sub_hubs, std::slice::from_ref(&books));
+    assert_eq!(hubs.hubs[1].depth, 1);
+
+    let s = g.page_structure(novel.clone()).unwrap();
+    assert!(!s.is_hub && s.members.is_empty());
+    let in_hubs: Vec<&str> = s.in_hubs.iter().map(|p| p.title.as_str()).collect();
+    assert_eq!(in_hubs, ["Media/Books"], "one hub per page");
+    let s = g.page_structure(books.clone()).unwrap();
+    assert!(s.is_hub);
+    assert_eq!(s.members.len(), 1);
+    assert_eq!(s.ns_path.len(), 1);
+    assert_eq!(s.ns_path[0].id.as_deref(), Some(media.as_str()));
+    let s = g.page_structure(media.clone()).unwrap();
+    assert_eq!(s.description, "All media");
+    assert_eq!(s.ns_children[0].id.as_deref(), Some(books.as_str()));
+
+    g.set_hub_description(books.clone(), "Reading".into())
+        .unwrap();
+    g.remove_from_hub(film.clone(), media.clone()).unwrap();
+    assert!(g.page_structure(film.clone()).unwrap().in_hubs.is_empty());
+
+    // Graph data: hub flags, home hubs and CONTAINS edges.
+    let data = g.graph_data().unwrap();
+    let idx = |id: &str| data.nodes.iter().position(|n| n.id == id).unwrap() as u32;
+    let node = |id: &str| &data.nodes[idx(id) as usize];
+    assert!(node(&media).is_hub && node(&books).is_hub && !node(&novel).is_hub);
+    assert_eq!(node(&books).home_hub, Some(idx(&books)));
+    assert_eq!(node(&novel).home_hub, Some(idx(&books)), "deepest hub");
+    assert_eq!(node(&note).home_hub, None);
+    let contains = |s: &str, t: &str| {
+        (0..data.kinds.len()).any(|e| {
+            data.kinds[e] == edge_kind::CONTAINS
+                && data.sources[e] == idx(s)
+                && data.targets[e] == idx(t)
+        })
+    };
+    assert!(contains(&media, &books) && contains(&books, &novel));
+    assert!(!contains(&media, &novel));
+    assert!(!contains(&media, &film));
+    assert_eq!(node(&novel).backlinks, 1, "membership is structural");
+
+    // Converting back to a note: description, then one link per member.
+    let n = g.convert_to_note(books.clone()).unwrap();
+    assert!(!n.is_hub);
+    let page = g.page(books.clone()).unwrap().unwrap();
+    let texts: Vec<&str> = page.blocks.iter().map(|b| b.content.as_str()).collect();
+    assert_eq!(texts, ["Reading", "[[Novel]]"]);
+    let in_hubs = g.page_structure(novel.clone()).unwrap().in_hubs;
+    assert!(in_hubs.is_empty(), "the old hub is gone from its members");
+}
+
+#[test]
+fn convert_note_to_hub() {
+    let (_d, g) = open();
+    let (area, _) = page_with(
+        &g,
+        "Work/Area",
+        &[
+            "Everything about **my** area of [[Work]].",
+            "[[Alpha]]",
+            "[[Beta]] #Gamma",
+        ],
+    );
+    let p = g.hub_conversion_preview(area.clone()).unwrap();
+    assert_eq!(p.suggested_title, "Area");
+    assert_eq!(p.suggested_note_title, "Area (notes)");
+    assert_eq!(p.suggested_description, "Everything about my area of Work.");
+    let names: Vec<&str> = p.members.iter().map(|m| m.title.as_str()).collect();
+    assert_eq!(names, ["Work", "Alpha", "Beta", "Gamma"]);
+    assert_eq!((p.prose_blocks, p.blocks), (1, 3));
+
+    let member_ids: Vec<String> = p.members.iter().skip(1).map(|m| m.id.clone()).collect();
+    let hub = g
+        .convert_to_hub(
+            area.clone(),
+            p.suggested_title.clone(),
+            p.suggested_description.clone(),
+            member_ids,
+            Some(p.suggested_note_title.clone()),
+        )
+        .unwrap();
+    assert!(hub.is_hub);
+    assert_eq!(
+        (hub.id.as_str(), hub.title.as_str()),
+        (area.as_str(), "Area")
+    );
+    assert!(g.page(area.clone()).unwrap().unwrap().blocks.is_empty());
+    let kept = g.page_by_title("Area (notes)".into()).unwrap().unwrap();
+    assert_eq!(kept.blocks.len(), 3);
+    let s = g.page_structure(area.clone()).unwrap();
+    let names: Vec<&str> = s.members.iter().map(|m| m.title.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Alpha", "Area (notes)", "Beta", "Gamma"],
+        "kept note is a member"
+    );
+
+    // A blank keep title is an error (never "delete the outline") and changes nothing.
+    let (blank, _) = page_with(&g, "Blank", &["keep me"]);
+    assert!(
+        g.convert_to_hub(
+            blank.clone(),
+            "Blank".into(),
+            String::new(),
+            vec![],
+            Some(" ".into())
+        )
+        .is_err()
+    );
+    assert!(!g.page(blank.clone()).unwrap().unwrap().page.is_hub);
+    assert_eq!(g.page(blank).unwrap().unwrap().blocks.len(), 1);
+
+    // A title clash is a readable error and changes nothing.
+    let (other, _) = page_with(&g, "Other", &["[[Alpha]]"]);
+    let err = g
+        .convert_to_hub(other.clone(), "Area".into(), String::new(), vec![], None)
+        .unwrap_err();
+    assert!(!err.to_string().is_empty());
+    assert!(!g.page(other.clone()).unwrap().unwrap().page.is_hub);
+    assert_eq!(g.page(other).unwrap().unwrap().blocks.len(), 1);
+}
+
+#[test]
+fn legacy_candidates_and_purge() {
+    let (_d, g) = open();
+    let (todo, _) = page_with(&g, "TODO", &["a", "b"]);
+    let (hl, _) = page_with(&g, "hls__book", &[]);
+    let (sys, _) = page_with(&g, "Template", &["x"]);
+    let (keep, _) = page_with(&g, "Keep", &["x"]);
+    page_with(&g, "contents", &["- x"]);
+    page_with(&g, "now", &[]);
+    g.create_hub("later".into(), String::new()).unwrap();
+    {
+        let shared = g.shared();
+        let core = shared.lock().unwrap();
+        let mut props = synapse_core::Properties::new();
+        props.insert("type".into(), "system".into());
+        core.set_page_properties(sys.parse().unwrap(), props)
+            .unwrap();
+    }
+
+    let c = g.legacy_candidates().unwrap();
+    let by = |t: &str| c.iter().find(|x| x.title == t).unwrap();
+    assert_eq!(by("TODO").reason, "Logseq built-in");
+    assert!(
+        !by("TODO").preselected && by("TODO").blocks == 2,
+        "has content"
+    );
+    assert!(by("contents").preselected, "organisational page");
+    assert!(by("now").preselected, "empty built-in");
+    assert!(!by("later").preselected, "hubs are never preselected");
+    assert_eq!(by("hls__book").reason, "Logseq PDF highlights");
+    assert!(by("hls__book").preselected);
+    assert!(!by("Template").preselected);
+    assert_eq!(by("Template").reason, "type:: system");
+    assert!(c.iter().all(|x| x.title != "Keep"));
+
+    // A bad id rejects the call before anything is deleted.
+    assert!(g.purge_pages(vec![todo.clone(), "nope".into()]).is_err());
+    assert!(g.page(todo.clone()).unwrap().is_some());
+    assert_eq!(g.purge_pages(vec![todo.clone(), hl.clone()]).unwrap(), 2);
+    assert!(g.page(todo).unwrap().is_none() && g.page(hl).unwrap().is_none());
+    assert!(g.page(keep).unwrap().is_some());
+}
+
+#[test]
+fn tags_are_pages_and_their_own_edge_kind() {
+    let (_d, g) = open();
+    let (a, _) = page_with(&g, "Rust", &["x"]);
+    let (b, _) = page_with(&g, "Go", &["y"]);
+    let (c, _) = page_with(&g, "Madrid", &["z"]);
+    for (p, tags) in [
+        (&a, vec!["tecnología", "idea"]),
+        (&b, vec!["Tecnología", "idea"]),
+        (&c, vec!["lugar"]),
+    ] {
+        g.set_page_tags(p.clone(), tags.into_iter().map(String::from).collect())
+            .unwrap();
+    }
+    let data = g.graph_data().unwrap();
+    let idx = |id: &str| data.nodes.iter().position(|n| n.id == id).unwrap() as u32;
+    let title = |i: u32| data.nodes[i as usize].title.clone();
+    let mut tagged: Vec<(String, String)> = (0..data.kinds.len())
+        .filter(|&e| data.kinds[e] == edge_kind::TAGGED)
+        .map(|e| (title(data.sources[e]), title(data.targets[e])))
+        .collect();
+    tagged.sort();
+    let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+    assert_eq!(
+        tagged,
+        [
+            pair("Go", "idea"),
+            pair("Go", "tecnología"),
+            pair("Madrid", "lugar"),
+            pair("Rust", "idea"),
+            pair("Rust", "tecnología"),
+        ],
+        "each page points at its tag pages"
+    );
+    // The tag page is a real node that counts backlinks, and the DTOs flag it.
+    let tp = &data.nodes[data
+        .nodes
+        .iter()
+        .position(|n| n.title == "tecnología")
+        .unwrap()];
+    assert_eq!(tp.backlinks, 2);
+    assert!(g.page(tp.id.clone()).unwrap().unwrap().page.is_tag);
+    assert_eq!(
+        idx(&a),
+        data.nodes.iter().position(|n| n.id == a).unwrap() as u32
+    );
+    let cat = g.tag_catalog().unwrap();
+    assert_eq!((cat[0].name.as_str(), cat[0].count), ("idea", 2));
+}
+
+#[test]
+fn types_round_trip_through_the_api() {
+    let (_d, g) = open();
+    let (a, _) = page_with(&g, "Ana", &["x"]);
+    let p = g.add_page_type(a.clone(), "persona".into()).unwrap();
+    assert_eq!(p.types, ["persona"]);
+    assert!(g.type_catalog().unwrap().iter().any(|t| t.name == "lugar"));
+    assert!(
+        g.remove_page_type(a, "PERSONA".into())
+            .unwrap()
+            .types
+            .is_empty()
+    );
 }

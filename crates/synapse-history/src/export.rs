@@ -3,7 +3,8 @@
 //! Layout: `pages/<encoded title>.md`, `journals/YYYY_MM_DD.md`, `assets.json`.
 //! A page file starts with page properties (`key:: value`, aliases as `alias:: a, b`),
 //! then one `- ` bullet per block, nested with tabs. Block properties follow the content;
-//! blocks referenced by `((uuid))` carry an `id::` property.
+//! blocks referenced by `((uuid))` carry an `id::` property. Hubs carry `synapse-kind:: hub`
+//! and `synapse-description::`; a page in hubs lists their titles in `synapse-hubs::`.
 
 use crate::Result;
 use crate::error::Error;
@@ -15,6 +16,15 @@ use synapse_core::{Block, BlockId, Graph, Page, Properties};
 pub const PAGES_DIR: &str = "pages";
 pub const JOURNALS_DIR: &str = "journals";
 pub const MANIFEST: &str = "assets.json";
+/// Page property marking a hub or tag page (`synapse-kind:: hub|tag`); notes omit it.
+pub const KIND_PROP: &str = "synapse-kind";
+/// Page property holding a hub's description.
+pub const DESCRIPTION_PROP: &str = "synapse-description";
+/// Page property listing the titles of the hubs a page belongs to (JSON array).
+pub const HUBS_PROP: &str = "synapse-hubs";
+pub const TAGS_PROP: &str = "synapse-tags";
+/// Page property with the type names (`synapse-types:: persona, lugar`).
+pub const TYPES_PROP: &str = "synapse-types";
 
 /// Encodes a page title as a file name (Logseq "triple-lowbar" format: `/` becomes `___`,
 /// characters illegal on Windows and `%` are percent-encoded).
@@ -173,6 +183,38 @@ pub fn render_block(block: &Block, depth: usize, referenced: &HashSet<BlockId>) 
 pub fn render_page(graph: &Graph, page: &Page, referenced: &HashSet<BlockId>) -> Result<String> {
     let mut props = page.properties.clone();
     props.remove("alias");
+    if page.is_hub() {
+        props.insert(KIND_PROP.into(), Value::String("hub".into()));
+    } else if page.is_tag() {
+        props.insert(KIND_PROP.into(), Value::String("tag".into()));
+    }
+    if !page.description.is_empty() {
+        props.insert(
+            DESCRIPTION_PROP.into(),
+            Value::String(page.description.clone()),
+        );
+    }
+    let mut hubs = Vec::new();
+    for h in graph.hubs_of(page.id)? {
+        if let Some(h) = graph.get_page(h)? {
+            hubs.push(Value::String(h.title));
+        }
+    }
+    if !hubs.is_empty() {
+        props.insert(HUBS_PROP.into(), Value::Array(hubs));
+    }
+    if !page.tags.is_empty() {
+        props.insert(
+            TAGS_PROP.into(),
+            Value::Array(page.tags.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    if !page.types.is_empty() {
+        props.insert(
+            TYPES_PROP.into(),
+            Value::Array(page.types.iter().cloned().map(Value::String).collect()),
+        );
+    }
     let mut list = sorted_props(&props);
     let aliases = graph.aliases_of(page.id)?;
     if !aliases.is_empty() {

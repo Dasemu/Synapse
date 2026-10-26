@@ -331,3 +331,21 @@ fn store_inside_graph_transaction_and_rename_delete() {
     assert!(s.search(&g, "ferris", &f, 10).unwrap().is_empty());
     assert_eq!(s.vector_counts(&g, "test/hash").unwrap(), (1, 0));
 }
+
+#[test]
+fn hub_titles_and_descriptions_are_indexed() {
+    let (_d, g) = setup();
+    let h = g.create_hub("Anime", "Japanese animation series").unwrap();
+    add(&g, "Other", "nothing related");
+    let mut s = Search::open(&g).unwrap();
+    s.sync(&g).unwrap();
+    let f = Filter::default();
+    let hits = s.search(&g, "animation", &f, 5).unwrap();
+    assert_eq!(hits[0].kind, HitKind::Page);
+    assert_eq!(hits[0].page_id, h.id);
+    assert_eq!(s.search(&g, "anime", &f, 5).unwrap()[0].page_id, h.id);
+    g.set_hub_description(h.id, "Cartoons from Japan").unwrap();
+    s.sync(&g).unwrap();
+    assert!(s.search(&g, "animation", &f, 5).unwrap().is_empty());
+    assert_eq!(s.search(&g, "cartoons", &f, 5).unwrap()[0].page_id, h.id);
+}

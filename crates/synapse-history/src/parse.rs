@@ -1,6 +1,6 @@
 //! Parser for the Markdown files produced by [`crate::export`] (and plain Logseq pages).
 
-use crate::export::parse_value;
+use crate::export::{DESCRIPTION_PROP, HUBS_PROP, KIND_PROP, TAGS_PROP, TYPES_PROP, parse_value};
 use serde_json::Value;
 use synapse_core::{BlockId, Properties, parse::property_split};
 
@@ -16,9 +16,21 @@ pub struct ParsedBlock {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParsedPage {
-    /// Page properties except `alias`.
+    /// Page properties except `alias` and the `synapse-*` hub properties.
     pub properties: Properties,
     pub aliases: Vec<String>,
+    /// `synapse-kind:: hub`.
+    pub is_hub: bool,
+    /// `synapse-kind:: tag`.
+    pub is_tag: bool,
+    /// `synapse-description::`.
+    pub description: String,
+    /// Titles from `synapse-hubs::`.
+    pub hubs: Vec<String>,
+    /// Tag page titles from `synapse-tags::`.
+    pub tags: Vec<String>,
+    /// Names from `synapse-types::`.
+    pub types: Vec<String>,
     pub blocks: Vec<ParsedBlock>,
 }
 
@@ -105,6 +117,48 @@ pub fn parse_page(text: &str) -> ParsedPage {
             }
         }
     }
+
+    let kind = page.properties.remove(KIND_PROP);
+    page.is_hub = matches!(&kind, Some(Value::String(k)) if k == "hub");
+    page.is_tag = matches!(&kind, Some(Value::String(k)) if k == "tag");
+    page.description = match page.properties.remove(DESCRIPTION_PROP) {
+        Some(Value::String(d)) => d,
+        Some(other) => other.to_string(),
+        None => String::new(),
+    };
+    page.hubs = match page.properties.remove(HUBS_PROP) {
+        Some(Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::String(s) => Some(s),
+                _ => None,
+            })
+            .collect(),
+        Some(Value::String(s)) => vec![s],
+        _ => Vec::new(),
+    };
+    page.tags = match page.properties.remove(TAGS_PROP) {
+        Some(Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::String(s) => Some(s),
+                _ => None,
+            })
+            .collect(),
+        Some(Value::String(s)) => vec![s],
+        _ => Vec::new(),
+    };
+    page.types = match page.properties.remove(TYPES_PROP) {
+        Some(Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::String(s) => Some(s),
+                _ => None,
+            })
+            .collect(),
+        Some(Value::String(s)) => vec![s],
+        _ => Vec::new(),
+    };
 
     for raw in raws {
         let mut lines = raw.lines;

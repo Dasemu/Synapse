@@ -13,8 +13,16 @@ pub mod parse;
 pub mod position;
 mod schema;
 pub mod store;
+pub mod structure;
 pub mod synapse;
+pub mod tags;
+pub mod types;
 
 pub use error::{Error, Result};
 pub use model::*;
 pub use store::Graph;
+pub use structure::{
+    HubConversion, HubInfo, HubPreview, Structure, is_legacy_page, namespace_parent,
+};
+pub use tags::{MAX_TAG_CHARS, TagInfo, normalize_tag};
+pub use types::SUGGESTED_TYPES;

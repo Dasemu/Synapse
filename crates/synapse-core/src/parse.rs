@@ -126,7 +126,7 @@ fn scan_line(line: &str, is_prop: bool, refs: &mut Refs) {
 }
 
 /// Finds the `]]` closing a `[[` that opened before `from`, allowing nested `[[..]]`.
-fn find_close(s: &str, from: usize) -> Option<usize> {
+pub(crate) fn find_close(s: &str, from: usize) -> Option<usize> {
     let mut depth = 0;
     let mut i = from;
     while i + 1 < s.len() {

@@ -18,6 +18,8 @@ pub struct SynapseGraph {
     graph: Arc<Mutex<Graph>>,
     /// Page-level graph for the graph views, keyed by what invalidates it.
     pub(crate) graph_cache: Mutex<Option<(super::graph_view::CacheKey, Arc<GraphData>)>>,
+    /// Hubs and home hubs, keyed by op-log sequence.
+    pub(crate) structure_cache: Mutex<Option<(i64, Arc<synapse_core::Structure>)>>,
 }
 
 impl SynapseGraph {
@@ -27,6 +29,7 @@ impl SynapseGraph {
         Ok(SynapseGraph {
             graph: Arc::new(Mutex::new(graph)),
             graph_cache: Mutex::new(None),
+            structure_cache: Mutex::new(None),
         })
     }
 

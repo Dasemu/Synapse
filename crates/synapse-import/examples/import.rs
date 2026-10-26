@@ -1,4 +1,4 @@
-//! `cargo run -p synapse-import --example import -- <logseq_dir> <graph_dir> [--skip-existing]`
+//! `cargo run -p synapse-import --example import -- <logseq_dir> <graph_dir> [--skip-existing] [--keep-legacy]`
 
 use std::path::PathBuf;
 use synapse_core::Graph;
@@ -7,13 +7,14 @@ use synapse_import::{ExistingPages, ImportOptions, import_logseq};
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let skip = args.iter().any(|a| a == "--skip-existing");
+    let keep_legacy = args.iter().any(|a| a == "--keep-legacy");
     let paths: Vec<PathBuf> = args
         .iter()
         .filter(|a| !a.starts_with("--"))
         .map(PathBuf::from)
         .collect();
     let [src, dst] = paths.as_slice() else {
-        eprintln!("usage: import <logseq_dir> <graph_dir> [--skip-existing]");
+        eprintln!("usage: import <logseq_dir> <graph_dir> [--skip-existing] [--keep-legacy]");
         std::process::exit(2);
     };
     let graph = Graph::open(dst).expect("open graph");
@@ -23,6 +24,7 @@ fn main() {
         } else {
             ExistingPages::Update
         },
+        skip_legacy_pages: !keep_legacy,
     };
     let started = std::time::Instant::now();
     let mut last = (None, 0);

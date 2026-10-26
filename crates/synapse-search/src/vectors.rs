@@ -40,15 +40,15 @@ pub(crate) fn quantize(v: &[f32]) -> (Vec<i8>, f32) {
 
 fn dot(row: &[i8], q: &[f32]) -> f32 {
     let mut acc = [0f32; 8];
-    let mut rc = row.chunks_exact(8);
-    let mut qc = q.chunks_exact(8);
-    for (r, c) in (&mut rc).zip(&mut qc) {
+    let (rc, r_rem) = row.as_chunks::<8>();
+    let (qc, q_rem) = q.as_chunks::<8>();
+    for (r, c) in rc.iter().zip(qc) {
         for i in 0..8 {
             acc[i] += r[i] as f32 * c[i];
         }
     }
     let mut s: f32 = acc.iter().sum();
-    for (r, c) in rc.remainder().iter().zip(qc.remainder()) {
+    for (r, c) in r_rem.iter().zip(q_rem) {
         s += *r as f32 * c;
     }
     s

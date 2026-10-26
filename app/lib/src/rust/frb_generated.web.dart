@@ -118,6 +118,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GraphNode dco_decode_graph_node(dynamic raw);
 
   @protected
+  HubDto dco_decode_hub_dto(dynamic raw);
+
+  @protected
+  HubPreviewDto dco_decode_hub_preview_dto(dynamic raw);
+
+  @protected
+  HubsDto dco_decode_hubs_dto(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -125,6 +134,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LayoutFrame dco_decode_layout_frame(dynamic raw);
+
+  @protected
+  LegacyCandidate dco_decode_legacy_candidate(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
@@ -143,6 +155,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<GraphNode> dco_decode_list_graph_node(dynamic raw);
+
+  @protected
+  List<HubDto> dco_decode_list_hub_dto(dynamic raw);
+
+  @protected
+  List<LegacyCandidate> dco_decode_list_legacy_candidate(dynamic raw);
+
+  @protected
+  List<NamespaceEntry> dco_decode_list_namespace_entry(dynamic raw);
 
   @protected
   List<PageBrief> dco_decode_list_page_brief(dynamic raw);
@@ -175,10 +196,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<RelatedDto> dco_decode_list_related_dto(dynamic raw);
 
   @protected
+  List<TagDto> dco_decode_list_tag_dto(dynamic raw);
+
+  @protected
   List<TimelineDayDto> dco_decode_list_timeline_day_dto(dynamic raw);
 
   @protected
   List<TitleHit> dco_decode_list_title_hit(dynamic raw);
+
+  @protected
+  NamespaceEntry dco_decode_namespace_entry(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -205,6 +232,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PageDto dco_decode_page_dto(dynamic raw);
 
   @protected
+  PageStructure dco_decode_page_structure(dynamic raw);
+
+  @protected
   Place dco_decode_place(dynamic raw);
 
   @protected
@@ -215,6 +245,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RelatedDto dco_decode_related_dto(dynamic raw);
+
+  @protected
+  TagDto dco_decode_tag_dto(dynamic raw);
 
   @protected
   TimelineDayDto dco_decode_timeline_day_dto(dynamic raw);
@@ -327,6 +360,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GraphNode sse_decode_graph_node(SseDeserializer deserializer);
 
   @protected
+  HubDto sse_decode_hub_dto(SseDeserializer deserializer);
+
+  @protected
+  HubPreviewDto sse_decode_hub_preview_dto(SseDeserializer deserializer);
+
+  @protected
+  HubsDto sse_decode_hubs_dto(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
@@ -334,6 +376,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LayoutFrame sse_decode_layout_frame(SseDeserializer deserializer);
+
+  @protected
+  LegacyCandidate sse_decode_legacy_candidate(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
@@ -354,6 +399,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<GraphNode> sse_decode_list_graph_node(SseDeserializer deserializer);
+
+  @protected
+  List<HubDto> sse_decode_list_hub_dto(SseDeserializer deserializer);
+
+  @protected
+  List<LegacyCandidate> sse_decode_list_legacy_candidate(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<NamespaceEntry> sse_decode_list_namespace_entry(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<PageBrief> sse_decode_list_page_brief(SseDeserializer deserializer);
@@ -386,12 +444,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<RelatedDto> sse_decode_list_related_dto(SseDeserializer deserializer);
 
   @protected
+  List<TagDto> sse_decode_list_tag_dto(SseDeserializer deserializer);
+
+  @protected
   List<TimelineDayDto> sse_decode_list_timeline_day_dto(
     SseDeserializer deserializer,
   );
 
   @protected
   List<TitleHit> sse_decode_list_title_hit(SseDeserializer deserializer);
+
+  @protected
+  NamespaceEntry sse_decode_namespace_entry(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -422,6 +486,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PageDto sse_decode_page_dto(SseDeserializer deserializer);
 
   @protected
+  PageStructure sse_decode_page_structure(SseDeserializer deserializer);
+
+  @protected
   Place sse_decode_place(SseDeserializer deserializer);
 
   @protected
@@ -434,6 +501,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RelatedDto sse_decode_related_dto(SseDeserializer deserializer);
+
+  @protected
+  TagDto sse_decode_tag_dto(SseDeserializer deserializer);
 
   @protected
   TimelineDayDto sse_decode_timeline_day_dto(SseDeserializer deserializer);
@@ -559,6 +629,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_graph_node(GraphNode self, SseSerializer serializer);
 
   @protected
+  void sse_encode_hub_dto(HubDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_hub_preview_dto(HubPreviewDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_hubs_dto(HubsDto self, SseSerializer serializer);
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
@@ -566,6 +645,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_layout_frame(LayoutFrame self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_legacy_candidate(
+    LegacyCandidate self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
@@ -588,6 +673,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_graph_node(
     List<GraphNode> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_hub_dto(List<HubDto> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_legacy_candidate(
+    List<LegacyCandidate> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_namespace_entry(
+    List<NamespaceEntry> self,
     SseSerializer serializer,
   );
 
@@ -643,6 +743,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_tag_dto(List<TagDto> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_timeline_day_dto(
     List<TimelineDayDto> self,
     SseSerializer serializer,
@@ -650,6 +753,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_title_hit(List<TitleHit> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_namespace_entry(
+    NamespaceEntry self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -685,6 +794,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_page_dto(PageDto self, SseSerializer serializer);
 
   @protected
+  void sse_encode_page_structure(PageStructure self, SseSerializer serializer);
+
+  @protected
   void sse_encode_place(Place self, SseSerializer serializer);
 
   @protected
@@ -698,6 +810,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_related_dto(RelatedDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tag_dto(TagDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_timeline_day_dto(

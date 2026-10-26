@@ -189,14 +189,20 @@ impl History {
                 for rec in ops {
                     match rec.op {
                         Op::UpsertPage { page } => {
+                            // Members list their hubs by title: a renamed hub, or one that
+                            // became a note, changes their files.
+                            touched.extend(graph.hub_members(page.id)?);
                             touched.insert(page.id);
                         }
                         Op::UpsertBlock { block } => {
                             touched.insert(block.page_id);
                         }
+                        // A deleted hub drops out of its members' lists (their `page_hubs`
+                        // rows outlive it when no member upsert came along).
+                        Op::DeletePage { id } => touched.extend(graph.hub_members(id)?),
                         // Deletions and moves do not say which page lost a block; those
                         // pages are caught by the `updated_at` scan below.
-                        Op::DeleteBlock { .. } | Op::DeletePage { .. } | Op::PutAsset { .. } => {}
+                        Op::DeleteBlock { .. } | Op::PutAsset { .. } => {}
                         // The previous owner of an alias is unknown.
                         Op::SetAlias { .. } => everything = true,
                     }

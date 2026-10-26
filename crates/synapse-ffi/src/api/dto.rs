@@ -14,6 +14,16 @@ pub struct PageDto {
     pub origin_journal: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// The page is a hub (no blocks; members list instead of an outline).
+    pub is_hub: bool,
+    /// Hub description (empty for notes).
+    pub description: String,
+    /// Titles of the tag pages this page is filed under, in the order they were added.
+    pub tags: Vec<String>,
+    /// The page is a tag page (a topic that other pages are filed under).
+    pub is_tag: bool,
+    /// Type names ("persona", "lugar"...: plain names, not pages), in the order added.
+    pub types: Vec<String>,
 }
 
 impl From<&Page> for PageDto {
@@ -25,8 +35,23 @@ impl From<&Page> for PageDto {
             origin_journal: p.origin_journal.map(journal_title),
             created_at: p.created_at,
             updated_at: p.updated_at,
+            is_hub: p.is_hub(),
+            description: p.description.clone(),
+            tags: p.tags.clone(),
+            is_tag: p.is_tag(),
+            types: p.types.clone(),
         }
     }
+}
+
+/// A tag or type of the vocabulary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagDto {
+    pub name: String,
+    /// Pages using it.
+    pub count: u32,
+    /// One of the seeded suggestions.
+    pub suggested: bool,
 }
 
 /// One row of the outline, in pre-order.
@@ -95,6 +120,7 @@ pub struct PageBrief {
     pub id: String,
     pub title: String,
     pub is_journal: bool,
+    pub is_hub: bool,
 }
 
 impl From<&Page> for PageBrief {
@@ -103,6 +129,7 @@ impl From<&Page> for PageBrief {
             id: p.id.to_string(),
             title: p.title.clone(),
             is_journal: p.is_journal(),
+            is_hub: p.is_hub(),
         }
     }
 }
@@ -181,6 +208,11 @@ pub mod edge_kind {
     pub const MENTION: u8 = 5;
     /// Hebbian association (undirected), weight = decayed synapse strength.
     pub const SYNAPSE: u8 = 6;
+    /// Hub membership, hub → member (structural, weight 1).
+    pub const CONTAINS: u8 = 7;
+    /// A page filed under a tag page (page → tag page, weight 1). Unlike `TAG` (an inline
+    /// `#tag` in the text) it comes from the page's own `tags` list.
+    pub const TAGGED: u8 = 8;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -190,7 +222,8 @@ pub struct GraphNode {
     pub journal_date: Option<String>,
     pub origin_journal: Option<String>,
     pub created_at: i64,
-    /// Distinct neighbours over structural edges (links, tags, properties, block refs).
+    /// Distinct neighbours over structural edges (links, tags, properties, block refs, hub
+    /// membership).
     pub degree: u32,
     /// Distinct pages referencing this one.
     pub backlinks: u32,
@@ -198,6 +231,12 @@ pub struct GraphNode {
     pub cluster: u32,
     /// Node index of the tag this page uses most, if any.
     pub primary_tag: Option<u32>,
+    /// The page is a hub (`PageKind::Hub`).
+    pub is_hub: bool,
+    /// Node index of the deepest hub containing this page (a hub: itself).
+    pub home_hub: Option<u32>,
+    /// Tag names of the page (see `PageDto::tags`), for grouping by tag.
+    pub tags: Vec<String>,
 }
 
 /// The whole page-level graph, edges as parallel arrays (cheap to move across the FFI).
@@ -222,4 +261,75 @@ pub struct LayoutFrame {
     pub positions: Vec<f32>,
     /// Remaining "temperature"; the layout is settled when it reaches 0.
     pub alpha: f32,
+}
+
+/// A hub (folder-like page) with its members.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HubDto {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    /// 0 for root hubs, one more per level of nesting.
+    pub depth: u32,
+    /// Sub-hubs first, then notes, each by title.
+    pub members: Vec<PageBrief>,
+    /// Ids of the members that are hubs themselves.
+    pub sub_hubs: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HubsDto {
+    /// Sorted by title.
+    pub hubs: Vec<HubDto>,
+    /// Ids of the hubs that are not a member of any hub, by title.
+    pub roots: Vec<String>,
+}
+
+/// A level of a namespace (`A/B` under `A`); `id` is `None` when only deeper pages exist.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamespaceEntry {
+    pub title: String,
+    pub id: Option<String>,
+}
+
+/// Hub and namespace context of one page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageStructure {
+    pub is_hub: bool,
+    /// Hub description (empty for notes).
+    pub description: String,
+    /// Empty unless the page is a hub; sub-hubs first, then notes.
+    pub members: Vec<PageBrief>,
+    /// Hubs the page belongs to (its own membership list), by title.
+    pub in_hubs: Vec<PageBrief>,
+    /// Ancestor namespaces from the root: `A`, `A/B` for `A/B/C` (they may not exist).
+    pub ns_path: Vec<NamespaceEntry>,
+    pub ns_children: Vec<NamespaceEntry>,
+}
+
+/// Defaults for the "convert to hub" dialog.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HubPreviewDto {
+    /// Last namespace segment of the title.
+    pub suggested_title: String,
+    /// First prose block as plain text (<= 280 chars).
+    pub suggested_description: String,
+    /// Candidate members: pages the outline links or tags (outline order), then pages
+    /// referencing the note from properties or tags.
+    pub members: Vec<PageBrief>,
+    /// Blocks that are prose rather than links (what "keep the outline" would save).
+    pub prose_blocks: u32,
+    pub blocks: u32,
+    /// `"<suggested_title> (notes)"`, for the note receiving the outline.
+    pub suggested_note_title: String,
+}
+
+/// A page the legacy purge offers to delete.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LegacyCandidate {
+    pub id: String,
+    pub title: String,
+    pub reason: String,
+    pub blocks: u32,
+    pub preselected: bool,
 }

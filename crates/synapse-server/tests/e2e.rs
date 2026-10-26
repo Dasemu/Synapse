@@ -163,6 +163,39 @@ async fn concurrent_edits_resolve_last_writer_wins() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn hubs_and_memberships_converge() {
+    let srv = TestServer::start().await;
+    let a = device(&srv, "h");
+    let b = device(&srv, "h");
+    let (hub, note) = {
+        let g = a.g();
+        let hub = g.create_hub("Top", "All of it").unwrap();
+        let note = g.create_page(NewPage::titled("Note")).unwrap();
+        g.add_to_hub(note.id, hub.id).unwrap();
+        (hub.id, note.id)
+    };
+    a.client.sync_once().await.unwrap();
+    b.client.sync_once().await.unwrap();
+    {
+        let g = b.g();
+        let h = g.get_page(hub).unwrap().unwrap();
+        assert!(h.is_hub());
+        assert_eq!(h.description, "All of it");
+        assert_eq!(g.hub_members(hub).unwrap(), vec![note]);
+        assert_eq!(g.hubs_of(note).unwrap(), vec![hub]);
+        // B deletes the hub: the member's list is cleaned on both sides.
+        g.delete_page(hub).unwrap();
+    }
+    b.client.refresh_pending().await.unwrap();
+    b.client.sync_once().await.unwrap();
+    a.client.sync_once().await.unwrap();
+    let g = a.g();
+    assert!(g.get_page(hub).unwrap().is_none());
+    assert!(g.get_page(note).unwrap().unwrap().hubs.is_empty());
+    assert!(g.hubs_of(note).unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn auth_failures() {
     let srv = TestServer::start().await;
 

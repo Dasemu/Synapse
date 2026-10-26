@@ -11,6 +11,40 @@ pub fn new_id() -> Uuid {
     Uuid::now_v7()
 }
 
+/// What a page is: a note (an outline of blocks), a hub (a container of pages with a short
+/// description and an ordered member list, and no blocks) or a template (the outline that new
+/// notes of a hub start from; every hub owns exactly one, see `Graph::hub_template`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageKind {
+    #[default]
+    Note,
+    Hub,
+    Template,
+    /// A topic page: notes point at it from their `tags`.
+    Tag,
+}
+
+impl PageKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PageKind::Note => "note",
+            PageKind::Hub => "hub",
+            PageKind::Template => "template",
+            PageKind::Tag => "tag",
+        }
+    }
+    /// Unknown values read as notes.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "hub" => PageKind::Hub,
+            "template" => PageKind::Template,
+            "tag" => PageKind::Tag,
+            _ => PageKind::Note,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Page {
     pub id: PageId,
@@ -22,11 +56,37 @@ pub struct Page {
     pub properties: Properties,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Defaults to `Note` so ops and snapshots from older versions parse.
+    #[serde(default)]
+    pub kind: PageKind,
+    /// Short plain-text description (hubs).
+    #[serde(default)]
+    pub description: String,
+    /// Hubs this page belongs to (its "parents", like tags). Ids may dangle (deleted pages,
+    /// pages no longer hubs); readers ignore those.
+    #[serde(default)]
+    pub hubs: Vec<PageId>,
+    /// Titles of the tag pages ([`PageKind::Tag`]) this page is filed under, any number; see
+    /// `tags`. Always in step with the tag pages (created on first use).
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// What kind of thing this is ("persona", "lugar"...): plain names, not pages; see `types`.
+    #[serde(default)]
+    pub types: Vec<String>,
 }
 
 impl Page {
     pub fn is_journal(&self) -> bool {
         self.journal_date.is_some()
+    }
+    pub fn is_hub(&self) -> bool {
+        self.kind == PageKind::Hub
+    }
+    pub fn is_template(&self) -> bool {
+        self.kind == PageKind::Template
+    }
+    pub fn is_tag(&self) -> bool {
+        self.kind == PageKind::Tag
     }
 }
 

@@ -146,6 +146,7 @@ fn reimport_updates_changed_pages_and_skip_mode() {
     .unwrap();
     let skip = ImportOptions {
         existing: ExistingPages::Skip,
+        ..Default::default()
     };
     let r = import_logseq(src.path(), &g, &skip, |_| {}).unwrap();
     assert_eq!(r.updated, 0);
@@ -333,4 +334,82 @@ fn renamed_page_is_not_duplicated() {
     assert!(g.page_by_title("Old").unwrap().is_none());
     let t = texts(&g, "Renamed");
     assert_eq!(t.len(), 2);
+}
+
+#[test]
+fn skips_legacy_pages_and_their_stubs() {
+    let files = [
+        ("pages/contents.md", "- [[Alpha]]\n"),
+        ("pages/TODO.md", "- old\n"),
+        ("pages/hls__book_1.md", "- highlight\n"),
+        (
+            "pages/Alpha.md",
+            "- see [[contents]], [[card]], [[favorites]] and [[TODO]]\n",
+        ),
+    ];
+    let src = mini_graph(&files);
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    // A page that already exists is never removed, even with a legacy title and no blocks.
+    let card = g.ensure_page("card", None).unwrap();
+    let r = imp(src.path(), &g);
+    assert_eq!(r.pages, 2, "Alpha and TODO");
+    assert_eq!(
+        r.skipped_legacy,
+        ["pages/contents.md", "pages/hls__book_1.md"]
+    );
+    for t in ["contents", "favorites", "hls__book_1"] {
+        assert!(g.page_by_title(t).unwrap().is_none(), "{t}");
+    }
+    assert_eq!(
+        texts(&g, "TODO").len(),
+        1,
+        "other built-ins import normally"
+    );
+    assert_eq!(g.page_by_title("card").unwrap().unwrap().id, card.id);
+
+    let keep = ImportOptions {
+        skip_legacy_pages: false,
+        ..Default::default()
+    };
+    let dir2 = tempfile::tempdir().unwrap();
+    let g2 = Graph::open(dir2.path()).unwrap();
+    let r = import_logseq(src.path(), &g2, &keep, |_| {}).unwrap();
+    assert!(r.skipped_legacy.is_empty());
+    assert!(g2.page_by_title("contents").unwrap().is_some());
+}
+
+#[test]
+fn reimport_never_writes_hubs() {
+    let src = mini_graph(&[
+        ("pages/Area.md", "- [[Note]]\n- more\n"),
+        ("pages/Note.md", "- body\n"),
+    ]);
+    let dir = tempfile::tempdir().unwrap();
+    let g = Graph::open(dir.path()).unwrap();
+    imp(src.path(), &g);
+    let area = g.page_by_title("Area").unwrap().unwrap();
+    let note = g.page_by_title("Note").unwrap().unwrap();
+    g.convert_to_hub(
+        area.id,
+        &synapse_core::HubConversion {
+            title: "Area".into(),
+            description: "d".into(),
+            members: vec![note.id],
+            keep_outline_as: None,
+        },
+    )
+    .unwrap();
+
+    std::fs::write(src.path().join("pages/Area.md"), "- [[Note]]\n- changed\n").unwrap();
+    let r = imp(src.path(), &g);
+    assert!(
+        r.warnings.iter().any(|w| w.contains("is a hub")),
+        "{:?}",
+        r.warnings
+    );
+    let area = g.page_by_title("Area").unwrap().unwrap();
+    assert!(area.is_hub());
+    assert!(g.page_tree(area.id).unwrap().is_empty());
+    assert_eq!(g.hub_members(area.id).unwrap(), vec![note.id]);
 }

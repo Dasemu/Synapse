@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`
 
 class AssetDto {
   final String hash;
@@ -236,7 +236,8 @@ class GraphNode {
   final String? originJournal;
   final PlatformInt64 createdAt;
 
-  /// Distinct neighbours over structural edges (links, tags, properties, block refs).
+  /// Distinct neighbours over structural edges (links, tags, properties, block refs, hub
+  /// membership).
   final int degree;
 
   /// Distinct pages referencing this one.
@@ -248,6 +249,15 @@ class GraphNode {
   /// Node index of the tag this page uses most, if any.
   final int? primaryTag;
 
+  /// The page is a hub (`PageKind::Hub`).
+  final bool isHub;
+
+  /// Node index of the deepest hub containing this page (a hub: itself).
+  final int? homeHub;
+
+  /// Tag names of the page (see `PageDto::tags`), for grouping by tag.
+  final List<String> tags;
+
   const GraphNode({
     required this.id,
     required this.title,
@@ -258,6 +268,9 @@ class GraphNode {
     required this.backlinks,
     required this.cluster,
     this.primaryTag,
+    required this.isHub,
+    this.homeHub,
+    required this.tags,
   });
 
   @override
@@ -270,7 +283,10 @@ class GraphNode {
       degree.hashCode ^
       backlinks.hashCode ^
       cluster.hashCode ^
-      primaryTag.hashCode;
+      primaryTag.hashCode ^
+      isHub.hashCode ^
+      homeHub.hashCode ^
+      tags.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -285,7 +301,127 @@ class GraphNode {
           degree == other.degree &&
           backlinks == other.backlinks &&
           cluster == other.cluster &&
-          primaryTag == other.primaryTag;
+          primaryTag == other.primaryTag &&
+          isHub == other.isHub &&
+          homeHub == other.homeHub &&
+          tags == other.tags;
+}
+
+/// A hub (folder-like page) with its members.
+class HubDto {
+  final String id;
+  final String title;
+  final String description;
+
+  /// 0 for root hubs, one more per level of nesting.
+  final int depth;
+
+  /// Sub-hubs first, then notes, each by title.
+  final List<PageBrief> members;
+
+  /// Ids of the members that are hubs themselves.
+  final List<String> subHubs;
+
+  const HubDto({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.depth,
+    required this.members,
+    required this.subHubs,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      title.hashCode ^
+      description.hashCode ^
+      depth.hashCode ^
+      members.hashCode ^
+      subHubs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HubDto &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          description == other.description &&
+          depth == other.depth &&
+          members == other.members &&
+          subHubs == other.subHubs;
+}
+
+/// Defaults for the "convert to hub" dialog.
+class HubPreviewDto {
+  /// Last namespace segment of the title.
+  final String suggestedTitle;
+
+  /// First prose block as plain text (<= 280 chars).
+  final String suggestedDescription;
+
+  /// Candidate members: pages the outline links or tags (outline order), then pages
+  /// referencing the note from properties or tags.
+  final List<PageBrief> members;
+
+  /// Blocks that are prose rather than links (what "keep the outline" would save).
+  final int proseBlocks;
+  final int blocks;
+
+  /// `"<suggested_title> (notes)"`, for the note receiving the outline.
+  final String suggestedNoteTitle;
+
+  const HubPreviewDto({
+    required this.suggestedTitle,
+    required this.suggestedDescription,
+    required this.members,
+    required this.proseBlocks,
+    required this.blocks,
+    required this.suggestedNoteTitle,
+  });
+
+  @override
+  int get hashCode =>
+      suggestedTitle.hashCode ^
+      suggestedDescription.hashCode ^
+      members.hashCode ^
+      proseBlocks.hashCode ^
+      blocks.hashCode ^
+      suggestedNoteTitle.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HubPreviewDto &&
+          runtimeType == other.runtimeType &&
+          suggestedTitle == other.suggestedTitle &&
+          suggestedDescription == other.suggestedDescription &&
+          members == other.members &&
+          proseBlocks == other.proseBlocks &&
+          blocks == other.blocks &&
+          suggestedNoteTitle == other.suggestedNoteTitle;
+}
+
+class HubsDto {
+  /// Sorted by title.
+  final List<HubDto> hubs;
+
+  /// Ids of the hubs that are not a member of any hub, by title.
+  final List<String> roots;
+
+  const HubsDto({required this.hubs, required this.roots});
+
+  @override
+  int get hashCode => hubs.hashCode ^ roots.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HubsDto &&
+          runtimeType == other.runtimeType &&
+          hubs == other.hubs &&
+          roots == other.roots;
 }
 
 /// One batch of layout iterations.
@@ -310,19 +446,77 @@ class LayoutFrame {
           alpha == other.alpha;
 }
 
+/// A page the legacy purge offers to delete.
+class LegacyCandidate {
+  final String id;
+  final String title;
+  final String reason;
+  final int blocks;
+  final bool preselected;
+
+  const LegacyCandidate({
+    required this.id,
+    required this.title,
+    required this.reason,
+    required this.blocks,
+    required this.preselected,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      title.hashCode ^
+      reason.hashCode ^
+      blocks.hashCode ^
+      preselected.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LegacyCandidate &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          reason == other.reason &&
+          blocks == other.blocks &&
+          preselected == other.preselected;
+}
+
+/// A level of a namespace (`A/B` under `A`); `id` is `None` when only deeper pages exist.
+class NamespaceEntry {
+  final String title;
+  final String? id;
+
+  const NamespaceEntry({required this.title, this.id});
+
+  @override
+  int get hashCode => title.hashCode ^ id.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NamespaceEntry &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          id == other.id;
+}
+
 class PageBrief {
   final String id;
   final String title;
   final bool isJournal;
+  final bool isHub;
 
   const PageBrief({
     required this.id,
     required this.title,
     required this.isJournal,
+    required this.isHub,
   });
 
   @override
-  int get hashCode => id.hashCode ^ title.hashCode ^ isJournal.hashCode;
+  int get hashCode =>
+      id.hashCode ^ title.hashCode ^ isJournal.hashCode ^ isHub.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -331,7 +525,8 @@ class PageBrief {
           runtimeType == other.runtimeType &&
           id == other.id &&
           title == other.title &&
-          isJournal == other.isJournal;
+          isJournal == other.isJournal &&
+          isHub == other.isHub;
 }
 
 /// Everything the page view needs in one call.
@@ -385,6 +580,21 @@ class PageDto {
   final PlatformInt64 createdAt;
   final PlatformInt64 updatedAt;
 
+  /// The page is a hub (no blocks; members list instead of an outline).
+  final bool isHub;
+
+  /// Hub description (empty for notes).
+  final String description;
+
+  /// Titles of the tag pages this page is filed under, in the order they were added.
+  final List<String> tags;
+
+  /// The page is a tag page (a topic that other pages are filed under).
+  final bool isTag;
+
+  /// Type names ("persona", "lugar"...: plain names, not pages), in the order added.
+  final List<String> types;
+
   const PageDto({
     required this.id,
     required this.title,
@@ -392,6 +602,11 @@ class PageDto {
     this.originJournal,
     required this.createdAt,
     required this.updatedAt,
+    required this.isHub,
+    required this.description,
+    required this.tags,
+    required this.isTag,
+    required this.types,
   });
 
   @override
@@ -401,7 +616,12 @@ class PageDto {
       journalDate.hashCode ^
       originJournal.hashCode ^
       createdAt.hashCode ^
-      updatedAt.hashCode;
+      updatedAt.hashCode ^
+      isHub.hashCode ^
+      description.hashCode ^
+      tags.hashCode ^
+      isTag.hashCode ^
+      types.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -413,7 +633,60 @@ class PageDto {
           journalDate == other.journalDate &&
           originJournal == other.originJournal &&
           createdAt == other.createdAt &&
-          updatedAt == other.updatedAt;
+          updatedAt == other.updatedAt &&
+          isHub == other.isHub &&
+          description == other.description &&
+          tags == other.tags &&
+          isTag == other.isTag &&
+          types == other.types;
+}
+
+/// Hub and namespace context of one page.
+class PageStructure {
+  final bool isHub;
+
+  /// Hub description (empty for notes).
+  final String description;
+
+  /// Empty unless the page is a hub; sub-hubs first, then notes.
+  final List<PageBrief> members;
+
+  /// Hubs the page belongs to (its own membership list), by title.
+  final List<PageBrief> inHubs;
+
+  /// Ancestor namespaces from the root: `A`, `A/B` for `A/B/C` (they may not exist).
+  final List<NamespaceEntry> nsPath;
+  final List<NamespaceEntry> nsChildren;
+
+  const PageStructure({
+    required this.isHub,
+    required this.description,
+    required this.members,
+    required this.inHubs,
+    required this.nsPath,
+    required this.nsChildren,
+  });
+
+  @override
+  int get hashCode =>
+      isHub.hashCode ^
+      description.hashCode ^
+      members.hashCode ^
+      inHubs.hashCode ^
+      nsPath.hashCode ^
+      nsChildren.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PageStructure &&
+          runtimeType == other.runtimeType &&
+          isHub == other.isHub &&
+          description == other.description &&
+          members == other.members &&
+          inHubs == other.inHubs &&
+          nsPath == other.nsPath &&
+          nsChildren == other.nsChildren;
 }
 
 class Place {
@@ -462,6 +735,35 @@ class RelatedDto {
           runtimeType == other.runtimeType &&
           page == other.page &&
           score == other.score;
+}
+
+/// A tag or type of the vocabulary.
+class TagDto {
+  final String name;
+
+  /// Pages using it.
+  final int count;
+
+  /// One of the seeded suggestions.
+  final bool suggested;
+
+  const TagDto({
+    required this.name,
+    required this.count,
+    required this.suggested,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ count.hashCode ^ suggested.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TagDto &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          count == other.count &&
+          suggested == other.suggested;
 }
 
 class TimelineDayDto {

@@ -78,9 +78,15 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
     // Nodes.
     let mut nodes = Vec::new();
     let mut index: HashMap<String, u32> = HashMap::new();
+    let page_tags: HashMap<String, Vec<String>> = g
+        .all_page_tags()?
+        .into_iter()
+        .map(|(id, t)| (id.to_string(), t))
+        .collect();
     {
         let mut st = conn.prepare(
             "SELECT id, title, journal_date, origin_journal, created_at FROM pages
+             WHERE kind != 'template'
              ORDER BY journal_date IS NOT NULL, created_at",
         )?;
         let rows = st.query_map([], |r| {
@@ -94,6 +100,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         })?;
         for row in rows {
             let (id, title, journal_date, origin_journal, created_at) = row?;
+            let tags = page_tags.get(&id).cloned().unwrap_or_default();
             index.insert(id.clone(), nodes.len() as u32);
             nodes.push(GraphNode {
                 id,
@@ -105,6 +112,9 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
                 backlinks: 0,
                 cluster: 0,
                 primary_tag: None,
+                is_hub: false,
+                home_hub: None,
+                tags,
             });
         }
     }
@@ -203,6 +213,22 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         }
     }
 
+    // Hub membership (hub → member), cycles already broken by `structure()`.
+    let structure = g.structure()?;
+    for h in &structure.hubs {
+        let Some(&hi) = index.get(&h.page.to_string()) else {
+            continue;
+        };
+        nodes[hi as usize].is_hub = true;
+        for m in &h.members {
+            if let Some(&mi) = index.get(&m.to_string()) {
+                b.add(hi, mi, edge_kind::CONTAINS, 1.0);
+            }
+        }
+    }
+
+    tagged(g, &index, &by_key, &mut b)?;
+
     // Stable edge order (sources, then targets, then kind).
     let mut edges: Vec<((u32, u32, u8), f32)> = b.edges.into_iter().collect();
     edges.sort_by_key(|&(k, _)| k);
@@ -234,6 +260,12 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
             .map(|(&t, _)| t);
     }
 
+    for (page, home) in &structure.home {
+        if let (Some(&i), Some(&h)) = (index.get(&page.to_string()), index.get(&home.to_string())) {
+            nodes[i as usize].home_hub = Some(h);
+        }
+    }
+
     let mut out = GraphData {
         nodes,
         sources: Vec::with_capacity(edges.len()),
@@ -249,6 +281,24 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         out.weights.push(w);
     }
     Ok(out)
+}
+
+/// A page filed under a tag page gets one `TAGGED` edge to it.
+fn tagged(
+    g: &Graph,
+    index: &HashMap<String, u32>,
+    by_key: &HashMap<String, u32>,
+    b: &mut Builder,
+) -> Result<()> {
+    let mut st = g.conn().prepare("SELECT tag_key, page_id FROM page_tags")?;
+    let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    for row in rows {
+        let (tag, page) = row?;
+        if let (Some(&s), Some(&t)) = (index.get(&page), by_key.get(&tag)) {
+            b.add(s, t, edge_kind::TAGGED, 1.0);
+        }
+    }
+    Ok(())
 }
 
 /// Unlinked references: a non-journal page title (or alias) appearing as whole words in a
