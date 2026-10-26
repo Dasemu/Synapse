@@ -1,15 +1,25 @@
 //! Secrets: an encrypted vault for passwords and other secrets.
 //!
 //! Storage (the module's synced key-value store, so the server only ever sees ciphertext):
-//! - `vault`: header `{v, kdf: {memory_kib, iterations, lanes}, salt, key}`. `key` is a random
-//!   data key wrapped (XChaCha20-Poly1305) by a key derived from the master password
-//!   (Argon2id). Changing the password re-wraps the data key; entries stay as they are.
-//! - `entry/<id>`: one entry (name, username, password, url, notes) sealed with the data key,
-//!   with `entry/<id>` bound as associated data so entries cannot be swapped.
+//! - `vault/<key id>`: a header `{v, key_id, kdf: {memory_kib, iterations, lanes}, salt, key}`.
+//!   `key` is a random data key wrapped by a key derived from the master password (Argon2id).
+//!   Each data key has its own header, so a header written by another device never replaces
+//!   one this device still uses.
+//! - `vault`: `{current: <key id>}`, the data key new entries use.
+//! - `entry/<id>`: `{k: <key id>, c: <ciphertext>}`, one entry (name, username, password,
+//!   url, notes) sealed (XChaCha20-Poly1305) with data key `k`, with `entry/<id>` bound as
+//!   associated data so entries cannot be swapped.
+//!
+//! Unlocking tries the password on every header; entries under another unlocked data key
+//! (two devices that set up a vault before syncing) are re-sealed under the current one and
+//! the extra headers dropped. Changing the password rotates the data key: every entry is
+//! re-sealed and the old header deleted, so an old password no longer opens current data
+//! (older ciphertext stays in the op log history; see docs/modules.md).
 //!
 //! Keys live in the host (`crypto` host functions); this module only holds handles, and
-//! decrypted entries while unlocked. The vault locks after [`AUTO_LOCK_MS`] without use, when
-//! the app is suspended, or on request. A revealed password hides again after [`REVEAL_MS`].
+//! decrypted entries while unlocked. The vault locks after [`AUTO_LOCK_MS`] without use (checked
+//! on every request), when the app is suspended or hidden, or on request. A revealed password
+//! hides again after [`REVEAL_MS`].
 
 use serde::{Deserialize, Serialize};
 use synapse_module_sdk::{Value, crypto, json, kv, ui};
@@ -21,12 +31,15 @@ pub const AUTO_LOCK_MS: u64 = 5 * 60 * 1000;
 pub const REVEAL_MS: u64 = 20 * 1000;
 pub const CLIPBOARD_CLEAR_MS: u64 = 30 * 1000;
 pub const MIN_PASSWORD: usize = 8;
-const VAULT_KEY: &str = "vault";
+const POINTER_KEY: &str = "vault";
+const HEADER_PREFIX: &str = "vault/";
 const ENTRY_PREFIX: &str = "entry/";
-const AAD_VAULT: &str = "synapse.secrets/vault/v1";
+const AAD_VAULT: &str = "synapse.secrets/vault/v1/";
 const KDF_MEMORY_KIB: u32 = 64 * 1024;
 const KDF_ITERATIONS: u32 = 3;
 const KDF_LANES: u32 = 1;
+/// Headers tried when unlocking (each costs one Argon2 run).
+const MAX_HEADERS: usize = 3;
 
 #[derive(Serialize, Deserialize)]
 struct Kdf {
@@ -35,12 +48,34 @@ struct Kdf {
     lanes: u32,
 }
 
+impl Kdf {
+    /// Synced headers are untrusted: refuse parameters that are too weak to protect the
+    /// password or too heavy for a phone.
+    fn acceptable(&self) -> bool {
+        (32 * 1024..=128 * 1024).contains(&self.memory_kib)
+            && (2..=6).contains(&self.iterations)
+            && (1..=4).contains(&self.lanes)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Header {
     v: u32,
+    key_id: String,
     kdf: Kdf,
     salt: String,
     key: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Pointer {
+    current: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Sealed {
+    k: String,
+    c: String,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -69,7 +104,8 @@ enum Screen {
 }
 
 struct State {
-    dek: Option<crypto::Key>,
+    /// The current data key: its id and handle.
+    dek: Option<(String, crypto::Key)>,
     entries: Vec<Entry>,
     unreadable: usize,
     last_activity: u64,
@@ -131,13 +167,24 @@ pub fn generate_password(len: usize) -> Result<String, String> {
     Ok(out)
 }
 
-fn header() -> Result<Option<Header>, String> {
-    match kv::get(VAULT_KEY)? {
-        None => Ok(None),
-        Some(s) => serde_json::from_str(&s)
-            .map(Some)
-            .map_err(|_| "the vault header is damaged".to_string()),
-    }
+fn pointer() -> Result<Option<String>, String> {
+    Ok(kv::get(POINTER_KEY)?
+        .and_then(|s| serde_json::from_str::<Pointer>(&s).ok())
+        .map(|p| p.current))
+}
+
+/// Valid headers, the current one first.
+fn headers() -> Result<Vec<Header>, String> {
+    let current = pointer()?;
+    let mut hs: Vec<Header> = kv::list(HEADER_PREFIX)?
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let h: Header = serde_json::from_str(&v).ok()?;
+            (k[HEADER_PREFIX.len()..] == h.key_id && h.kdf.acceptable()).then_some(h)
+        })
+        .collect();
+    hs.sort_by_key(|h| Some(&h.key_id) != current.as_ref());
+    Ok(hs)
 }
 
 fn derive(password: &str, h: &Header) -> Result<crypto::Key, String> {
@@ -151,10 +198,20 @@ fn derive(password: &str, h: &Header) -> Result<crypto::Key, String> {
     )
 }
 
-fn new_header(password: &str, dek: crypto::Key) -> Result<Header, String> {
+/// The data key of `h` if `password` opens it.
+fn open_header(password: &str, h: &Header) -> Result<Option<crypto::Key>, String> {
+    let kek = derive(password, h)?;
+    let dek = crypto::unwrap(kek, &h.key, &format!("{AAD_VAULT}{}", h.key_id));
+    crypto::forget(kek);
+    Ok(dek.ok())
+}
+
+/// Writes the header of a data key and makes it current.
+fn save_header(password: &str, key_id: &str, dek: crypto::Key) -> Result<(), String> {
     let salt = synapse_module_sdk::random(16)?;
     let mut h = Header {
         v: 1,
+        key_id: key_id.to_string(),
         kdf: Kdf {
             memory_kib: KDF_MEMORY_KIB,
             iterations: KDF_ITERATIONS,
@@ -164,17 +221,24 @@ fn new_header(password: &str, dek: crypto::Key) -> Result<Header, String> {
         key: String::new(),
     };
     let kek = derive(password, &h)?;
-    let wrapped = crypto::wrap(kek, dek, AAD_VAULT);
+    let wrapped = crypto::wrap(kek, dek, &format!("{AAD_VAULT}{key_id}"));
     crypto::forget(kek);
     h.key = wrapped?;
-    Ok(h)
+    kv::set(&format!("{HEADER_PREFIX}{key_id}"), &to_json(&h)?)?;
+    set_pointer(key_id)
 }
 
-fn save_header(h: &Header) -> Result<(), String> {
+fn set_pointer(key_id: &str) -> Result<(), String> {
     kv::set(
-        VAULT_KEY,
-        &serde_json::to_string(h).map_err(|e| e.to_string())?,
+        POINTER_KEY,
+        &to_json(&Pointer {
+            current: key_id.to_string(),
+        })?,
     )
+}
+
+fn to_json<T: Serialize>(v: &T) -> Result<String, String> {
+    serde_json::to_string(v).map_err(|e| e.to_string())
 }
 
 fn lock(s: &mut State) {
@@ -189,20 +253,120 @@ fn lock(s: &mut State) {
     s.form.clear();
 }
 
+fn sealed_entries() -> Result<Vec<(String, Sealed)>, String> {
+    Ok(kv::list(ENTRY_PREFIX)?
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let sealed = serde_json::from_str::<Sealed>(&v).ok()?;
+            Some((k[ENTRY_PREFIX.len()..].to_string(), sealed))
+        })
+        .collect())
+}
+
+fn seal_entry(key_id: &str, dek: crypto::Key, e: &Entry) -> Result<(), String> {
+    let plain = serde_json::to_string(e).map_err(|e| e.to_string())?;
+    let c = crypto::seal(dek, &plain, &entry_aad(&e.id))?;
+    let sealed = Sealed {
+        k: key_id.to_string(),
+        c,
+    };
+    kv::set(&format!("{ENTRY_PREFIX}{}", e.id), &to_json(&sealed)?)
+}
+
+fn open_entry(id: &str, dek: crypto::Key, sealed: &Sealed) -> Option<Entry> {
+    let plain = crypto::open(dek, &sealed.c, &entry_aad(id)).ok()?;
+    let mut e: Entry = serde_json::from_str(&plain).ok()?;
+    e.id = id.to_string();
+    Some(e)
+}
+
+/// Re-seals every entry under `from` keys with `to` and returns how many moved.
+fn reseal(from: &[(String, crypto::Key)], to: &(String, crypto::Key)) -> Result<usize, String> {
+    let mut moved = 0;
+    for (id, sealed) in sealed_entries()? {
+        let Some((_, k)) = from.iter().find(|(kid, _)| *kid == sealed.k) else {
+            continue;
+        };
+        if let Some(e) = open_entry(&id, *k, &sealed) {
+            seal_entry(&to.0, to.1, &e)?;
+            moved += 1;
+        }
+    }
+    Ok(moved)
+}
+
+/// Tries `password` on the vault headers. On success the current data key is set, and
+/// entries under other data keys it opened are moved to it.
+fn unlock(s: &mut State, password: &str) -> Result<bool, String> {
+    let hs = headers()?;
+    if hs.is_empty() {
+        return Err("there is no vault yet".into());
+    }
+    let mut keys = Vec::new();
+    for h in hs.iter().take(MAX_HEADERS) {
+        if let Some(k) = open_header(password, h)? {
+            keys.push((h.key_id.clone(), k));
+        }
+    }
+    if keys.is_empty() {
+        return Ok(false);
+    }
+    let current = keys.remove(0);
+    if !keys.is_empty() {
+        reseal(&keys, &current)?;
+        for (id, k) in &keys {
+            kv::delete(&format!("{HEADER_PREFIX}{id}"))?;
+            crypto::forget(*k);
+        }
+    }
+    if pointer()?.as_ref() != Some(&current.0) {
+        set_pointer(&current.0)?;
+    }
+    let skipped = hs.len() - keys.len() - 1;
+    if skipped > 0 {
+        s.message = Some((
+            format!(
+                "{skipped} other vault key(s) use a different password; their entries stay \
+                 unreadable until unlocked with it."
+            ),
+            true,
+        ));
+    }
+    s.dek = Some(current);
+    Ok(true)
+}
+
+/// False (and the vault locks) when another device replaced the current data key: writing
+/// with ours would create entries nobody else can read.
+fn still_current(s: &mut State) -> Result<bool, String> {
+    let Some((id, _)) = &s.dek else {
+        return Ok(false);
+    };
+    let ok = pointer()?.as_ref() == Some(id) && kv::get(&format!("{HEADER_PREFIX}{id}"))?.is_some();
+    if !ok {
+        lock(s);
+        s.message = Some((
+            "The vault changed on another device. Unlock it again.".into(),
+            true,
+        ));
+    }
+    Ok(ok)
+}
+
 fn load_entries(s: &mut State) -> Result<(), String> {
-    let Some(dek) = s.dek else { return Ok(()) };
+    let Some((key_id, dek)) = s.dek.clone() else {
+        return Ok(());
+    };
     let mut entries = Vec::new();
     let mut unreadable = 0;
     for (key, value) in kv::list(ENTRY_PREFIX)? {
-        let id = key[ENTRY_PREFIX.len()..].to_string();
-        match crypto::open(dek, &value, &entry_aad(&id))
+        let id = &key[ENTRY_PREFIX.len()..];
+        match serde_json::from_str::<Sealed>(&value)
             .ok()
-            .and_then(|plain| serde_json::from_str::<Entry>(&plain).ok())
+            .filter(|sealed| sealed.k == key_id)
+            .and_then(|sealed| open_entry(id, dek, &sealed))
         {
-            Some(mut e) => {
-                e.id = id;
-                entries.push(e);
-            }
+            Some(e) => entries.push(e),
             None => unreadable += 1,
         }
     }
@@ -213,10 +377,8 @@ fn load_entries(s: &mut State) -> Result<(), String> {
 }
 
 fn save_entry(s: &State, e: &Entry) -> Result<(), String> {
-    let dek = s.dek.ok_or("the vault is locked")?;
-    let plain = serde_json::to_string(e).map_err(|e| e.to_string())?;
-    let sealed = crypto::seal(dek, &plain, &entry_aad(&e.id))?;
-    kv::set(&format!("{ENTRY_PREFIX}{}", e.id), &sealed)
+    let (key_id, dek) = s.dek.as_ref().ok_or("the vault is locked")?;
+    seal_entry(key_id, *dek, e)
 }
 
 fn find<'a>(s: &'a State, name: &str) -> Option<&'a Entry> {
@@ -244,8 +406,15 @@ fn toast(text: &str) -> Value {
 pub fn handle(req: Value) -> Value {
     STATE.with(|cell| {
         let mut s = cell.borrow_mut();
+        let was_unlocked = s.dek.is_some();
         let now = synapse_module_sdk::now();
         let op = req.get("op").and_then(Value::as_str).unwrap_or("");
+        // Every request checks the idle timeout before counting as activity, so a late tick
+        // cannot leave the vault usable.
+        if s.dek.is_some() && now.saturating_sub(s.last_activity) > AUTO_LOCK_MS {
+            lock(&mut s);
+            s.message = Some(("Locked after inactivity.".into(), false));
+        }
         let result = match op {
             "render" => render(&mut s).map(|ui| json!({ "ui": ui })),
             "event" => {
@@ -257,7 +426,9 @@ pub fn handle(req: Value) -> Value {
                 s.last_activity = now;
                 macro_action(&mut s, &req, now)
             }
-            "tick" => Ok(json!({ "changed": tick(&mut s, now) })),
+            "tick" => {
+                Ok(json!({ "changed": tick(&mut s, now) || was_unlocked && s.dek.is_none() }))
+            }
             "suspend" => {
                 let was = s.dek.is_some();
                 lock(&mut s);
@@ -304,7 +475,7 @@ fn event(s: &mut State, req: &Value, now: u64) -> Result<Value, String> {
     match action {
         "setup" => {
             let (pw, confirm) = (value(req, "password"), value(req, "confirm"));
-            if header()?.is_some() {
+            if !headers()?.is_empty() {
                 s.message = Some(("A vault already exists: unlock it.".into(), true));
             } else if pw.chars().count() < MIN_PASSWORD {
                 s.message = Some((format!("Use at least {MIN_PASSWORD} characters."), true));
@@ -312,24 +483,19 @@ fn event(s: &mut State, req: &Value, now: u64) -> Result<Value, String> {
                 s.message = Some(("The passwords do not match.".into(), true));
             } else {
                 let dek = crypto::generate()?;
-                save_header(&new_header(pw, dek)?)?;
-                s.dek = Some(dek);
+                let key_id = hex(&synapse_module_sdk::random(8)?);
+                save_header(pw, &key_id, dek)?;
+                s.dek = Some((key_id, dek));
                 s.entries.clear();
                 effects.push(json!({ "refresh_macros": true }));
             }
         }
         "unlock" => {
-            let h = header()?.ok_or("there is no vault yet")?;
-            let kek = derive(value(req, "password"), &h)?;
-            let dek = crypto::unwrap(kek, &h.key, AAD_VAULT);
-            crypto::forget(kek);
-            match dek {
-                Ok(dek) => {
-                    s.dek = Some(dek);
-                    s.screen = Screen::List;
-                    effects.push(json!({ "refresh_macros": true }));
-                }
-                Err(_) => s.message = Some(("Wrong password.".into(), true)),
+            if unlock(s, value(req, "password"))? {
+                s.screen = Screen::List;
+                effects.push(json!({ "refresh_macros": true }));
+            } else {
+                s.message = Some(("Wrong password.".into(), true));
             }
         }
         "lock" => {
@@ -382,7 +548,7 @@ fn event(s: &mut State, req: &Value, now: u64) -> Result<Value, String> {
                     .cloned()
                     .unwrap_or_default();
                 s.message = Some((format!("There is already an entry called {name}."), true));
-            } else {
+            } else if still_current(s)? {
                 let id = match id {
                     Some(id) => id,
                     None => hex(&synapse_module_sdk::random(12)?),
@@ -409,13 +575,15 @@ fn event(s: &mut State, req: &Value, now: u64) -> Result<Value, String> {
         }
         "delete" => s.screen = Screen::ConfirmDelete(arg),
         "confirm_delete" => {
-            if let Screen::ConfirmDelete(id) = &s.screen {
+            if let Screen::ConfirmDelete(id) = s.screen.clone()
+                && still_current(s)?
+            {
                 kv::delete(&format!("{ENTRY_PREFIX}{id}"))?;
-                if s.selected.as_ref() == Some(id) {
+                if s.selected.as_ref() == Some(&id) {
                     s.selected = None;
                 }
+                s.screen = Screen::List;
             }
-            s.screen = Screen::List;
             effects.push(json!({ "refresh_macros": true }));
         }
         "reveal" => {
@@ -440,31 +608,43 @@ fn event(s: &mut State, req: &Value, now: u64) -> Result<Value, String> {
         }
         "change_password" => s.screen = Screen::ChangePassword,
         "save_password" => {
-            let h = header()?.ok_or("there is no vault")?;
             let (cur, new, confirm) = (
                 value(req, "current"),
                 value(req, "new"),
                 value(req, "confirm"),
             );
-            let kek = derive(cur, &h)?;
-            let check = crypto::unwrap(kek, &h.key, AAD_VAULT);
-            crypto::forget(kek);
-            match check {
-                Err(_) => s.message = Some(("The current password is wrong.".into(), true)),
-                Ok(k) if new.chars().count() < MIN_PASSWORD => {
-                    crypto::forget(k);
-                    s.message = Some((format!("Use at least {MIN_PASSWORD} characters."), true));
-                }
-                Ok(k) if new != confirm => {
-                    crypto::forget(k);
-                    s.message = Some(("The new passwords do not match.".into(), true));
-                }
-                Ok(k) => {
-                    crypto::forget(k);
-                    let dek = s.dek.ok_or("the vault is locked")?;
-                    save_header(&new_header(new, dek)?)?;
-                    s.screen = Screen::List;
-                    s.message = Some(("Master password changed.".into(), false));
+            if new.chars().count() < MIN_PASSWORD {
+                s.message = Some((format!("Use at least {MIN_PASSWORD} characters."), true));
+            } else if new != confirm {
+                s.message = Some(("The new passwords do not match.".into(), true));
+            } else if still_current(s)? {
+                let (old_id, old_dek) = s.dek.clone().ok_or("the vault is locked")?;
+                let hs = headers()?;
+                let h = hs
+                    .iter()
+                    .find(|h| h.key_id == old_id)
+                    .ok_or("the vault header is missing")?;
+                match open_header(cur, h)? {
+                    None => s.message = Some(("The current password is wrong.".into(), true)),
+                    Some(k) => {
+                        crypto::forget(k);
+                        // Rotate the data key: an old password (and old headers kept by sync
+                        // history) must not open what is stored from now on.
+                        let new_dek = crypto::generate()?;
+                        let new_id = hex(&synapse_module_sdk::random(8)?);
+                        let next = (new_id.clone(), new_dek);
+                        reseal(&[(old_id.clone(), old_dek)], &next)?;
+                        save_header(new, &new_id, new_dek)?;
+                        for h in &hs {
+                            if h.key_id != new_id {
+                                kv::delete(&format!("{HEADER_PREFIX}{}", h.key_id))?;
+                            }
+                        }
+                        crypto::forget(old_dek);
+                        s.dek = Some(next);
+                        s.screen = Screen::List;
+                        s.message = Some(("Master password changed.".into(), false));
+                    }
                 }
             }
         }
@@ -550,13 +730,27 @@ fn secret_field(id: &str, label: &str, value: &str) -> Value {
     ui::with(ui::field(id, label, value), json!({ "secret": true }))
 }
 
+/// The current screen's tree. Its `key` names the screen: the app starts with fresh fields
+/// when it changes, so text typed on one screen never shows up on another.
 fn render(s: &mut State) -> Result<Value, String> {
+    let tree = render_screen(s)?;
+    let key = match (&s.dek, &s.screen) {
+        (None, _) => "locked".to_string(),
+        (_, Screen::List) => "list".to_string(),
+        (_, Screen::Edit(id)) => format!("edit:{}", id.as_deref().unwrap_or("")),
+        (_, Screen::ConfirmDelete(_)) => "delete".to_string(),
+        (_, Screen::ChangePassword) => "password".to_string(),
+    };
+    Ok(ui::with(tree, json!({ "key": key })))
+}
+
+fn render_screen(s: &mut State) -> Result<Value, String> {
     let now = synapse_module_sdk::now();
     if s.dek.is_some() && now.saturating_sub(s.last_activity) > AUTO_LOCK_MS {
         lock(s);
     }
     let Some(_) = s.dek else {
-        let exists = header()?.is_some();
+        let exists = !headers()?.is_empty();
         let mut c = vec![ui::heading("Secrets")];
         if exists {
             c.push(ui::styled("The vault is locked.", "muted"));
@@ -597,7 +791,7 @@ fn render(s: &mut State) -> Result<Value, String> {
                 .unwrap_or_default();
             ui::column(vec![
                 ui::heading(&format!("Delete {name}?")),
-                ui::text("It is deleted on every synced device. This cannot be undone."),
+                ui::text("It is deleted on every synced device."),
                 ui::row(vec![
                     ui::button("Delete", "confirm_delete", "danger"),
                     ui::button("Cancel", "cancel", "plain"),
