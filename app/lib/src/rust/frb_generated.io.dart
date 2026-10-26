@@ -161,6 +161,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<LegacyCandidate> dco_decode_list_legacy_candidate(dynamic raw);
 
   @protected
+  List<ModuleDto> dco_decode_list_module_dto(dynamic raw);
+
+  @protected
+  List<ModuleViewDto> dco_decode_list_module_view_dto(dynamic raw);
+
+  @protected
   List<NamespaceEntry> dco_decode_list_namespace_entry(dynamic raw);
 
   @protected
@@ -201,6 +207,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<TitleHit> dco_decode_list_title_hit(dynamic raw);
+
+  @protected
+  ModuleDto dco_decode_module_dto(dynamic raw);
+
+  @protected
+  ModuleViewDto dco_decode_module_view_dto(dynamic raw);
 
   @protected
   NamespaceEntry dco_decode_namespace_entry(dynamic raw);
@@ -407,6 +419,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<ModuleDto> sse_decode_list_module_dto(SseDeserializer deserializer);
+
+  @protected
+  List<ModuleViewDto> sse_decode_list_module_view_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<NamespaceEntry> sse_decode_list_namespace_entry(
     SseDeserializer deserializer,
   );
@@ -451,6 +471,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<TitleHit> sse_decode_list_title_hit(SseDeserializer deserializer);
+
+  @protected
+  ModuleDto sse_decode_module_dto(SseDeserializer deserializer);
+
+  @protected
+  ModuleViewDto sse_decode_module_view_dto(SseDeserializer deserializer);
 
   @protected
   NamespaceEntry sse_decode_namespace_entry(SseDeserializer deserializer);
@@ -684,6 +710,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_module_dto(
+    List<ModuleDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_module_view_dto(
+    List<ModuleViewDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_namespace_entry(
     List<NamespaceEntry> self,
     SseSerializer serializer,
@@ -751,6 +789,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_title_hit(List<TitleHit> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_module_dto(ModuleDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_module_view_dto(ModuleViewDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_namespace_entry(

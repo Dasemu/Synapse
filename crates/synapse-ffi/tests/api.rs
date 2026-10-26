@@ -588,3 +588,34 @@ fn a_hub_tag_and_a_same_name_type_need_no_tag_node_beside_the_hub() {
         ("anime", 2)
     );
 }
+
+#[test]
+fn modules_install_and_answer_requests_over_ffi() {
+    let (_d, g) = open();
+    let wasm = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../app/assets/modules/synapse.secrets.wasm"
+    ))
+    .unwrap();
+    let m = g.inspect_module(wasm.clone()).unwrap();
+    assert_eq!(m.id, "synapse.secrets");
+    assert_eq!(m.views[0].id, "vault");
+    assert_eq!(m.macros, ["secret"]);
+    assert!(g.install_module(wasm.clone(), vec![]).is_err());
+    assert!(
+        g.install_module(wasm.clone(), vec!["storage".into(), "nope".into()])
+            .is_err()
+    );
+    let m = g.install_module(wasm, m.permissions.clone()).unwrap();
+    assert!(m.enabled);
+    assert_eq!(g.modules().len(), 1);
+    let r = g
+        .module_call(m.id.clone(), r#"{"op":"render","view":"vault"}"#.into())
+        .unwrap();
+    assert!(r.contains("Create vault"));
+    assert!(g.module_call(m.id.clone(), "not json".into()).is_err());
+    g.set_module_enabled(m.id.clone(), false).unwrap();
+    assert!(g.module_call(m.id.clone(), "{}".into()).is_err());
+    g.uninstall_module(m.id, true).unwrap();
+    assert!(g.modules().is_empty());
+}

@@ -3479,7 +3479,9 @@ dependencies = [
  "anyhow",
  "chrono",
  "flutter_rust_bridge",
+ "serde_json",
  "synapse-core",
+ "synapse-modules",
  "tempfile",
  "uuid",
 ]

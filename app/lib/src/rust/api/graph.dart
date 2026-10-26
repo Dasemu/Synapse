@@ -92,6 +92,15 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String content,
   });
 
+  /// Reads and validates a module file without installing it (for the consent dialog).
+  Future<ModuleDto> inspectModule({required List<int> wasm});
+
+  /// Installs or updates a module; `granted` must list every permission it asks for.
+  Future<ModuleDto> installModule({
+    required List<int> wasm,
+    required List<String> granted,
+  });
+
   /// The journal of `date` (created if missing).
   Future<PageData> journal({required String date});
 
@@ -119,6 +128,12 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// block) and the block is deleted. Its children keep their visual place: they take the
   /// block's slot when `into` is its parent, otherwise they become last children of `into`.
   Future<List<BlockDto>> mergeBlock({required String id, required String into});
+
+  /// Sends a JSON request to a module and returns its JSON response.
+  Future<String> moduleCall({required String id, required String request});
+
+  /// Installed modules, by name.
+  Future<List<ModuleDto>> modules();
 
   /// Moves a block with its subtree (drag and drop), possibly to another page.
   Future<List<BlockDto>> moveBlock({
@@ -218,6 +233,8 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String description,
   });
 
+  Future<void> setModuleEnabled({required String id, required bool enabled});
+
   /// Replaces the tags of a page (names only, stored sorted). Journals and templates cannot
   /// be tagged.
   Future<PageDto> setPageTags({
@@ -232,6 +249,9 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Sets (or with `None` clears) the emoji of a type, defining the type if needed.
   Future<void> setTypeIcon({required String name, String? icon});
 
+  /// Stops a module's running instance (dropping its in-memory state).
+  Future<void> stopModule({required String id});
+
   /// Every tag in use (listed or implied by a type) with its number of pages, most used first.
   Future<List<TagDto>> tagCatalog();
 
@@ -244,6 +264,10 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Types in use (most used first), then defined unused types, then the seeded suggestions
   /// not used yet; each with its icon.
   Future<List<TagDto>> typeCatalog();
+
+  /// Removes a module from this device; `delete_data` also deletes its synced data on every
+  /// device.
+  Future<void> uninstallModule({required String id, required bool deleteData});
 
   /// Replaces a block's Markdown (the debounced save while typing).
   Future<void> updateBlock({required String id, required String content});
