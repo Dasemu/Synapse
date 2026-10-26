@@ -93,6 +93,11 @@ impl Config {
         {
             return Err("SYNAPSE_MCP_TOKEN has no token".into());
         }
+        if let Some(m) = &self.mcp
+            && m.tokens.iter().any(|t| self.auth_tokens.contains(t))
+        {
+            return Err("SYNAPSE_MCP_TOKEN must differ from the sync tokens".into());
+        }
         let mcp_tokens = self.mcp.iter().flat_map(|m| m.tokens.iter());
         for t in self
             .auth_tokens

@@ -185,3 +185,21 @@ async fn writes_go_through_the_op_log() {
     assert!(ops.to_string().contains("rejects aliasing"), "{ops}");
     srv.shutdown();
 }
+
+#[test]
+fn mcp_token_must_differ_from_sync_tokens() {
+    let cfg = Config {
+        bind: "127.0.0.1:0".parse().unwrap(),
+        data_dir: "/tmp/unused".into(),
+        auth_tokens: vec![SYNC_TOKEN.into()],
+        update_token: None,
+        update_script: "/nonexistent".into(),
+        max_clock_skew: Duration::from_secs(600),
+        mcp: Some(McpConfig {
+            tokens: vec![SYNC_TOKEN.into()],
+            allow_write: false,
+            allowed_hosts: Vec::new(),
+        }),
+    };
+    assert!(cfg.validate().is_err());
+}
