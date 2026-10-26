@@ -1,10 +1,12 @@
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../backend/graph_backend.dart';
 import '../graph/network_canvas.dart';
 import '../theme/theme.dart';
+import '../widgets/dates.dart';
 import 'keymap.dart';
 import 'settings.dart';
 import 'write_queue.dart';
@@ -55,6 +57,92 @@ class PageTarget extends AppRoute {
   final String? title;
 }
 
+/// One browser-like tab: its current route plus its own back/forward history.
+class AppTab {
+  AppTab(this.route, {this.label});
+
+  AppRoute route;
+  final back = <AppRoute>[];
+  final forward = <AppRoute>[];
+
+  /// Title of a page route (the route only has an id); set once the page is shown.
+  String? label;
+
+  /// Stable identity for widget keys (reordering, closing).
+  final int uid = _nextUid++;
+  static int _nextUid = 0;
+
+  String get title => switch (route) {
+    JournalsRoute() => 'Journals',
+    TimelineRoute() => 'Timeline',
+    AllPagesRoute() => 'All pages',
+    SettingsRoute() => 'Settings',
+    GraphRoute() => 'Graph',
+    PageTarget(:final title) => label ?? title ?? 'Page',
+  };
+
+  IconData get icon => switch (route) {
+    JournalsRoute() => Icons.calendar_today_outlined,
+    TimelineRoute() => Icons.timeline_rounded,
+    AllPagesRoute() => Icons.description_outlined,
+    SettingsRoute() => Icons.settings_outlined,
+    GraphRoute() => Icons.hub_outlined,
+    PageTarget() => Icons.article_outlined,
+  };
+}
+
+/// True while Ctrl (Cmd on macOS) is held: a click then opens in a new tab.
+bool get newTabModifierHeld =>
+    HardwareKeyboard.instance.isControlPressed ||
+    HardwareKeyboard.instance.isMetaPressed;
+
+Map<String, dynamic>? routeToJson(AppRoute r, {String? label}) => switch (r) {
+  JournalsRoute() => {'t': 'journals'},
+  TimelineRoute() => {'t': 'timeline'},
+  AllPagesRoute() => {'t': 'all'},
+  SettingsRoute() => {'t': 'settings'},
+  GraphRoute() => {
+    't': 'graph',
+    'mode': r.mode.name,
+    if (r.focusId != null) 'focus': r.focusId,
+  },
+  PageTarget() => {
+    't': 'page',
+    'id': ?r.id,
+    'title': ?r.title,
+    'label': ?label,
+  },
+};
+
+/// Null for unknown or broken entries.
+AppRoute? routeFromJson(Object? j) {
+  if (j is! Map) return null;
+  switch (j['t']) {
+    case 'journals':
+      return const JournalsRoute();
+    case 'timeline':
+      return const TimelineRoute();
+    case 'all':
+      return const AllPagesRoute();
+    case 'settings':
+      return const SettingsRoute();
+    case 'graph':
+      final mode = GraphMode.values.asNameMap()[j['mode']];
+      if (mode == null) return null;
+      final focus = j['focus'];
+      return GraphRoute(mode, focusId: focus is String ? focus : null);
+    case 'page':
+      final id = j['id'];
+      final title = j['title'];
+      if (id is! String && title is! String) return null;
+      return PageTarget(
+        id: id is String ? id : null,
+        title: title is String ? title : null,
+      );
+  }
+  return null;
+}
+
 /// App-wide state: the open graph, navigation history, recents and theme.
 ///
 /// State management is plain `ChangeNotifier`s: one for the app, one per open outline
@@ -81,6 +169,7 @@ class AppState extends ChangeNotifier {
     if (id is String && (id == autoThemeId || resolveTheme(id) != null)) {
       themeId = id;
     }
+    _restoreTabs(saved['tabs']);
     final keys = saved['keys'];
     keymap = Keymap(
       keys is Map
@@ -105,7 +194,32 @@ class AppState extends ChangeNotifier {
       'theme': themeId,
       'customThemes': [for (final t in customThemes) t.toJson()],
       'keys': keymap.toJson(),
+      'tabs': {
+        'active': _active,
+        'items': [
+          for (final t in _tabs) routeToJson(t.route, label: t.label) as Object,
+        ],
+      },
     });
+  }
+
+  void _restoreTabs(Object? saved) {
+    if (saved is! Map || saved['items'] is! List) return;
+    final restored = <AppTab>[];
+    for (final j in saved['items'] as List) {
+      final r = routeFromJson(j);
+      if (r == null) continue;
+      final label = j is Map && j['label'] is String
+          ? j['label'] as String
+          : null;
+      restored.add(AppTab(r, label: label));
+    }
+    if (restored.isEmpty) return;
+    _tabs
+      ..clear()
+      ..addAll(restored);
+    final a = saved['active'];
+    _active = a is int && a >= 0 && a < _tabs.length ? a : 0;
   }
 
   /// A built-in or custom theme by id; null for `auto` and unknown ids.
@@ -192,9 +306,8 @@ class AppState extends ChangeNotifier {
   final WriteQueue queue;
   final BlockRefCache refs;
 
-  AppRoute _route = const JournalsRoute();
-  final _back = <AppRoute>[];
-  final _forward = <AppRoute>[];
+  final List<AppTab> _tabs = [AppTab(const JournalsRoute())];
+  int _active = 0;
   final List<PageBrief> recent = [];
 
   /// Node positions shared by the graph views (stable layouts across modes and filters).
@@ -220,9 +333,13 @@ class AppState extends ChangeNotifier {
   /// Last write error, shown once by the shell.
   String? writeError;
 
-  AppRoute get route => _route;
-  bool get canGoBack => _back.isNotEmpty;
-  bool get canGoForward => _forward.isNotEmpty;
+  AppTab get tab => _tabs[_active];
+  List<AppTab> get tabs => List.unmodifiable(_tabs);
+  int get activeTab => _active;
+
+  AppRoute get route => tab.route;
+  bool get canGoBack => tab.back.isNotEmpty;
+  bool get canGoForward => tab.forward.isNotEmpty;
 
   /// A failed write leaves the optimistic UI out of sync: reload the view from the core.
   void _writeFailed(Object e, StackTrace st) {
@@ -238,10 +355,64 @@ class AppState extends ChangeNotifier {
   }
 
   void go(AppRoute r) {
-    _back.add(_route);
-    if (_back.length > 100) _back.removeAt(0);
-    _forward.clear();
-    _route = r;
+    final t = tab;
+    t.back.add(t.route);
+    if (t.back.length > 100) t.back.removeAt(0);
+    t.forward.clear();
+    t.route = r;
+    t.label = null;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// Opens `r` in a new tab (after the active one), optionally keeping the current tab.
+  void openInNewTab(AppRoute r, {bool activate = true}) {
+    _tabs.insert(_active + 1, AppTab(r));
+    if (activate) _active++;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// A plain click navigates the active tab; with Ctrl/Cmd held it opens a new tab.
+  void navigate(AppRoute r) => newTabModifierHeld ? openInNewTab(r) : go(r);
+
+  void newTab() => openInNewTab(const JournalsRoute());
+
+  void activateTab(int i) {
+    if (i < 0 || i >= _tabs.length || i == _active) return;
+    _active = i;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void nextTab() => activateTab((_active + 1) % _tabs.length);
+  void previousTab() =>
+      activateTab((_active - 1 + _tabs.length) % _tabs.length);
+
+  /// Closes tab `i` (default: the active one). The last tab is replaced by a Journals tab.
+  void closeTab([int? i]) {
+    final at = i ?? _active;
+    if (at < 0 || at >= _tabs.length) return;
+    _tabs.removeAt(at);
+    if (_tabs.isEmpty) {
+      _tabs.add(AppTab(const JournalsRoute()));
+      _active = 0;
+    } else if (at < _active || _active >= _tabs.length) {
+      _active--;
+    }
+    _active = _active.clamp(0, _tabs.length - 1);
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void moveTab(int from, int to) {
+    if (from < 0 || from >= _tabs.length || to < 0 || to >= _tabs.length) {
+      return;
+    }
+    final active = _tabs[_active];
+    _tabs.insert(to, _tabs.removeAt(from));
+    _active = _tabs.indexOf(active);
+    _saveSettings();
     notifyListeners();
   }
 
@@ -254,32 +425,73 @@ class AppState extends ChangeNotifier {
         r is PageTarget && r.id == null && r.title!.toLowerCase() == key
         ? PageTarget(id: id)
         : r;
-    if (_route is PageTarget) _route = PageTarget(id: id);
-    for (final l in [_back, _forward]) {
-      for (var i = 0; i < l.length; i++) {
-        l[i] = fix(l[i]);
+    for (final t in _tabs) {
+      if (t.route is PageTarget) {
+        final r = t.route as PageTarget;
+        // Only the shown page of the active tab is known to be the renamed one.
+        if (t == tab || (r.id == null && r.title!.toLowerCase() == key)) {
+          t.route = PageTarget(id: id);
+        }
+      }
+      for (final l in [t.back, t.forward]) {
+        for (var i = 0; i < l.length; i++) {
+          l[i] = fix(l[i]);
+        }
       }
     }
     generation++;
+    _saveSettings();
     notifyListeners();
   }
 
   void back() {
-    if (_back.isEmpty) return;
-    _forward.add(_route);
-    _route = _back.removeLast();
+    final t = tab;
+    if (t.back.isEmpty) return;
+    t.forward.add(t.route);
+    t.route = t.back.removeLast();
+    t.label = null;
+    _saveSettings();
     notifyListeners();
   }
 
   void forward() {
-    if (_forward.isEmpty) return;
-    _back.add(_route);
-    _route = _forward.removeLast();
+    final t = tab;
+    if (t.forward.isEmpty) return;
+    t.back.add(t.route);
+    t.route = t.forward.removeLast();
+    t.label = null;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  /// Pages were deleted: tabs showing them step back to the last surviving entry (or
+  /// Journals) and the recents drop them.
+  void pagesDeleted(Iterable<String> ids) {
+    final gone = ids.toSet();
+    bool dead(AppRoute r) => r is PageTarget && gone.contains(r.id);
+    recent.removeWhere((p) => gone.contains(p.id));
+    for (final t in _tabs) {
+      t.back.removeWhere(dead);
+      t.forward.removeWhere(dead);
+      if (dead(t.route)) {
+        t.route = t.back.isNotEmpty
+            ? t.back.removeLast()
+            : (t.forward.isNotEmpty
+                  ? t.forward.removeLast()
+                  : const JournalsRoute());
+        t.label = null;
+      }
+    }
+    generation++;
+    _saveSettings();
     notifyListeners();
   }
 
   void openTitle(String title) => go(PageTarget(title: title));
   void openId(String id) => go(PageTarget(id: id));
+  void openTitleInNewTab(String title) =>
+      openInNewTab(PageTarget(title: title));
+  void openIdInNewTab(String id) => openInNewTab(PageTarget(id: id));
 
   /// Called by the page view once it knows which page it shows.
   void pageShown(PageDto page) {
@@ -287,6 +499,16 @@ class AppState extends ChangeNotifier {
     _lastPageId = page.id;
     if (from != page.id) {
       queue.run(() => backend.recordVisit(from, page.id)).ignore();
+    }
+    final shown = route;
+    if (shown is PageTarget) {
+      final label = page.journalDate != null
+          ? longDate(page.title)
+          : page.title;
+      if (tab.label != label) {
+        tab.label = label;
+        _saveSettings();
+      }
     }
     recent.removeWhere((p) => p.id == page.id);
     // Hubs are folders, not pages: they never show up in recents.
@@ -319,6 +541,10 @@ class AppState extends ChangeNotifier {
   }
 
   void renamed(String id, String title) {
+    for (final t in _tabs) {
+      final r = t.route;
+      if (r is PageTarget && r.id == id) t.label = title;
+    }
     final i = recent.indexWhere((p) => p.id == id);
     if (i >= 0) {
       recent[i] = PageBrief(

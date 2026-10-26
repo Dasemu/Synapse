@@ -65,6 +65,8 @@ class RenderContext {
     required this.onBlockRef,
     required this.onUrl,
     this.onToggleTodo,
+    this.onPageNewTab,
+    this.onBlockRefNewTab,
     this.maxWidth = 600,
   });
 
@@ -76,6 +78,10 @@ class RenderContext {
   final void Function(BlockRefDtoLike ref) onBlockRef;
   final void Function(String url) onUrl;
   final VoidCallback? onToggleTodo;
+
+  /// Middle-click on a page link or block ref.
+  final void Function(String title)? onPageNewTab;
+  final void Function(BlockRefDtoLike ref)? onBlockRefNewTab;
   final double maxWidth;
 }
 
@@ -298,6 +304,9 @@ class BlockRenderer {
               fontWeight: FontWeight.w500,
             ),
             onTap: () => ctx.onPage(title),
+            onMiddle: ctx.onPageNewTab == null
+                ? null
+                : () => ctx.onPageNewTab!(title),
           );
           i = plain = close + 2;
           continue;
@@ -476,11 +485,18 @@ class BlockRenderer {
     return null;
   }
 
-  void _text(String t, int s0, TextStyle style, {VoidCallback? onTap}) {
+  void _text(
+    String t,
+    int s0,
+    TextStyle style, {
+    VoidCallback? onTap,
+    VoidCallback? onMiddle,
+  }) {
     if (t.isEmpty) return;
     TapGestureRecognizer? rec;
     if (onTap != null) {
       rec = TapGestureRecognizer()..onTap = onTap;
+      if (onMiddle != null) rec.onTertiaryTapUp = (_) => onMiddle();
       _recognizers.add(rec);
     }
     _spans.add(
@@ -513,7 +529,9 @@ class BlockRenderer {
     TapGestureRecognizer? rec;
     if (ref != null) {
       rec = TapGestureRecognizer()
-        ..onTap = () => ctx.onBlockRef(BlockRefDtoLike(ref.id, ref.pageId));
+        ..onTap = (() => ctx.onBlockRef(BlockRefDtoLike(ref.id, ref.pageId)))
+        ..onTertiaryTapUp = (_) =>
+            ctx.onBlockRefNewTab?.call(BlockRefDtoLike(ref.id, ref.pageId));
       _recognizers.add(rec);
     }
     _spans.add(
