@@ -48,6 +48,19 @@ class GraphRoute extends AppRoute {
   final String? focusId;
 }
 
+/// A tag (a name, not a page): the pages carrying it, listed or through their type.
+class TagRoute extends AppRoute {
+  const TagRoute(this.name);
+  final String name;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TagRoute && other.name.toLowerCase() == name.toLowerCase();
+
+  @override
+  int get hashCode => name.toLowerCase().hashCode;
+}
+
 /// A page, by id or (for links that may not exist yet) by title.
 class PageTarget extends AppRoute {
   const PageTarget({this.id, this.title}) : assert(id != null || title != null);
@@ -278,6 +291,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Swaps the current route without touching history (a tag was renamed).
+  void replaceRoute(AppRoute r) {
+    _route = r;
+    generation++;
+    notifyListeners();
+  }
+
+  void openTag(String name) => go(TagRoute(name));
   void openTitle(String title) => go(PageTarget(title: title));
   void openId(String id) => go(PageTarget(id: id));
 

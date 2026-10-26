@@ -275,7 +275,6 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TagBar(page: page),
-            if (page.isTag) TaggedNotes(tag: page.title),
           ],
         ],
       ),

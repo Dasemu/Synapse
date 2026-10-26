@@ -12,6 +12,7 @@ import 'hubs_tree.dart';
 import 'quick_switcher.dart';
 import 'graph_view.dart';
 import 'settings_view.dart';
+import 'tag_view.dart';
 
 /// App frame: sidebar (navigation, hubs, recents), top bar (history, search, theme,
 /// settings) and the current view.
@@ -112,6 +113,7 @@ class _ShellState extends State<Shell> {
                               ),
                               AllPagesRoute() => const AllPagesView(),
                               SettingsRoute() => const SettingsView(),
+                              TagRoute() => TagView(name: route.name),
                               PageTarget() => PageScreen(target: route),
                             },
                           ),

@@ -62,22 +62,28 @@ abstract class GraphBackend {
   Future<PageStructure> pageStructure(String pageId);
   Future<PageDto> createHub(String title, String description);
 
-  /// Tags are pages of kind `tag` (topics); a page can have any number. Types are plain
-  /// names saying what a page is.
+  /// Tags are names (no pages), kept sorted; a page can have any number. A page has at most
+  /// one type, a name saying what it is, and the type implies a tag of the same name.
   Future<PageDto> setPageTags(String pageId, List<String> tags);
   Future<PageDto> addPageTag(String pageId, String tag);
   Future<PageDto> removePageTag(String pageId, String tag);
 
-  Future<PageDto> setPageTypes(String pageId, List<String> types);
-  Future<PageDto> addPageType(String pageId, String type);
-  Future<PageDto> removePageType(String pageId, String type);
+  Future<PageDto> setPageType(String pageId, String? type);
 
   /// Types in use (most used first), then the seeded suggestions not used yet.
   Future<List<TagDto>> typeCatalog();
 
-  /// Tag pages, most used first.
+  /// Every tag in use (listed or implied by a type), most used first.
   Future<List<TagDto>> tagCatalog();
+
+  /// Pages carrying a tag, listed or via their type.
   Future<List<PageBrief>> pagesWithTag(String tag);
+
+  /// Renames a tag in the tags and types of every page; returns the pages changed.
+  Future<int> renameTag(String old, String new_);
+
+  /// Removes the explicit tag from every page (types stay); returns the pages changed.
+  Future<int> removeTag(String name);
 
   /// Id of the hub's template page (opens like a note; may be empty).
   Future<String> hubTemplate(String hubId);
@@ -255,14 +261,13 @@ class FfiGraphBackend implements GraphBackend {
   Future<PageDto> removePageTag(String pageId, String tag) =>
       _g.removePageTag(pageId: pageId, tag: tag);
   @override
-  Future<PageDto> setPageTypes(String pageId, List<String> types) =>
-      _g.setPageTypes(pageId: pageId, types: types);
+  Future<PageDto> setPageType(String pageId, String? type) =>
+      _g.setPageType(pageId: pageId, pageType: type);
   @override
-  Future<PageDto> addPageType(String pageId, String type) =>
-      _g.addPageType(pageId: pageId, ty: type);
+  Future<int> renameTag(String old, String new_) =>
+      _g.renameTag(old: old, new_: new_);
   @override
-  Future<PageDto> removePageType(String pageId, String type) =>
-      _g.removePageType(pageId: pageId, ty: type);
+  Future<int> removeTag(String name) => _g.removeTag(name: name);
   @override
   Future<List<TagDto>> typeCatalog() => _g.typeCatalog();
 

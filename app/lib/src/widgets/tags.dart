@@ -6,9 +6,9 @@ import '../theme/theme.dart';
 import 'common.dart';
 import 'pickers.dart';
 
-/// Type and tag chips of a page, each with a remove button, and "Type" / "Tag" links that open
-/// a picker. Types are plain names; tags are pages (tapping one opens it). Tag pages cannot
-/// be tagged, so they only get types.
+/// The page's metadata as one compact wrapping line: the type pill, the tag chips (sorted;
+/// tapping one opens its [TagRoute]) and a "+ tag" link. A page has at most one type; tags
+/// are names, not pages.
 class TagBar extends StatelessWidget {
   const TagBar({super.key, required this.page});
   final PageDto page;
@@ -27,258 +27,214 @@ class TagBar extends StatelessWidget {
     }
   }
 
-  Future<void> _add(BuildContext context, {required bool type}) async {
+  Future<void> _pickType(BuildContext context) async {
     final app = AppScope.read(context);
-    final catalog = type
-        ? await app.backend.typeCatalog()
-        : await app.backend.tagCatalog();
+    final catalog = await app.backend.typeCatalog();
     if (!context.mounted) return;
-    final name = await showDialog<String>(
+    final picked = await showDialog<_TypeChoice>(
+      context: context,
+      builder: (_) => _TypePicker(catalog: catalog, current: page.pageType),
+    );
+    if (picked == null || !context.mounted) return;
+    await _run(context, (b) => b.setPageType(page.id, picked.name));
+  }
+
+  Future<void> _addTags(BuildContext context) async {
+    final app = AppScope.read(context);
+    final catalog = await app.backend.tagCatalog();
+    if (!context.mounted) return;
+    await showDialog<void>(
       context: context,
       builder: (_) => _TagPicker(
         catalog: catalog,
-        taken: type ? page.types : page.tags,
-        label: type ? 'type' : 'tag',
+        taken: page.tags,
+        onAdd: (name) => _run(context, (b) => b.addPageTag(page.id, name)),
       ),
-    );
-    if (name == null || !context.mounted) return;
-    await _run(
-      context,
-      (b) => type ? b.addPageType(page.id, name) : b.addPageTag(page.id, name),
-    );
-  }
-
-  Widget _chip(
-    BuildContext context,
-    String keyId,
-    String name, {
-    VoidCallback? onTap,
-    required VoidCallback onRemove,
-  }) {
-    final colors = context.colors;
-    return Container(
-      key: ValueKey(keyId),
-      padding: const EdgeInsets.only(left: 9, right: 3),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
-                name,
-                style: TextStyle(fontSize: 12, color: colors.muted),
-              ),
-            ),
-          ),
-          InkResponse(
-            key: ValueKey('un$keyId'),
-            radius: 10,
-            onTap: onRemove,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(Icons.close_rounded, size: 12, color: colors.faint),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(
-    BuildContext context,
-    IconData icon,
-    String label,
-    List<Widget> chips,
-    Widget add,
-  ) {
-    final colors = context.colors;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 76,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(
-              children: [
-                Icon(icon, size: 13, color: colors.faint),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 12, color: colors.faint),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [...chips, add],
-          ),
-        ),
-      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.read(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final colors = context.colors;
+    final type = page.pageType;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _row(
-          context,
-          Icons.category_outlined,
-          'Type',
-          [
-            for (final t in page.types)
-              _chip(
-                context,
-                'type-$t',
-                t,
-                onRemove: () =>
-                    _run(context, (b) => b.removePageType(page.id, t)),
-              ),
-          ],
-          TextLink(
-            '+ add',
+        if (type != null)
+          _TypePill(name: type, onTap: () => _pickType(context))
+        else
+          _GhostPill(
             key: const ValueKey('add-type'),
-            onTap: () => _add(context, type: true),
-            style: const TextStyle(fontSize: 12),
+            label: 'Add type',
+            onTap: () => _pickType(context),
           ),
+        for (final t in page.tags)
+          _TagChip(
+            name: t,
+            onTap: () => app.openTag(t),
+            onRemove: () => _run(context, (b) => b.removePageTag(page.id, t)),
+          ),
+        TextLink(
+          '+ tag',
+          key: const ValueKey('add-tag'),
+          onTap: () => _addTags(context),
+          style: TextStyle(fontSize: 12.5, color: colors.faint),
         ),
-        if (!page.isTag) ...[
-          const SizedBox(height: 6),
-          _row(
-            context,
-            Icons.sell_outlined,
-            'Tags',
-            [
-              for (final t in page.tags)
-                _chip(
-                  context,
-                  'tag-$t',
-                  '#$t',
-                  onTap: () => app.openTitle(t),
-                  onRemove: () =>
-                      _run(context, (b) => b.removePageTag(page.id, t)),
-                ),
-            ],
-            TextLink(
-              '+ add',
-              key: const ValueKey('add-tag'),
-              onTap: () => _add(context, type: false),
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-        ],
       ],
     );
   }
 }
 
-/// Notes carrying the tag page `tag`, as links under the header of the tag page.
-class TaggedNotes extends StatelessWidget {
-  const TaggedNotes({super.key, required this.tag});
-  final String tag;
+class _TypePill extends StatelessWidget {
+  const _TypePill({required this.name, required this.onTap});
+  final String name;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final app = AppScope.read(context);
     final colors = context.colors;
-    return FutureBuilder<List<PageBrief>>(
-      future: app.backend.pagesWithTag(tag),
-      builder: (context, snap) {
-        final pages = snap.data ?? const <PageBrief>[];
-        if (pages.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Wrap(
-            key: const ValueKey('tagged-notes'),
-            spacing: 14,
-            runSpacing: 4,
-            children: [
-              Text(
-                'Tagged',
-                style: TextStyle(fontSize: 12, color: colors.faint),
-              ),
-              for (final p in pages)
-                TextLink(
-                  p.title,
-                  icon: Icons.description_outlined,
-                  onTap: () => app.openId(p.id),
-                  style: const TextStyle(fontSize: 12),
-                ),
-            ],
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        key: const ValueKey('type-pill'),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: colors.accentSoft,
+            borderRadius: BorderRadius.circular(6),
           ),
-        );
-      },
+          child: Text(
+            name,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: colors.accent,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-/// Lists the pages carrying `tag`; picking one opens it.
-Future<void> showTagPages(BuildContext context, String tag) async {
-  final app = AppScope.read(context);
-  final pages = await app.backend.pagesWithTag(tag);
-  if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(tag),
-      content: SizedBox(
-        width: 360,
-        child: pages.isEmpty
-            ? const Text('No notes with this tag yet.')
-            : ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final p in pages)
-                    ListTile(
-                      dense: true,
-                      leading: Icon(
-                        p.isHub
-                            ? Icons.folder_outlined
-                            : Icons.description_outlined,
-                        size: 18,
-                      ),
-                      title: Text(p.title),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        app.openId(p.id);
-                      },
-                    ),
-                ],
-              ),
-      ),
-    ),
-  );
-}
-
-class _TagPicker extends StatefulWidget {
-  const _TagPicker({
-    required this.catalog,
-    required this.taken,
-    required this.label,
-  });
-  final List<TagDto> catalog;
-  final List<String> taken;
+/// Faint outlined pill that invites setting the (missing) type.
+class _GhostPill extends StatelessWidget {
+  const _GhostPill({super.key, required this.label, required this.onTap});
   final String label;
+  final VoidCallback onTap;
 
   @override
-  State<_TagPicker> createState() => _TagPickerState();
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.line),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 12.5, color: colors.faint),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _TagPickerState extends State<_TagPicker> {
+/// `#name` outlined chip; hovering shows the accent border and a remove button.
+class _TagChip extends StatefulWidget {
+  const _TagChip({
+    required this.name,
+    required this.onTap,
+    required this.onRemove,
+  });
+  final String name;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  @override
+  State<_TagChip> createState() => _TagChipState();
+}
+
+class _TagChipState extends State<_TagChip> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Container(
+        key: ValueKey('tag-${widget.name}'),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          border: Border.all(color: _hover ? colors.accent : colors.line),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              child: Text(
+                '#${widget.name}',
+                style: TextStyle(fontSize: 12.5, color: colors.muted),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 120),
+              child: _hover
+                  ? GestureDetector(
+                      key: ValueKey('untag-${widget.name}'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onRemove,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 12,
+                          color: colors.accent,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Result of the type picker: a name, or `null` to remove the type.
+class _TypeChoice {
+  const _TypeChoice(this.name);
+  final String? name;
+}
+
+/// Single-select type picker: types in use (with counts), suggestions, free text and
+/// "Remove type".
+class _TypePicker extends StatefulWidget {
+  const _TypePicker({required this.catalog, required this.current});
+  final List<TagDto> catalog;
+  final String? current;
+
+  @override
+  State<_TypePicker> createState() => _TypePickerState();
+}
+
+class _TypePickerState extends State<_TypePicker> {
   final _text = TextEditingController();
 
   @override
@@ -292,17 +248,15 @@ class _TagPickerState extends State<_TagPicker> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final taken = {for (final t in widget.taken) t.toLowerCase()};
     final q = _query.toLowerCase();
+    final cur = widget.current?.toLowerCase();
     final options = [
       for (final t in widget.catalog)
-        if (!taken.contains(t.name.toLowerCase()) &&
-            t.name.toLowerCase().contains(q))
-          t,
+        if (t.name.toLowerCase() != cur && t.name.toLowerCase().contains(q)) t,
     ];
     final exact = widget.catalog.any((t) => t.name.toLowerCase() == q);
     return AlertDialog(
-      title: Text('Add ${widget.label}'),
+      title: const Text('Type'),
       content: SizedBox(
         width: 360,
         child: Column(
@@ -310,15 +264,17 @@ class _TagPickerState extends State<_TagPicker> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(
-              key: ValueKey('${widget.label}-input'),
+              key: const ValueKey('type-input'),
               controller: _text,
               autofocus: true,
-              decoration: InputDecoration(
-                hintText: 'Search or type a new ${widget.label}',
+              decoration: const InputDecoration(
+                hintText: 'Search or type a new type',
               ),
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) {
-                if (_query.isNotEmpty) Navigator.pop(context, _query);
+                if (_query.isNotEmpty) {
+                  Navigator.pop(context, _TypeChoice(_query));
+                }
               },
             ),
             const SizedBox(height: 12),
@@ -328,16 +284,17 @@ class _TagPickerState extends State<_TagPicker> {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    if (_query.isNotEmpty && !exact && !taken.contains(q))
+                    if (_query.isNotEmpty && !exact && q != cur)
                       ActionChip(
-                        key: ValueKey('${widget.label}-create'),
+                        key: const ValueKey('type-create'),
                         avatar: const Icon(Icons.add_rounded, size: 14),
                         label: Text('Create "$_query"'),
-                        onPressed: () => Navigator.pop(context, _query),
+                        onPressed: () =>
+                            Navigator.pop(context, _TypeChoice(_query)),
                       ),
                     for (final t in options)
                       ActionChip(
-                        key: ValueKey('${widget.label}-opt-${t.name}'),
+                        key: ValueKey('type-opt-${t.name}'),
                         label: Text(
                           t.count > 0 ? '${t.name} · ${t.count}' : t.name,
                           style: TextStyle(
@@ -345,7 +302,118 @@ class _TagPickerState extends State<_TagPicker> {
                             color: t.count > 0 ? colors.ink : colors.muted,
                           ),
                         ),
-                        onPressed: () => Navigator.pop(context, t.name),
+                        onPressed: () =>
+                            Navigator.pop(context, _TypeChoice(t.name)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.current != null)
+          TextButton(
+            key: const ValueKey('type-remove'),
+            onPressed: () => Navigator.pop(context, const _TypeChoice(null)),
+            child: const Text('Remove type'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Multi-add tag picker: every choice is applied at once and the dialog stays open.
+class _TagPicker extends StatefulWidget {
+  const _TagPicker({
+    required this.catalog,
+    required this.taken,
+    required this.onAdd,
+  });
+  final List<TagDto> catalog;
+  final List<String> taken;
+  final Future<void> Function(String name) onAdd;
+
+  @override
+  State<_TagPicker> createState() => _TagPickerState();
+}
+
+class _TagPickerState extends State<_TagPicker> {
+  final _text = TextEditingController();
+  late final _taken = {for (final t in widget.taken) t.toLowerCase()};
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  String get _query =>
+      _text.text.trim().replaceFirst(RegExp(r'^#+'), '').trim();
+
+  void _add(String name) {
+    if (name.isEmpty || !_taken.add(name.toLowerCase())) return;
+    _text.clear();
+    setState(() {});
+    widget.onAdd(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final q = _query.toLowerCase();
+    final options = [
+      for (final t in widget.catalog)
+        if (!_taken.contains(t.name.toLowerCase()) &&
+            t.name.toLowerCase().contains(q))
+          t,
+    ];
+    final exact = widget.catalog.any((t) => t.name.toLowerCase() == q);
+    return AlertDialog(
+      title: const Text('Add tags'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              key: const ValueKey('tag-input'),
+              controller: _text,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search or type a new tag',
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _add(_query),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (_query.isNotEmpty && !exact && !_taken.contains(q))
+                      ActionChip(
+                        key: const ValueKey('tag-create'),
+                        avatar: const Icon(Icons.add_rounded, size: 14),
+                        label: Text('Create "$_query"'),
+                        onPressed: () => _add(_query),
+                      ),
+                    for (final t in options)
+                      ActionChip(
+                        key: ValueKey('tag-opt-${t.name}'),
+                        label: Text(
+                          '${t.name} · ${t.count}',
+                          style: TextStyle(fontSize: 12.5, color: colors.ink),
+                        ),
+                        onPressed: () => _add(t.name),
                       ),
                   ],
                 ),
@@ -356,8 +424,9 @@ class _TagPickerState extends State<_TagPicker> {
       ),
       actions: [
         TextButton(
+          key: const ValueKey('tag-done'),
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: const Text('Done'),
         ),
       ],
     );
