@@ -856,3 +856,58 @@ fn tags_and_type_sync_with_the_page() {
         ["ocurrencia", "proyecto"]
     );
 }
+
+#[test]
+fn v5_migration_sorts_tags_and_survives_malformed_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let (a, bad, bad2) = {
+        let g = Graph::open(dir.path()).unwrap();
+        let a = page(&g, "A", &["x"]);
+        let bad = page(&g, "Bad", &["x"]);
+        let bad2 = page(&g, "Bad2", &["x"]);
+        let set = |id: PageId, tags: &str, types: &str| {
+            g.conn()
+                .execute(
+                    "UPDATE pages SET tags=?2, types=?3 WHERE id=?1",
+                    [id.to_string(), tags.to_string(), types.to_string()],
+                )
+                .unwrap();
+        };
+        set(a, "[\"zeta\",\"Alfa\",\"alfa\"]", "[\"persona\"]");
+        set(bad, "not json", "[]");
+        set(bad2, "[\"ok\"]", "{oops");
+        g.conn()
+            .execute("UPDATE meta SET value='5' WHERE key='schema'", [])
+            .unwrap();
+        (a, bad, bad2)
+    };
+    let g = Graph::open(dir.path()).unwrap();
+    assert_eq!(g.get_page(a).unwrap().unwrap().tags, ["Alfa", "zeta"]);
+    assert_eq!(g.pages_with_tag("alfa").unwrap(), [a]);
+    assert_eq!(g.pages_with_tag("persona").unwrap(), [a]);
+    assert!(g.get_page(bad).unwrap().unwrap().tags.is_empty());
+    let p = g.get_page(bad2).unwrap().unwrap();
+    assert_eq!((p.tags, p.types), (vec!["ok".to_string()], vec![]));
+    assert_eq!(g.pages_with_tag("ok").unwrap(), [bad2]);
+}
+
+#[test]
+fn remote_upserts_store_tags_sorted() {
+    let id = synapse_core::new_id();
+    let op: Op = serde_json::from_value(json!({
+        "type": "upsert_page",
+        "page": {"id": id, "title": "N", "journal_date": null, "origin_journal": null,
+                 "properties": {}, "created_at": 1, "updated_at": 2, "kind": "note",
+                 "tags": ["zeta", "Beta", "beta", "alfa"], "types": []}
+    }))
+    .unwrap();
+    let (_d, g) = graph();
+    assert!(
+        g.apply_remote("0000000000003-00000-oldactor0001", &op)
+            .unwrap()
+    );
+    assert_eq!(
+        g.get_page(id).unwrap().unwrap().tags,
+        ["alfa", "Beta", "zeta"]
+    );
+}

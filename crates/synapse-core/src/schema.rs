@@ -117,29 +117,48 @@ CREATE TABLE IF NOT EXISTS ops (
 "#;
 
 /// Rebuilds the `page_tags` index from every page's `tags` column and first type (the type
-/// implies a tag of the same name).
+/// implies a tag of the same name). Malformed JSON values count as empty.
 pub fn rebuild_page_tags(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM page_tags", [])?;
-    let rows: Vec<(String, String)> = {
-        let mut st = conn.prepare(
-            "SELECT id, json_group_array(value) FROM (
-                 SELECT pages.id AS id, j.value AS value FROM pages, json_each(pages.tags) j
-                 UNION ALL
-                 SELECT pages.id AS id, j.value AS value FROM pages, json_each(pages.types) j WHERE j.key = 0
-             ) GROUP BY id",
-        )?;
-        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+    let rows: Vec<(String, String, String)> = {
+        let mut st =
+            conn.prepare("SELECT id, tags, types FROM pages WHERE tags != '[]' OR types != '[]'")?;
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<_>>()?
     };
     let mut ins =
         conn.prepare("INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)")?;
-    for (id, tags) in rows {
+    for (id, tags, types) in rows {
         let tags: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
-        for t in tags {
-            ins.execute([&id, &crate::model::title_key(&t)])?;
+        let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+        for t in tags.iter().chain(types.iter().take(1)) {
+            ins.execute([&id, &crate::model::title_key(t)])?;
         }
     }
     Ok(())
+}
+
+/// v6: tag pages become notes, tags are sorted and deduplicated, a page keeps one type.
+/// Malformed `tags`/`types` values are repaired to empty lists.
+fn migrate_v6(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute("UPDATE pages SET kind='note' WHERE kind='tag'", [])?;
+    let rows: Vec<(String, String, String)> = {
+        let mut st = conn.prepare("SELECT id, tags, types FROM pages")?;
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let mut upd = conn.prepare("UPDATE pages SET tags=?2, types=?3 WHERE id=?1")?;
+    for (id, tags, types) in rows {
+        let tags_v: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
+        let mut types_v: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+        types_v.truncate(1);
+        let tags_n = serde_json::to_string(&crate::tags::sorted_tags(&tags_v)).unwrap_or_default();
+        let types_n = serde_json::to_string(&types_v).unwrap_or_default();
+        if tags_n != tags || types_n != types {
+            upd.execute([&id, &tags_n, &types_n])?;
+        }
+    }
+    rebuild_page_tags(conn)
 }
 
 /// Rebuilds the `page_hubs` index from every page's `hubs` column.
@@ -193,27 +212,28 @@ pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         })
         .optional()?
         .and_then(|v| v.parse().ok());
-    if version.is_some_and(|v| v < 3) {
-        rebuild_page_hubs(conn)?;
-    }
-    if version.is_some_and(|v| v < 4) {
-        rebuild_page_tags(conn)?;
-    }
-    if version.is_some_and(|v| v < 6) {
-        // v6: tags and types are names only, one type per page. Old tag pages become plain notes (title,
-        // outline and links kept); their members keep the name in `tags`.
-        conn.execute("UPDATE pages SET kind='note' WHERE kind='tag'", [])?;
-        // A page has one type: keep the first of several.
+    // One transaction: much faster, and an interrupted migration leaves the old version
+    // stamp, so it simply runs again (every step is idempotent).
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let run = || -> rusqlite::Result<()> {
+        if version.is_some_and(|v| v < 3) {
+            rebuild_page_hubs(conn)?;
+        }
+        // v6 rebuilds `page_tags` too, which also covers the v4 rebuild.
+        if version.is_some_and(|v| v < 6) {
+            migrate_v6(conn)?;
+        }
         conn.execute(
-            "UPDATE pages SET types = json_array(json_extract(types, '$[0]'))
-             WHERE json_array_length(types) > 1",
-            [],
+            "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema', ?1)",
+            [VERSION.to_string()],
         )?;
-        rebuild_page_tags(conn)?;
+        Ok(())
+    };
+    match run() {
+        Ok(()) => conn.execute_batch("COMMIT"),
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
     }
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema', ?1)",
-        [VERSION.to_string()],
-    )?;
-    Ok(())
 }

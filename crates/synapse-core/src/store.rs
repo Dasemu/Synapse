@@ -1189,6 +1189,8 @@ impl Graph {
     }
 
     fn write_page_row(&self, p: &Page, hlc: &str) -> Result<()> {
+        // Remote ops may carry tags in insertion order: store them sorted and deduplicated.
+        let tags = crate::tags::sorted_tags(&p.tags);
         self.exec(
             "INSERT INTO pages(id, title, title_key, journal_date, origin_journal, properties, created_at, updated_at, hlc, kind, description, hubs, tags, types)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
@@ -1207,7 +1209,7 @@ impl Graph {
                 p.kind.as_str(),
                 p.description,
                 serde_json::to_string(&p.hubs)?,
-                serde_json::to_string(&p.tags)?,
+                serde_json::to_string(&tags)?,
                 serde_json::to_string(&p.types)?
             ],
         )?;
@@ -1215,7 +1217,7 @@ impl Graph {
         self.exec("DELETE FROM page_tags WHERE page_id=?1", [&id])?;
         // The type implies a tag of the same name, so the index covers both (a page has one
         // type: older replicas may sync more, and only the first counts).
-        for t in p.tags.iter().chain(p.types.iter().take(1)) {
+        for t in tags.iter().chain(p.types.iter().take(1)) {
             self.exec(
                 "INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)",
                 params![id, title_key(t)],

@@ -41,6 +41,7 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
   the first; `PageKind` has no `Tag` any more and "tag" parses as a note.
 - In the graph (`synapse-ffi`) every tag in use is a virtual node (`GraphNode.is_tag`, id
   `tag:<title_key>`, no page), with a `TAGGED` edge from each tagged page (type included).
+- Known limitations: replicas still on the old schema may overwrite tags with stale values (LWW per page), and `rename_tag` is a bulk page edit, so concurrent edits on another replica can undo part of it.
 - Exports use `synapse-tags::` and `synapse-type::` (see `history.md`).
 
 ## Hubs and namespaces (`synapse-core::structure`)

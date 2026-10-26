@@ -31,6 +31,18 @@ pub fn normalize_tag(raw: &str) -> Option<String> {
     (!t.is_empty()).then_some(t)
 }
 
+/// Tags sorted by [`title_key`], duplicates (case-insensitive) dropped keeping the first.
+pub(crate) fn sorted_tags(tags: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(tags.len());
+    for t in tags {
+        if !out.iter().any(|x| title_key(x) == title_key(t)) {
+            out.push(t.clone());
+        }
+    }
+    out.sort_by_cached_key(|t| title_key(t));
+    out
+}
+
 impl Graph {
     /// Replaces the tags of `page` (names cleaned, duplicates dropped case-insensitively,
     /// kept sorted by [`title_key`]). Journals and templates cannot be tagged.
