@@ -13,7 +13,8 @@ import 'quick_switcher.dart';
 import 'graph_view.dart';
 import 'settings_view.dart';
 
-/// App frame: sidebar (navigation, recents, theme), top bar and the current view.
+/// App frame: sidebar (navigation, hubs, recents), top bar (history, search, theme,
+/// settings) and the current view.
 class Shell extends StatefulWidget {
   const Shell({super.key});
 
@@ -166,7 +167,15 @@ class _TopBar extends StatelessWidget {
             app.canGoForward ? app.forward : null,
           ),
           const Spacer(),
-          _SearchPill(onTap: () => showQuickSwitcher(context)),
+          // Phones: an icon instead of the pill keeps the bar from overflowing.
+          if (MediaQuery.sizeOf(context).width < 480)
+            icon(
+              Icons.search_rounded,
+              'Search (${app.keymap.of(AppAction.quickSwitcher).label})',
+              () => showQuickSwitcher(context),
+            )
+          else
+            _SearchPill(onTap: () => showQuickSwitcher(context)),
           const SizedBox(width: 4),
           icon(
             brightness == Brightness.dark
@@ -174,6 +183,13 @@ class _TopBar extends StatelessWidget {
                 : Icons.dark_mode_outlined,
             'Toggle theme',
             () => app.toggleTheme(brightness),
+          ),
+          icon(
+            app.route is SettingsRoute
+                ? Icons.settings_rounded
+                : Icons.settings_outlined,
+            'Settings (${app.keymap.of(AppAction.settings).label})',
+            () => app.go(const SettingsRoute()),
           ),
         ],
       ),
@@ -273,12 +289,6 @@ class _Sidebar extends StatelessWidget {
               label: 'All pages',
               selected: route is AllPagesRoute,
               onTap: () => go(const AllPagesRoute()),
-            ),
-            _NavItem(
-              icon: Icons.settings_outlined,
-              label: 'Settings',
-              selected: route is SettingsRoute,
-              onTap: () => go(const SettingsRoute()),
             ),
             const SizedBox(height: 22),
             Expanded(
