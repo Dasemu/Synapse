@@ -10,6 +10,10 @@ are JSON trees the app renders.
 Settings → Modules: modules bundled with the app (`app/assets/modules/`, offered with an
 Install button) or **Install from file…** (`.wasm`). The app reads the manifest and shows a
 consent dialog with the permissions; installing an update with new permissions asks again.
+Ids starting with `synapse.` are reserved for bundled modules (a file cannot pose as one and
+inherit its data), and the dialog warns when the graph already holds data under the id
+(synced from another device), since the module will be able to read it. A block macro name
+belongs to one installed module: installing another module that claims it is refused.
 Installed modules live in `<graph>/modules/<id>.wasm` with `modules.json` (enabled flag and
 granted permissions), so installation is per device. A file swapped on disk cannot gain
 permissions: they are checked against `modules.json` on every start. Removing a module keeps
@@ -47,7 +51,10 @@ with `{"fn": name, ...}`, then `synapse.take(ptr)` copies the `n`-byte reply
 (`{"ok": value}` or `{"error": message}`). The SDK wraps all of this.
 
 Limits per request: 10⁹ fuel units (about a second of work; a module that runs out is
-stopped), 64 MiB of linear memory, 4 MiB per message. A module that traps loses its instance
+stopped), where every host call also costs 200,000 units plus 20 per byte in and out; at most
+5,000 host calls, 16 MiB written to storage and 3 key derivations. Per instance: 64 MiB of
+linear memory, 10,000 table elements, 4 MiB per message. Per module: 64 MiB and 50,000 entries
+of storage. A module that traps loses its instance
 (and in-memory state); the next request starts a fresh one.
 
 ### Requests from the app
@@ -85,7 +92,7 @@ clipboard later only if it still holds that text), `{"toast": text}`,
 | `now` | — | → ms since epoch |
 | `random` | — | `len` (≤ 4096) → base64 |
 | `kv.get` / `kv.set` / `kv.list` | `storage` | `key`, `value` (string or null to delete), `prefix` → `[{key, value}]` |
-| `crypto.derive` | `crypto` | `password, salt (b64), memory_kib ≤ 256 MiB, iterations ≤ 10, lanes ≤ 4` → key handle (Argon2id) |
+| `crypto.derive` | `crypto` | `password, salt (b64), memory_kib ≤ 128 MiB, iterations ≤ 10, lanes ≤ 4` → key handle (Argon2id) |
 | `crypto.generate` | `crypto` | → random key handle |
 | `crypto.seal` / `crypto.open` | `crypto` | `key, plaintext / data (b64), aad` (XChaCha20-Poly1305, random nonce, `nonce‖ct`) |
 | `crypto.wrap` / `crypto.unwrap` | `crypto` | `key (kek), target / data, aad` → wrapped key / handle |
@@ -94,7 +101,9 @@ clipboard later only if it still holds that text), `{"toast": text}`,
 | `pages.append` | `pages:write` | `title, text` → adds a block (creates the page) |
 
 Keys never enter the module: it holds handles; the host keeps the keys (zeroed on drop) and
-does the cryptography natively (Argon2 inside the interpreter would take seconds).
+does the cryptography natively (Argon2 inside the interpreter would take seconds). Wrapping
+uses its own reserved associated data, so a wrapped key cannot be opened as data and data the
+module sealed cannot be unwrapped as a key.
 
 `storage` is the module's own key-value store in the graph (`module_data` table, schema v9),
 synced with the op `put_module_data` (last writer wins per key, deletes are tombstones;
@@ -105,14 +114,22 @@ An encrypted vault: Settings → Modules → Secrets → Install, then the **Sec
 view. Create the vault with a master password (≥ 8 characters), add entries (name, username,
 password with a generator, URL, notes), and reference one in any block with
 `{{secret Name}}`: it shows masked, with buttons to show it (hidden again after 20 s), copy
-the password or the username (the clipboard clears after 30 s).
+the password or the username (the clipboard clears after 30 s, and when the app is hidden).
 - Crypto: a random 256-bit data key encrypts every entry (XChaCha20-Poly1305, the entry key
-  as associated data). The data key is wrapped by a key derived from the master password
-  (Argon2id, 64 MiB, 3 iterations, random salt). Changing the password re-wraps the data key.
+  as associated data). Each data key has a header `vault/<key id>` wrapping it with a key
+  derived from the master password (Argon2id, 64 MiB, 3 iterations, random salt); `vault`
+  points at the current one. Headers synced with weaker or heavier parameters are ignored.
+- Changing the password rotates the data key: every entry is re-sealed and the old header
+  deleted. Older ciphertext and headers remain in the op log (and the server's) history, so
+  someone with an old password and that history can read the entries as they were then, not
+  later changes; the same goes for deleted entries.
 - Only ciphertext is stored and synced; the server and the op log never see names or values.
   Secrets are not part of history snapshots.
-- Locks after 5 minutes without use, on request, when a phone app is paused, or when the
-  module stops. Forgetting the master password means the secrets are lost.
-- Create the vault on one device and unlock it on the others once synced: two vaults created
-  offline on two devices would each have their own data key (entries from the other one show
-  as "could not be decrypted").
+- Locks after 5 minutes without use (checked on every request), on request, when the app is
+  hidden or paused, or when the module stops. Forgetting the master password means the
+  secrets are lost.
+- Two devices that set up a vault before syncing each get a data key; unlocking with the
+  same password moves the other key's entries to the current one. A device whose key was
+  replaced elsewhere (a password change) locks before writing and asks for the password again.
+- Android: the clipboard is not marked as sensitive (keyboards may show it in their clipboard
+  history); it is cleared when the app is hidden.
