@@ -473,3 +473,30 @@ fn page_type_and_tag_renaming_round_trip_through_the_api() {
     assert_eq!(g.remove_tag("red".into()).unwrap(), 1);
     assert!(g.set_page_type(a, None).unwrap().page_type.is_none());
 }
+
+#[test]
+fn hub_members_point_at_one_virtual_tag_node_named_after_the_hub() {
+    let (_d, g) = open();
+    let hub = g.create_hub("Anime".into(), String::new()).unwrap();
+    let (a, _) = page_with(&g, "Naruto", &["x"]);
+    let (b, _) = page_with(&g, "Bleach", &["y"]);
+    g.add_to_hub(a.clone(), hub.id.clone()).unwrap();
+    g.add_to_hub(b.clone(), hub.id.clone()).unwrap();
+    g.set_page_type(b.clone(), Some("anime".into())).unwrap();
+    let data = g.graph_data().unwrap();
+    let tags: Vec<_> = data.nodes.iter().filter(|n| n.is_tag).collect();
+    assert_eq!(tags.len(), 1, "hub tag and same-name type merge");
+    assert_eq!(tags[0].title, "Anime");
+    let target = data.nodes.iter().position(|n| n.is_tag).unwrap() as u32;
+    let mut from: Vec<String> = (0..data.kinds.len())
+        .filter(|&e| data.kinds[e] == edge_kind::TAGGED && data.targets[e] == target)
+        .map(|e| data.nodes[data.sources[e] as usize].title.clone())
+        .collect();
+    from.sort();
+    assert_eq!(from, ["Bleach", "Naruto"]);
+    let cat = g.tag_catalog().unwrap();
+    assert_eq!(
+        (cat[0].name.to_lowercase().as_str(), cat[0].count),
+        ("anime", 2)
+    );
+}

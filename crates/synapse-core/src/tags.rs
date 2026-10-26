@@ -9,6 +9,7 @@
 
 use crate::error::{Error, Result};
 use crate::model::{Page, PageId, title_key};
+use crate::schema;
 use crate::store::{Graph, parse_id};
 use std::collections::{HashMap, HashSet};
 
@@ -113,52 +114,36 @@ impl Graph {
         rows.map(|r| parse_id(&r?)).collect()
     }
 
-    /// Tags of every tagged page: the listed ones, then the type if not already among them
-    /// (each type implies a tag), names as stored.
+    /// Tags of every tagged page: the listed ones, then the type and the hub title if not
+    /// already among them (each implies a tag), names as stored.
     pub fn all_page_tags(&self) -> Result<HashMap<PageId, Vec<String>>> {
-        let mut st = self.conn().prepare_cached(
-            "SELECT id, tags, types FROM pages WHERE tags != '[]' OR types != '[]'",
-        )?;
-        let rows = st.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-            ))
-        })?;
         let mut out = HashMap::new();
-        for row in rows {
-            let (id, tags, types) = row?;
-            let mut all: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
-            let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
-            for t in types.into_iter().take(1) {
-                if !all.iter().any(|x| title_key(x) == title_key(&t)) {
-                    all.push(t);
+        for src in schema::tag_sources(self.conn(), None)? {
+            let mut all: Vec<String> = Vec::new();
+            for t in src.names() {
+                if !all.iter().any(|x| title_key(x) == title_key(t)) {
+                    all.push(t.clone());
                 }
             }
-            out.insert(parse_id(&id)?, all);
+            if !all.is_empty() {
+                out.insert(parse_id(&src.id)?, all);
+            }
         }
         Ok(out)
     }
 
-    /// Every tag in use, listed or implied by a type: spelling of its first page, with its page
-    /// count. Most used first, then by name.
+    /// Every tag in use (listed, implied by a type or by the page's hub): spelling of its first
+    /// page, with its page count. Most used first, then by name.
     pub fn tag_catalog(&self) -> Result<Vec<TagInfo>> {
-        let mut st = self.conn().prepare_cached(
-            "SELECT tags, types FROM pages WHERE tags != '[]' OR types != '[]'
-             ORDER BY created_at, id",
-        )?;
-        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         let mut used: HashMap<String, (String, u32)> = HashMap::new();
-        for row in rows {
-            let (tags, types) = row?;
-            let tags: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
-            let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
+        let mut sources = schema::tag_sources(self.conn(), None)?;
+        sources.sort_by(|a, b| a.id.cmp(&b.id));
+        for src in sources {
             let mut seen = HashSet::new();
-            for t in tags.into_iter().chain(types.into_iter().take(1)) {
-                let key = title_key(&t);
+            for t in src.names() {
+                let key = title_key(t);
                 if seen.insert(key.clone()) {
-                    used.entry(key).or_insert((t, 0)).1 += 1;
+                    used.entry(key).or_insert((t.clone(), 0)).1 += 1;
                 }
             }
         }
@@ -180,7 +165,8 @@ impl Graph {
 
     /// Renames a tag everywhere: in the `tags` and `types` of every page carrying it (one
     /// transaction; each page is rewritten and logged, so it syncs). When a page already lists
-    /// `new`, the two merge. Returns the number of pages changed.
+    /// `new`, the two merge. Returns the number of pages changed. A hub's implicit tag is never renamed (the hub page
+    /// is not touched): only explicit tags and types change.
     pub fn rename_tag(&self, old: &str, new: &str) -> Result<usize> {
         let new = normalize_tag(new).ok_or_else(|| Error::Invalid("empty tag name".into()))?;
         if new.chars().count() > MAX_TAG_CHARS {

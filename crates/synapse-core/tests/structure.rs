@@ -506,7 +506,7 @@ fn old_ops_and_v2_databases_load() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(schema, "6");
+    assert_eq!(schema, "7");
     let p = g.get_page(id).unwrap().unwrap();
     assert_eq!((p.kind, p.title.as_str()), (PageKind::Note, "Legacy"));
     let h = g.create_hub("New hub", "").unwrap();
@@ -910,4 +910,89 @@ fn remote_upserts_store_tags_sorted() {
         g.get_page(id).unwrap().unwrap().tags,
         ["alfa", "Beta", "zeta"]
     );
+}
+
+#[test]
+fn a_direct_hub_is_an_implicit_tag_of_its_members() {
+    let (_d, g) = graph();
+    let anime = hub(&g, "Anime");
+    let media = hub(&g, "Media");
+    g.add_to_hub(anime, media).unwrap();
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.add_to_hub(a, anime).unwrap();
+    g.add_to_hub(b, anime).unwrap();
+    // The hub tag is not stored in `tags`, ancestors do not count, hubs and templates get none.
+    assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
+    let mut got = g.pages_with_tag("anime").unwrap();
+    got.sort();
+    let mut want = vec![a, b];
+    want.sort();
+    assert_eq!(got, want);
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+    let tmpl = g.hub_template(anime).unwrap();
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&tmpl));
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&anime));
+
+    // Merges with a same-name type: one tag, the page counted once.
+    g.set_page_type(a, Some("anime")).unwrap();
+    let cat = g.tag_catalog().unwrap();
+    assert_eq!(
+        cat.iter()
+            .filter(|t| t.name.to_lowercase() == "anime")
+            .count(),
+        1
+    );
+    assert_eq!(
+        cat.iter()
+            .find(|t| t.name.to_lowercase() == "anime")
+            .unwrap()
+            .count,
+        2
+    );
+    assert_eq!(g.all_page_tags().unwrap()[&a], ["anime"]);
+
+    // Renaming the hub re-indexes its members without touching them.
+    g.rename_page(anime, "Series").unwrap();
+    assert!(
+        g.pages_with_tag("Anime").unwrap().contains(&a),
+        "type still implies it"
+    );
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&b));
+    assert!(g.pages_with_tag("Series").unwrap().contains(&b));
+
+    // Moving a page between hubs moves the implicit tag; leaving the hub drops it.
+    g.add_to_hub(b, media).unwrap();
+    assert!(!g.pages_with_tag("Series").unwrap().contains(&b));
+    assert_eq!(g.pages_with_tag("Media").unwrap(), [b]);
+    g.remove_from_hub(b, media).unwrap();
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+
+    // rename_tag never renames the hub; only explicit tags and types.
+    g.add_to_hub(b, media).unwrap();
+    assert_eq!(g.rename_tag("Media", "Press").unwrap(), 0);
+    assert_eq!(g.get_page(media).unwrap().unwrap().title, "Media");
+    assert_eq!(g.pages_with_tag("Media").unwrap(), [b]);
+
+    // Deleting the hub removes the tag from its members.
+    g.delete_page(media).unwrap();
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+}
+
+#[test]
+fn v6_databases_gain_hub_tags() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = {
+        let g = Graph::open(dir.path()).unwrap();
+        let h = hub(&g, "Anime");
+        let a = page(&g, "A", &["x"]);
+        g.add_to_hub(a, h).unwrap();
+        g.conn().execute("DELETE FROM page_tags", []).unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='6' WHERE key='schema'", [])
+            .unwrap();
+        a
+    };
+    let g = Graph::open(dir.path()).unwrap();
+    assert_eq!(g.pages_with_tag("anime").unwrap(), [a]);
 }

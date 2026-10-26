@@ -37,6 +37,12 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
 - **A page has at most one type** (`Page.types`, 0 or 1 entries; `Page::page_type()`), a name
   saying what the page is. It implies a tag of the same name. API: `set_page_type(page,
   Option<&str>)`, `type_catalog` (types in use by count, then the seeded `SUGGESTED_TYPES`).
+- **A page's direct hub is an implicit tag**, like its type: members of hub "Anime" are filed
+  under "Anime" (`page_tags`, `pages_with_tag`, `tag_catalog`, the graph's tag node). It is
+  not stored in `Page.tags` and merges with a same-name type or tag. Only the direct hub
+  counts (not ancestors); hubs, templates and journals get none. The index is derived, so
+  renaming or deleting a hub, or moving a member, just re-indexes `page_tags` (no ops).
+  `rename_tag` never renames a hub: it only changes explicit tags and types.
 - Schema v6 turned former tag pages (kind `tag`) into plain notes and trimmed multiple types to
   the first; `PageKind` has no `Tag` any more and "tag" parses as a note.
 - In the graph (`synapse-ffi`) every tag in use is a virtual node (`GraphNode.is_tag`, id

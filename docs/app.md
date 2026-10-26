@@ -140,6 +140,9 @@ Both are plain names with no page, shown as one row of pills under the title.
   several can be added in a row; hovering a chip shows its ×. A chip opens the tag view: pages
   with that tag or type, "Rename" (also renames types, merging duplicates) and "Remove from all
   pages". An inline `#tema` in the text still links to a page of that name.
+- **Hub as tag**: a note's direct hub also counts as a tag of the same name (not shown as a
+  chip, not stored in the tags). It lists in that tag's view and graph node and merges with a
+  same-name type or tag; "Rename" there never renames the hub itself.
 - In the graph every tag is a virtual node drawn as a hollow accent ring and linked to its
   pages with a separate edge kind (TAGGED); tapping one opens its tag view.
 

@@ -68,11 +68,17 @@ class _GraphViewState extends State<GraphView> {
         if (focus != null) break;
         focus = m.indexOf(r.id);
       }
-      if (focus == null && m.nodeCount > 0) {
-        focus = List.generate(
-          m.nodeCount,
-          (i) => i,
-        ).reduce((a, b) => m.node(a).degree >= m.node(b).degree ? a : b);
+      if (focus != null && m.isTag(focus)) focus = null;
+      if (focus == null) {
+        final pages = [
+          for (var i = 0; i < m.nodeCount; i++)
+            if (!m.isTag(i)) i,
+        ];
+        if (pages.isNotEmpty) {
+          focus = pages.reduce(
+            (a, b) => m.node(a).degree >= m.node(b).degree ? a : b,
+          );
+        }
       }
       setState(() {
         _model = m;
@@ -124,7 +130,12 @@ class _GraphViewState extends State<GraphView> {
         final f = _focus;
         if (f == null) return;
         final app = AppScope.read(context);
-        final related = await app.backend.related(m.node(f).id, limit: 40);
+        final List<RelatedDto> related;
+        try {
+          related = await app.backend.related(m.node(f).id, limit: 40);
+        } catch (_) {
+          return;
+        }
         if (!mounted || _focus != f || _mode != GraphMode.brain) return;
         final top = related.isEmpty
             ? 1.0
@@ -265,7 +276,7 @@ class _GraphViewState extends State<GraphView> {
         onSubmitted: (q) {
           final lq = q.toLowerCase().trim();
           for (var i = 0; i < m.nodeCount; i++) {
-            if (m.node(i).title.toLowerCase().contains(lq)) {
+            if (!m.isTag(i) && m.node(i).title.toLowerCase().contains(lq)) {
               _setFocus(i);
               return;
             }
@@ -453,7 +464,9 @@ class _GraphViewState extends State<GraphView> {
             hulls: _mode == GraphMode.clusters,
             focus: explore ? _focus : null,
             brain: _mode == GraphMode.brain ? _brain : null,
-            onTap: explore ? _setFocus : _open,
+            onTap: explore
+                ? (i) => m.isTag(i) ? _open(i) : _setFocus(i)
+                : _open,
           ),
         ),
         Positioned(

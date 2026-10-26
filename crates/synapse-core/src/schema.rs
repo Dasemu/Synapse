@@ -1,6 +1,6 @@
 use rusqlite::OptionalExtension;
 
-pub const VERSION: i64 = 6;
+pub const VERSION: i64 = 7;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -116,26 +116,72 @@ CREATE TABLE IF NOT EXISTS ops (
 );
 "#;
 
-/// Rebuilds the `page_tags` index from every page's `tags` column and first type (the type
-/// implies a tag of the same name). Malformed JSON values count as empty.
-pub fn rebuild_page_tags(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM page_tags", [])?;
-    let rows: Vec<(String, String, String)> = {
-        let mut st =
-            conn.prepare("SELECT id, tags, types FROM pages WHERE tags != '[]' OR types != '[]'")?;
-        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<rusqlite::Result<_>>()?
-    };
+/// Every page's tag sources: `tags`, `types` and the title of its direct hub (an implicit tag,
+/// only for notes: hubs, templates and journals get none). Joined through `page_hubs`, which
+/// holds at most one row per page. `?1` limits the result to one page id (NULL: all pages).
+pub const TAG_SOURCES_SQL: &str = "SELECT p.id, p.tags, p.types, h.title FROM pages p
+     LEFT JOIN page_hubs ph ON ph.page_id = p.id AND p.kind = 'note' AND p.journal_date IS NULL
+     LEFT JOIN pages h ON h.id = ph.hub_id AND h.kind = 'hub'
+     WHERE (?1 IS NULL OR p.id = ?1)";
+
+/// One page's tag sources, see [`TAG_SOURCES_SQL`]. Malformed JSON values count as empty.
+pub struct TagSource {
+    pub id: String,
+    pub tags: Vec<String>,
+    pub types: Vec<String>,
+    pub hub: Option<String>,
+}
+
+/// Reads [`TagSource`]s for one page or (`None`) all of them.
+pub fn tag_sources(
+    conn: &rusqlite::Connection,
+    only: Option<&str>,
+) -> rusqlite::Result<Vec<TagSource>> {
+    let mut st = conn.prepare_cached(TAG_SOURCES_SQL)?;
+    let rows = st.query_map([only], |r| {
+        let tags: String = r.get(1)?;
+        let types: String = r.get(2)?;
+        Ok(TagSource {
+            id: r.get(0)?,
+            tags: serde_json::from_str(&tags).unwrap_or_default(),
+            types: serde_json::from_str(&types).unwrap_or_default(),
+            hub: r.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+impl TagSource {
+    /// Every tag name: listed tags, the first type and the hub title (one type per page).
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.tags
+            .iter()
+            .chain(self.types.iter().take(1))
+            .chain(self.hub.iter())
+    }
+}
+
+fn insert_tag_rows(conn: &rusqlite::Connection, sources: &[TagSource]) -> rusqlite::Result<()> {
     let mut ins =
-        conn.prepare("INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)")?;
-    for (id, tags, types) in rows {
-        let tags: Vec<String> = serde_json::from_str(&tags).unwrap_or_default();
-        let types: Vec<String> = serde_json::from_str(&types).unwrap_or_default();
-        for t in tags.iter().chain(types.iter().take(1)) {
-            ins.execute([&id, &crate::model::title_key(t)])?;
+        conn.prepare_cached("INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)")?;
+    for src in sources {
+        for t in src.names() {
+            ins.execute([&src.id, &crate::model::title_key(t)])?;
         }
     }
     Ok(())
+}
+
+/// Rebuilds the `page_tags` index from every page's tags, first type and hub.
+pub fn rebuild_page_tags(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM page_tags", [])?;
+    insert_tag_rows(conn, &tag_sources(conn, None)?)
+}
+
+/// Rewrites the `page_tags` rows of one page (derived data: no ops needed).
+pub fn reindex_page_tags(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM page_tags WHERE page_id=?1", [id])?;
+    insert_tag_rows(conn, &tag_sources(conn, Some(id))?)
 }
 
 /// v6: tag pages become notes, tags are sorted and deduplicated, a page keeps one type.
@@ -219,9 +265,12 @@ pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         if version.is_some_and(|v| v < 3) {
             rebuild_page_hubs(conn)?;
         }
-        // v6 rebuilds `page_tags` too, which also covers the v4 rebuild.
+        // v6 rebuilds `page_tags` too, which covers the v4 and v7 rebuilds.
         if version.is_some_and(|v| v < 6) {
             migrate_v6(conn)?;
+        } else if version.is_some_and(|v| v < 7) {
+            // v7: a page's hub title is an implicit tag, so the index changes.
+            rebuild_page_tags(conn)?;
         }
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema', ?1)",

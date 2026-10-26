@@ -199,7 +199,7 @@ class NetworkCanvasState extends State<NetworkCanvas>
               ? -1
               : (() {
                   final i = g.tags.indexOf(n.primaryTag!);
-                  return i < 10 ? i : -1;
+                  return i >= 0 && i < 10 ? i : -1;
                 })(),
         ColorBy.hub =>
           n.homeHub == null

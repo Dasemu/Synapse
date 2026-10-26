@@ -1214,15 +1214,6 @@ impl Graph {
             ],
         )?;
         let id = p.id.to_string();
-        self.exec("DELETE FROM page_tags WHERE page_id=?1", [&id])?;
-        // The type implies a tag of the same name, so the index covers both (a page has one
-        // type: older replicas may sync more, and only the first counts).
-        for t in tags.iter().chain(p.types.iter().take(1)) {
-            self.exec(
-                "INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)",
-                params![id, title_key(t)],
-            )?;
-        }
         self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&id])?;
         // A page belongs to one hub: only the first entry counts (older replicas may sync more).
         for h in p.hubs.iter().take(1) {
@@ -1230,6 +1221,25 @@ impl Graph {
                 "INSERT OR IGNORE INTO page_hubs(page_id, hub_id) VALUES (?1, ?2)",
                 params![id, h.to_string()],
             )?;
+        }
+        // Tag index: tags, type and direct hub. The hub's title is an implicit tag of its
+        // members, so they are re-indexed too (this page may be a hub, renamed or converted).
+        schema::reindex_page_tags(&self.conn, &id)?;
+        self.reindex_hub_members(&id)?;
+        Ok(())
+    }
+
+    /// Re-indexes the tags of every page whose direct hub is `hub`.
+    pub(crate) fn reindex_hub_members(&self, hub: &str) -> Result<()> {
+        let ids: Vec<String> = {
+            let mut st = self
+                .conn
+                .prepare_cached("SELECT page_id FROM page_hubs WHERE hub_id=?1")?;
+            st.query_map([hub], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?
+        };
+        for m in ids {
+            schema::reindex_page_tags(&self.conn, &m)?;
         }
         Ok(())
     }
@@ -1267,6 +1277,8 @@ impl Graph {
         // `hubs` and dangle until those pages are rewritten.
         self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&s])?;
         self.exec("DELETE FROM page_tags WHERE page_id=?1", [&s])?;
+        // Members of a deleted hub lose its implicit tag.
+        self.reindex_hub_members(&s)?;
         self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
             params![s, hlc],
