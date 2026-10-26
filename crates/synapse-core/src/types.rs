@@ -245,8 +245,8 @@ impl Graph {
         Ok(name)
     }
 
-    /// Sets (or with `None` clears) the emoji of a type, defining the type if needed (see
-    /// [`normalize_icon`] for what an icon may be).
+    /// Sets (or with `None` clears) the emoji of a type, defining the type when setting one
+    /// (see [`normalize_icon`] for what an icon may be). Clearing an undefined type is a no-op.
     pub fn set_type_icon(&self, name: &str, icon: Option<&str>) -> Result<()> {
         let name = checked_type_name(name)?;
         let icon = match icon {
@@ -255,7 +255,8 @@ impl Graph {
         };
         let tx = self.tx()?;
         let current = self.type_def(&name)?.filter(|d| !d.removed);
-        if current.as_ref().is_some_and(|d| d.icon == icon) {
+        // Clearing the icon of an undefined type changes nothing (and defines nothing).
+        if current.as_ref().map_or(icon.is_none(), |d| d.icon == icon) {
             tx.commit()?;
             return Ok(());
         }

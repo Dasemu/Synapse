@@ -1090,6 +1090,29 @@ fn renaming_a_type_keeps_its_icon_and_removing_drops_it() {
 }
 
 #[test]
+fn renaming_a_tag_leaves_undefined_types_alone() {
+    let (_d, g) = graph();
+    let a = page(&g, "A", &["x"]);
+    g.add_page_tag(a, "idea").unwrap();
+    let seq = g.last_seq().unwrap();
+    g.rename_tag("idea", "ocurrencia").unwrap();
+    // "idea" is only a suggestion (no definition): it stays offered, nothing is defined.
+    assert_eq!(type_row(&g, "idea"), Some(("idea".into(), 0, None)));
+    assert!(g.type_defs().unwrap().is_empty());
+    assert!(
+        g.ops_since(seq, 100)
+            .unwrap()
+            .iter()
+            .all(|r| !matches!(r.op, Op::PutTypeDef { .. }))
+    );
+    // Clearing the icon of an undefined type is a no-op.
+    g.set_type_icon("idea", None).unwrap();
+    g.set_type_icon("nueva", None).unwrap();
+    assert!(g.type_defs().unwrap().is_empty());
+    assert_eq!(type_row(&g, "nueva"), None);
+}
+
+#[test]
 fn tag_catalog_says_where_each_tag_comes_from() {
     let (_d, g) = graph();
     let h = hub(&g, "Anime");
