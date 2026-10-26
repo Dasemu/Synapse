@@ -926,23 +926,35 @@ class MemoryBackend implements GraphBackend {
       t.add(index[m]!);
       k.add(EdgeKind.contains.index);
     }
-    // Tags are virtual nodes after the pages; a page points at each of its tags.
+    // Tags are virtual nodes after the pages; a page points at each of its tags. A tag
+    // named like a hub uses the hub's node, and its members (already contained) skip it.
+    final hubNodes = {
+      for (final id in ids)
+        if (_isHub(id)) _tagKey(pages[id]!.title): index[id]!,
+    };
     final tagNames = <String, String>{};
     for (final p in pages.values) {
       for (final tg in allTags(p)) {
+        if (hubNodes.containsKey(_tagKey(tg))) continue;
         tagNames.putIfAbsent(_tagKey(tg), () => tg);
       }
     }
     final tagKeys = tagNames.keys.toList()..sort();
     final tagIndex = {
+      ...hubNodes,
       for (var j = 0; j < tagKeys.length; j++) tagKeys[j]: ids.length + j,
+    };
+    final contained = {
+      for (final (h, m) in containsEdges) (index[h]!, index[m]!),
     };
     for (final p in pages.values) {
       final i = index[p.id];
       if (i == null) continue;
       for (final tg in allTags(p)) {
+        final to = tagIndex[_tagKey(tg)]!;
+        if (to == i || contained.contains((to, i))) continue;
         s.add(i);
-        t.add(tagIndex[_tagKey(tg)]!);
+        t.add(to);
         k.add(EdgeKind.tagged.index);
       }
     }

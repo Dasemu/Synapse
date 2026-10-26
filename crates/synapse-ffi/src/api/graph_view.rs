@@ -285,7 +285,8 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
 }
 
 /// Tags are virtual nodes (`tag:<key>`, appended after the pages): every page carrying a tag,
-/// listed or implied by a type, gets one `TAGGED` edge to it.
+/// listed or implied by a type, gets one `TAGGED` edge to it. A tag named like a hub already
+/// in the graph (a hub's implicit tag) uses the hub's node instead of a second one.
 fn tagged(
     g: &Graph,
     index: &HashMap<String, u32>,
@@ -301,7 +302,12 @@ fn tagged(
         .conn()
         .prepare("SELECT tag_key, page_id FROM page_tags ORDER BY tag_key, page_id")?;
     let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    let mut tag_index: HashMap<String, u32> = HashMap::new();
+    let mut tag_index: HashMap<String, u32> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.is_hub)
+        .map(|(i, n)| (title_key(&n.title), i as u32))
+        .collect();
     for row in rows {
         let (key, page) = row?;
         let Some(&s) = index.get(&page) else {
@@ -325,7 +331,10 @@ fn tagged(
             });
             nodes.len() as u32 - 1
         });
-        b.add(s, t, edge_kind::TAGGED, 1.0);
+        // A hub's members already hang from it by a CONTAINS edge.
+        if !b.edges.contains_key(&(t, s, edge_kind::CONTAINS)) {
+            b.add(s, t, edge_kind::TAGGED, 1.0);
+        }
     }
     Ok(())
 }

@@ -364,6 +364,9 @@ fn legacy_candidates_and_purge() {
     let (keep, _) = page_with(&g, "Keep", &["x"]);
     page_with(&g, "contents", &["- x"]);
     page_with(&g, "now", &[]);
+    page_with(&g, "Blank", &["", "  "]);
+    let (typed, _) = page_with(&g, "Typed", &[]);
+    g.set_page_type(typed, Some("persona".into())).unwrap();
     g.create_hub("later".into(), String::new()).unwrap();
     {
         let shared = g.shared();
@@ -389,6 +392,9 @@ fn legacy_candidates_and_purge() {
     assert!(!by("Template").preselected);
     assert_eq!(by("Template").reason, "type:: system");
     assert!(c.iter().all(|x| x.title != "Keep"));
+    assert_eq!(by("Blank").reason, "Empty");
+    assert!(by("Blank").preselected, "only blank blocks");
+    assert!(c.iter().all(|x| x.title != "Typed"), "a type is content");
 
     // A bad id rejects the call before anything is deleted.
     assert!(g.purge_pages(vec![todo.clone(), "nope".into()]).is_err());
@@ -454,6 +460,32 @@ fn tags_are_virtual_graph_nodes_with_their_own_edge_kind() {
 }
 
 #[test]
+fn a_tag_named_like_a_hub_uses_the_hub_node() {
+    let (_d, g) = open();
+    let hub = g.create_hub("Proyectos".into(), String::new()).unwrap().id;
+    let (member, _) = page_with(&g, "Synapse", &["x"]);
+    let (loose, _) = page_with(&g, "Otro", &["x"]);
+    g.add_to_hub(member.clone(), hub.clone()).unwrap();
+    g.add_page_tag(member, "proyectos".into()).unwrap();
+    g.add_page_tag(loose, "Proyectos".into()).unwrap();
+    let data = g.graph_data().unwrap();
+    assert!(
+        data.nodes.iter().all(|n| !n.is_tag),
+        "no tag node beside the hub"
+    );
+    let title = |i: u32| data.nodes[i as usize].title.clone();
+    let tagged: Vec<(String, String)> = (0..data.kinds.len())
+        .filter(|&e| data.kinds[e] == edge_kind::TAGGED)
+        .map(|e| (title(data.sources[e]), title(data.targets[e])))
+        .collect();
+    assert_eq!(
+        tagged,
+        [("Otro".to_string(), "Proyectos".to_string())],
+        "members already hang from the hub; other pages tagged with it point at it"
+    );
+}
+
+#[test]
 fn page_type_and_tag_renaming_round_trip_through_the_api() {
     let (_d, g) = open();
     let (a, _) = page_with(&g, "Ana", &["x"]);
@@ -475,7 +507,7 @@ fn page_type_and_tag_renaming_round_trip_through_the_api() {
 }
 
 #[test]
-fn hub_members_point_at_one_virtual_tag_node_named_after_the_hub() {
+fn a_hub_tag_and_a_same_name_type_need_no_tag_node_beside_the_hub() {
     let (_d, g) = open();
     let hub = g.create_hub("Anime".into(), String::new()).unwrap();
     let (a, _) = page_with(&g, "Naruto", &["x"]);
@@ -484,16 +516,14 @@ fn hub_members_point_at_one_virtual_tag_node_named_after_the_hub() {
     g.add_to_hub(b.clone(), hub.id.clone()).unwrap();
     g.set_page_type(b.clone(), Some("anime".into())).unwrap();
     let data = g.graph_data().unwrap();
-    let tags: Vec<_> = data.nodes.iter().filter(|n| n.is_tag).collect();
-    assert_eq!(tags.len(), 1, "hub tag and same-name type merge");
-    assert_eq!(tags[0].title, "Anime");
-    let target = data.nodes.iter().position(|n| n.is_tag).unwrap() as u32;
-    let mut from: Vec<String> = (0..data.kinds.len())
-        .filter(|&e| data.kinds[e] == edge_kind::TAGGED && data.targets[e] == target)
-        .map(|e| data.nodes[data.sources[e] as usize].title.clone())
-        .collect();
-    from.sort();
-    assert_eq!(from, ["Bleach", "Naruto"]);
+    assert!(
+        data.nodes.iter().all(|n| !n.is_tag),
+        "the hub stands for its tag"
+    );
+    assert!(
+        !data.kinds.contains(&edge_kind::TAGGED),
+        "members already hang from the hub"
+    );
     let cat = g.tag_catalog().unwrap();
     assert_eq!(
         (cat[0].name.to_lowercase().as_str(), cat[0].count),

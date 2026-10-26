@@ -81,7 +81,7 @@ void main() {
       expect(() => b.setPageTags(j.id, ['x']), throwsException);
     });
 
-    test('a hub is an implicit tag of its members, merged once', () async {
+    test('a hub is an implicit tag of its members, shown as the hub', () async {
       final b = MemoryBackend();
       final media = b.createPage('Media');
       b.makeHub(media.id);
@@ -100,17 +100,10 @@ void main() {
       expect(cat.single.count, 2);
       expect(b.pages[a.id]!.tags, isEmpty);
 
+      // In the graph the hub stands for its tag: no tag node, members only contained.
       final data = await b.graphData();
-      final tags = data.nodes.where((n) => n.isTag).toList();
-      expect(tags.length, 1);
-      expect(tags.single.backlinks, 2);
-      final ti = data.nodes.indexOf(tags.single);
-      final from = [
-        for (var e = 0; e < data.kinds.length; e++)
-          if (data.kinds[e] == EdgeKind.tagged.index && data.targets[e] == ti)
-            data.nodes[data.sources[e]].title,
-      ]..sort();
-      expect(from, ['Bleach', 'Naruto']);
+      expect(data.nodes.where((n) => n.isTag), isEmpty);
+      expect(data.kinds.contains(EdgeKind.tagged.index), isFalse);
     });
   });
 
