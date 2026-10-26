@@ -236,7 +236,16 @@ cargo run --release -p synapse-ffi --example graph_stats -- /path/to/graph
 cd app && flutter drive --profile -d linux --driver=test_driver/integration_test.dart \
   --target=integration_test/graph_smoke_test.dart \
   --dart-define=GRAPH=/path/to/copy [--dart-define=SHOTS=/dir/for/pngs]
+# Frame timings and RSS of common interactions (journals, pages, typing, tabs, Ctrl+K,
+# tree, network); results land in build/integration_response_data.json:
+cd app && flutter drive --profile -d linux --driver=test_driver/integration_test.dart \
+  --target=integration_test/perf_test.dart --dart-define=GRAPH=/path/to/copy
 ```
+Debug builds compile the Rust core optimised (`[profile.dev]` in the root `Cargo.toml`):
+unoptimised, the graph build took ~400 ms instead of ~50 ms, which made `flutter run` feel
+slow. Judge UI speed in profile mode; debug Dart is several times slower by design. On a
+240-page graph (profile), every interaction stays under 16 ms per frame except the first
+hub opened (~75 ms, once), with RSS steady around 230–260 MB.
 Measured (profile, Linux, Impeller GL): 5 000 pages / 19 000 links settle in ~7 s and pan at
 build p50 6 ms / raster p50 4 ms per frame; a 360-page graph settles in ~1 s at ~2 ms/frame.
 Edges are drawn as one triangle mesh (`drawVertices`): stroking 10k+ lines made Impeller
