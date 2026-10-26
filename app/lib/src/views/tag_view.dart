@@ -26,6 +26,8 @@ class TagView extends StatelessWidget {
         () => app.backend.renameTag(name, next),
         report: false,
       );
+      // A type of that name moves its emoji to the new name.
+      await app.loadTypeIcons();
       app.replaceRoute(TagRoute(next));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
@@ -59,6 +61,7 @@ class TagView extends StatelessWidget {
     if (ok != true) return;
     try {
       await app.queue.run(() => app.backend.removeTag(name), report: false);
+      await app.loadTypeIcons();
       app.reload();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
