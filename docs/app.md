@@ -36,6 +36,12 @@ flutter build windows --release # on Windows
 The graph lives in the platform app-support dir (`~/.local/share/dev.dasemu.synapse/graph`
 on Linux). Override it with `SYNAPSE_GRAPH=/path/to/graph`.
 
+## Icons
+The logo is `logo.png` (repo root). App icons are cut from its emblem: Android
+`android/app/src/main/res/mipmap-*/ic_launcher.png`, Windows `windows/runner/resources/app_icon.ico`,
+Linux `linux/runner/resources/app_icon.png` (installed to the bundle's `data/` and set as the
+window icon in `my_application.cc`).
+
 ## After changing the FFI API
 ```bash
 cd app && flutter_rust_bridge_codegen generate
