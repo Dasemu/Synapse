@@ -426,36 +426,59 @@ class MemoryBackend implements GraphBackend {
 
   String _tagKey(String t) => t.trim().toLowerCase();
 
+  /// Like the core's `normalize_tag`: leading `#` dropped, whitespace collapsed.
+  String _normTag(String raw) => raw
+      .trim()
+      .replaceFirst(RegExp(r'^#+'), '')
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .join(' ');
+
   @override
   Future<PageDto> setPageTags(String pageId, List<String> tags) async {
     final p = pages[pageId]!;
-    if (p.journalDate != null) throw Exception('Journals cannot have tags');
     final next = <String>[];
     for (final raw in tags) {
-      final t = raw.trim().replaceFirst(RegExp(r'^#+'), '').trim();
+      final t = _normTag(raw);
       if (t.isNotEmpty && !next.any((x) => _tagKey(x) == _tagKey(t))) {
         next.add(t);
       }
+    }
+    if (p.journalDate != null && next.isNotEmpty) {
+      throw Exception('Journals cannot have tags');
     }
     next.sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
     _put(p, tags: next);
     return pages[pageId]!;
   }
 
-  /// Tag names of a page: its tags plus its type (which implies a tag), once each.
-  List<String> allTags(PageDto p) => [
-    ...p.tags,
-    if (p.pageType != null &&
-        !p.tags.any((t) => _tagKey(t) == _tagKey(p.pageType!)))
-      p.pageType!,
-  ];
+  /// Title of the direct hub of a note: an implicit tag (hubs, templates and journals have none).
+  String? _hubTag(PageDto p) {
+    if (p.isHub || p.journalDate != null || templates.containsValue(p.id)) {
+      return null;
+    }
+    for (final h in hubsOfPage[p.id] ?? const <String>{}) {
+      final hub = pages[h];
+      if (hub != null && hub.isHub) return hub.title;
+    }
+    return null;
+  }
+
+  /// Tag names of a page: its tags plus its type and its hub (which imply a tag), once each.
+  List<String> allTags(PageDto p) {
+    final out = [...p.tags];
+    for (final t in [p.pageType, _hubTag(p)]) {
+      if (t != null && !out.any((x) => _tagKey(x) == _tagKey(t))) out.add(t);
+    }
+    return out;
+  }
 
   static const suggestedTypes = ['persona', 'lugar', 'empresa'];
 
   @override
   Future<PageDto> setPageType(String pageId, String? type) async {
     final p = pages[pageId]!;
-    final t = type?.trim() ?? '';
+    final t = _normTag(type ?? '');
     if (p.journalDate != null && t.isNotEmpty) {
       throw Exception('Journals cannot have a type');
     }
@@ -524,7 +547,7 @@ class MemoryBackend implements GraphBackend {
 
   @override
   Future<int> renameTag(String old, String new_) async {
-    final name = new_.trim().replaceFirst(RegExp(r'^#+'), '').trim();
+    final name = _normTag(new_);
     if (name.isEmpty) throw Exception('Empty tag name');
     var n = 0;
     for (final p in pages.values.toList()) {
@@ -538,6 +561,10 @@ class MemoryBackend implements GraphBackend {
           if (seen.add(_tagKey(_tagKey(t) == _tagKey(old) ? name : t)))
             _tagKey(t) == _tagKey(old) ? name : t,
       ]..sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
+      final changedType = hasType && p.pageType != name;
+      if (tags.join('\u0000') == p.tags.join('\u0000') && !changedType) {
+        continue;
+      }
       _put(p, tags: tags, pageType: hasType ? name : null);
       n++;
     }
@@ -906,6 +933,10 @@ class MemoryBackend implements GraphBackend {
         k.add(EdgeKind.tagged.index);
       }
     }
+    final tagPages = List.filled(tagKeys.length, 0);
+    for (final tg in t.skip(0).where((x) => x >= ids.length)) {
+      tagPages[tg - ids.length]++;
+    }
     final total = ids.length + tagKeys.length;
     while (degree.length < total) {
       degree.add(0);
@@ -936,7 +967,7 @@ class MemoryBackend implements GraphBackend {
             title: tagNames[tagKeys[j]]!,
             createdAt: 0,
             degree: degree[ids.length + j],
-            backlinks: 0,
+            backlinks: tagPages[j],
             cluster: 0,
             isHub: false,
             tags: const [],
