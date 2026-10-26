@@ -46,22 +46,30 @@ class TreeItem {
   }
 }
 
-/// Hub branches: root hubs (hubs that are no other hub's member) with their members,
-/// recursively, plus the notes that live in no hub (orphans included). A hub is expanded once
-/// (the first time it is reached) and never inside itself, so cycles and shared sub-hubs stay
-/// bounded; later occurrences are leaves.
-List<TreeItem> _hubBranches(GraphModel g) {
-  final branches = <TreeItem>[];
+/// Builds the tree in which every page appears exactly once: hubs first (root hubs with
+/// their members, recursively; a page belongs to one hub), then namespaces (`a/b/c` titles
+/// split on `/`, straight off the centre) for pages in no hub, then the remaining notes
+/// (orphans included) straight off the centre. Journals and tags are left out. Nothing is
+/// capped: large branches are collapsed in the canvas instead.
+TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
+  final root = TreeItem(name);
+  final placed = <int>{};
+  bool page(int i) => !g.isJournal(i) && !g.isTag(i);
+
+  // Hubs. A hub reached twice (cycles, shared sub-hubs) only shows the first time.
   final members = g.hubMembers;
   final nested = {for (final m in members.values) ...m};
-  final expanded = <int>{};
-  TreeItem build(int hub) {
+  TreeItem? build(int hub) {
+    if (!placed.add(hub)) return null;
     final item = TreeItem(g.node(hub).title, global: hub, isHub: true);
-    if (!expanded.add(hub)) return item;
     for (final m in members[hub] ?? const <int>{}) {
-      item.children.add(
-        g.isHub(m) ? build(m) : TreeItem(g.node(m).title, global: m),
-      );
+      if (!page(m)) continue;
+      if (g.isHub(m)) {
+        final sub = build(m);
+        if (sub != null) item.children.add(sub);
+      } else if (placed.add(m)) {
+        item.children.add(TreeItem(g.node(m).title, global: m));
+      }
     }
     return item;
   }
@@ -70,72 +78,43 @@ List<TreeItem> _hubBranches(GraphModel g) {
     for (var i = 0; i < g.nodeCount; i++)
       if (g.isHub(i)) i,
   ];
-  for (final h in hubs) {
-    if (!nested.contains(h)) branches.add(build(h));
+  for (final h in [...hubs.where((h) => !nested.contains(h)), ...hubs]) {
+    final b = build(h);
+    if (b != null) root.children.add(b);
   }
-  // Hubs only reachable through a cycle still need a place.
-  for (final h in hubs) {
-    if (!expanded.contains(h)) branches.add(build(h));
-  }
-  // Notes under no container hang straight off the centre (namespaced ones keep their
-  // namespace branch).
-  for (var i = 0; i < g.nodeCount; i++) {
-    if (!g.isHub(i) &&
-        !g.isTag(i) &&
-        !g.isJournal(i) &&
-        !nested.contains(i) &&
-        !g.node(i).title.contains('/')) {
-      branches.add(TreeItem(g.node(i).title, global: i));
-    }
-  }
-  return branches;
-}
 
-/// Builds a tree from hubs (folders, straight off the centre, with loose notes), namespaces (`a/b/c` titles split on `/`, attached
-/// directly to the centre) and tags (each tag with the pages using it). Nothing is capped:
-/// large branches are collapsed in the canvas instead.
-TreeItem buildNamespaceTree(GraphModel g, {String name = 'Graph'}) {
-  final root = TreeItem(name);
-  root.children.addAll(_hubBranches(g));
-  final ns = TreeItem('Namespaces');
+  // Namespaces, for pages no hub has placed. A namespace level takes its page when that
+  // page is still free; otherwise it is a plain grouping node.
   final byTitle = <String, int>{};
   for (var i = 0; i < g.nodeCount; i++) {
-    if (!g.isJournal(i) && !g.isTag(i)) {
-      byTitle[g.node(i).title.toLowerCase()] = i;
-    }
+    if (page(i)) byTitle[g.node(i).title.toLowerCase()] = i;
   }
+  final ns = TreeItem('Namespaces');
   for (var i = 0; i < g.nodeCount; i++) {
     final t = g.node(i).title;
-    if (g.isJournal(i) || g.isTag(i) || !t.contains('/')) continue;
+    if (!page(i) || placed.contains(i) || !t.contains('/')) continue;
     var at = ns;
     final parts = t.split('/');
     for (var k = 0; k < parts.length; k++) {
       at = at.child(parts[k].trim());
-      final path = parts.sublist(0, k + 1).join('/').toLowerCase();
-      at.global ??= byTitle[path];
+      if (at.global != null) continue;
+      final p = byTitle[parts.sublist(0, k + 1).join('/').toLowerCase()];
+      if (p != null && !placed.contains(p)) {
+        at.global = p;
+        placed.add(p);
+      }
     }
   }
-  // No "Namespaces" node: top-level namespaces hang straight off the centre.
   root.children.addAll(ns.children);
-  final tags = TreeItem('Tags');
-  for (final tag in g.tags) {
-    final item = TreeItem('#${g.node(tag).title}', global: tag);
-    final seen = <int>{};
-    for (final e in g.adjacency[tag]) {
-      final k = g.kind(e);
-      if ((k != EdgeKind.tag && k != EdgeKind.tagged) || g.target(e) != tag) {
-        continue;
-      }
-      final s = g.source(e);
-      if (seen.add(s)) {
-        item.children.add(TreeItem(g.node(s).title, global: s));
-      }
+
+  // Everything else hangs straight off the centre.
+  for (var i = 0; i < g.nodeCount; i++) {
+    if (page(i) && !g.isHub(i) && placed.add(i)) {
+      root.children.add(TreeItem(g.node(i).title, global: i));
     }
-    tags.children.add(item);
   }
-  if (tags.children.isNotEmpty) root.children.add(tags);
   _measure(root, 0, null);
-  _place(root, 0, 2 * math.pi);
+  _place(root, 0, 2 * math.pi, _radii(root));
   _colorize(root);
   return root;
 }
@@ -175,14 +154,31 @@ int _measure(TreeItem t, int depth, TreeItem? parent) {
 /// Ring spacing of the seed layout (close to the force layout's link length).
 const _ring = 60.0;
 
-void _place(TreeItem t, double a0, double a1) {
+/// Seed radius per depth: rings at least `_ring` apart, wide enough for the nodes on them
+/// (about 14 px of circumference each) so the force layout starts compact but unpacked.
+List<double> _radii(TreeItem root) {
+  final count = <int>[];
+  for (final t in _walk(root)) {
+    while (count.length <= t.depth) {
+      count.add(0);
+    }
+    count[t.depth]++;
+  }
+  final r = <double>[0];
+  for (var d = 1; d < count.length; d++) {
+    r.add(math.max(r[d - 1] + _ring, count[d] * 14 / (2 * math.pi)));
+  }
+  return r;
+}
+
+void _place(TreeItem t, double a0, double a1, List<double> radii) {
   t.angle = (a0 + a1) / 2;
-  final r = t.depth * _ring;
+  final r = radii[t.depth];
   t.pos = Offset(r * math.cos(t.angle), r * math.sin(t.angle));
   var a = a0;
   for (final c in t.children) {
     final span = (a1 - a0) * c.leaves / t.leaves;
-    _place(c, a, a + span);
+    _place(c, a, a + span, radii);
     a += span;
   }
 }
@@ -203,11 +199,22 @@ Iterable<TreeItem> _shown(TreeItem t) sync* {
   }
 }
 
-/// Opens levels breadth-first while the canvas stays readable (about `budget` items), so a
-/// small graph shows whole and a large one its top levels. Small branches (up to `small`
-/// children) always open: a crowded centre must not leave them folded.
-void expandInitial(TreeItem root, {int budget = 150, int small = 12}) {
+/// Opens the whole tree when it has up to `all` items. Larger trees open breadth-first while
+/// the canvas stays readable (about `budget` items); small branches (up to `small` children)
+/// always open, so a crowded centre does not leave them folded.
+void expandInitial(
+  TreeItem root, {
+  int all = 1500,
+  int budget = 400,
+  int small = 12,
+}) {
   root.expanded = true;
+  if (_walk(root).length <= all) {
+    for (final t in _walk(root)) {
+      t.expanded = t.children.isNotEmpty;
+    }
+    return;
+  }
   var shown = 1 + root.children.length;
   var level = root.children;
   while (level.isNotEmpty) {
@@ -233,7 +240,6 @@ class TreeCanvas extends StatefulWidget {
     super.key,
     required this.model,
     required this.onTap,
-    this.onTag,
     this.name = 'Graph',
   });
   final GraphModel model;
@@ -241,10 +247,6 @@ class TreeCanvas extends StatefulWidget {
   /// Label of the centre: the name of the notes store.
   final String name;
   final void Function(int global) onTap;
-
-  /// Called with the tag name when a tag (which has no page) is clicked; falls back to
-  /// [onTap] when null.
-  final void Function(String name)? onTag;
 
   @override
   State<TreeCanvas> createState() => TreeCanvasState();
@@ -342,7 +344,8 @@ class TreeCanvasState extends State<TreeCanvas> {
     }
     final n = _items.length - 1;
     final s = Uint32List(n), t = Uint32List(n);
-    final w = Float32List(n)..fillRange(0, n, 1);
+    // Stiff parent links keep branches close to their parent instead of drifting apart.
+    final w = Float32List(n)..fillRange(0, n, 3);
     var e = 0;
     for (var k = 1; k < _items.length; k++) {
       s[e] = _index[_items[k].parent!]!;
@@ -360,15 +363,8 @@ class TreeCanvasState extends State<TreeCanvas> {
     // Name hit areas belong to the old layout until the next paint.
     _labelRects.clear();
     _repaint.value++;
-    // A fresh tree relaxes its radial seed harder (warm up before the first step).
-    if (fresh) {
-      final gen = _generation;
-      _engine!.reheat(0.8).whenComplete(() {
-        if (mounted && gen == _generation) _run();
-      });
-    } else {
-      _run();
-    }
+    // The radial seed is already a tree: the layout only relaxes it (no reheat).
+    _run();
   }
 
   Future<void> _run() async {
@@ -477,19 +473,7 @@ class TreeCanvasState extends State<TreeCanvas> {
     setState(_relayout);
   }
 
-  /// Opens the page (or tag) behind `t`, as a click on its name does.
-  void openItem(TreeItem t) {
-    if (t.global != null) _open(t.global!);
-  }
-
-  void _open(int global) {
-    final g = widget.model;
-    if (g.isTag(global) && widget.onTag != null) {
-      widget.onTag!(g.node(global).title);
-    } else {
-      widget.onTap(global);
-    }
-  }
+  void _open(int global) => widget.onTap(global);
 
   void _onTap(Offset local) {
     final k = _hitNode(local);
@@ -504,7 +488,7 @@ class TreeCanvasState extends State<TreeCanvas> {
     }
     final l = _hitLabel(local);
     if (l?.global != null) {
-      openItem(l!);
+      _open(l!.global!);
     } else if (l != null) {
       toggle(l);
     }

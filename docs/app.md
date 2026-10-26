@@ -195,17 +195,18 @@ One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
   alphabetical; hull labelled with the tag name; springs pull pages to the best connected page
   of the tag; journals and untagged pages stay out) or by "Communities" (Louvain: groups found
   automatically from link density, no names). Colours follow group size.
-- **Tree**: hubs (root hubs, then members recursively, cycle-safe, each hub expanded once,
-  folder glyph; membership = CONTAINS edges), namespaces (`a/b/c` titles, straight off the
-  centre), the notes in no hub (orphans included) and Tags (each tag node with its pages;
-  clicking a tag opens its tag view). Nothing is
-  capped. Laid out by the same `ForceLayout` as the network (edges = parent/child, seeded
-  from a radial layout). The centre carries the store name; every arm and sub-branch has its
-  own colour (arms evenly spread over the hue circle, children split their parent's sector).
-  Levels open breadth-first up to ~150 nodes; the rest start collapsed (ring + `+N` badge).
-  Click a branch to expand/collapse it, a page (or any name) to open it; hover highlights the
-  path to the centre; drag nodes, wheel/pinch to zoom. Bottom bar: shown/total count, expand
-  all, collapse all, fit.
+- **Tree**: every page appears exactly once. Hubs first (root hubs, then members
+  recursively, cycle-safe, folder glyph; membership = CONTAINS edges; a page is in one hub),
+  then namespaces (`a/b/c` titles, straight off the centre) for pages in no hub, then the
+  remaining notes (orphans included) off the centre. Journals and tags are not in the tree.
+  Nothing is capped. Laid out by the same `ForceLayout` as the network (stiff parent/child
+  edges, seeded from a radial layout whose rings widen with the nodes on them, no reheat).
+  The centre carries the store name; every arm and sub-branch has its own colour (arms
+  evenly spread over the hue circle, children split their parent's sector). Trees of up to
+  1,500 items open whole; larger ones open breadth-first up to ~400 (small branches always
+  open) and the rest start collapsed (ring + `+N` badge). Click a branch to expand/collapse
+  it, a page (or any name) to open it; hover highlights the path to the centre; drag nodes,
+  wheel/pinch to zoom. Bottom bar: shown/total count, expand all, collapse all, fit.
 - **Timeline**: the journal timeline.
 
 Data and layout live in Rust: `SynapseGraph::graph_data()` returns the whole page-level

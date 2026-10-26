@@ -429,7 +429,6 @@ class _GraphViewState extends State<GraphView> {
       return TreeCanvas(
         model: m,
         onTap: _open,
-        onTag: AppScope.read(context).openTag,
         name: AppScope.read(context).backend.graphName,
       );
     }
