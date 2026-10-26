@@ -32,8 +32,6 @@ class MemoryBackend implements GraphBackend {
       isHub: false,
       description: '',
       tags: const [],
-      isTag: false,
-      types: const [],
     );
     pages[p.id] = p;
     outlines[p.id] = [];
@@ -156,35 +154,12 @@ class MemoryBackend implements GraphBackend {
         n.content = n.content.replaceAll('[[${p.title}]]', '[[$t]]');
       }
     }
-    final old = p.title;
     _put(p, title: t);
-    if (p.isTag) {
-      for (final q in pages.values.toList()) {
-        if (q.tags.any((x) => _tagKey(x) == _tagKey(old))) {
-          _put(
-            q,
-            tags: [for (final x in q.tags) _tagKey(x) == _tagKey(old) ? t : x],
-          );
-        }
-      }
-    }
     return pages[id]!;
   }
 
   @override
   Future<void> deletePage(String id) async {
-    final gone = pages[id];
-    if (gone != null && gone.isTag) {
-      for (final q in pages.values.toList()) {
-        _put(
-          q,
-          tags: [
-            for (final x in q.tags)
-              if (_tagKey(x) != _tagKey(gone.title)) x,
-          ],
-        );
-      }
-    }
     pages.remove(id);
     outlines.remove(id);
     _forget(id);
@@ -292,7 +267,11 @@ class MemoryBackend implements GraphBackend {
   Future<List<BlockDto>> outline(String pageId) async => _dto(pageId);
 
   @override
-  Future<List<BacklinkGroup>> backlinks(String pageId) async => [];
+  Future<List<BacklinkGroup>> backlinks(String pageId) async =>
+      backlinkGroups[pageId] ?? [];
+
+  /// Linked references returned by `backlinks`, by target page id (tests fill it).
+  final backlinkGroups = <String, List<BacklinkGroup>>{};
   @override
   Future<List<RelatedDto>> related(String pageId, {int limit = 12}) async => [];
   @override
@@ -311,13 +290,33 @@ class MemoryBackend implements GraphBackend {
           (p) => p.journalDate == null && p.title.toLowerCase().contains(q),
         )
         .take(limit)
-        .map((p) => TitleHit(pageId: p.id, title: p.title, isAlias: false))
+        .map(
+          (p) => TitleHit(
+            pageId: p.id,
+            title: p.title,
+            isAlias: false,
+            pageType: p.pageType,
+          ),
+        )
         .toList();
   }
 
   @override
-  Future<List<BlockHit>> searchBlocks(String query, {int limit = 20}) async =>
-      [];
+  Future<List<BlockHit>> searchBlocks(String query, {int limit = 20}) async {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return [];
+    return [
+      for (final e in outlines.entries)
+        for (final n in e.value)
+          if (n.content.toLowerCase().contains(q))
+            BlockHit(
+              id: n.id,
+              content: n.content,
+              pageId: e.key,
+              pageTitle: pages[e.key]?.title ?? '',
+            ),
+    ].take(limit).toList();
+  }
 
   @override
   String? assetPath(String hash) => null;
@@ -347,6 +346,7 @@ class MemoryBackend implements GraphBackend {
     title: p.title,
     isJournal: p.journalDate != null,
     isHub: p.isHub,
+    pageType: p.pageType,
   );
 
   void _put(
@@ -355,8 +355,8 @@ class MemoryBackend implements GraphBackend {
     bool? isHub,
     String? description,
     List<String>? tags,
-    bool? isTag,
-    List<String>? types,
+    String? pageType,
+    bool clearType = false,
   }) {
     pages[p.id] = PageDto(
       id: p.id,
@@ -368,8 +368,7 @@ class MemoryBackend implements GraphBackend {
       isHub: isHub ?? p.isHub,
       description: description ?? p.description,
       tags: tags ?? p.tags,
-      isTag: isTag ?? p.isTag,
-      types: types ?? p.types,
+      pageType: clearType ? null : (pageType ?? p.pageType),
     );
   }
 
@@ -452,83 +451,235 @@ class MemoryBackend implements GraphBackend {
 
   String _tagKey(String t) => t.trim().toLowerCase();
 
+  /// Like the core's `normalize_tag`: leading `#` dropped, whitespace collapsed.
+  String _normTag(String raw) => raw
+      .trim()
+      .replaceFirst(RegExp(r'^#+'), '')
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .join(' ');
+
   @override
   Future<PageDto> setPageTags(String pageId, List<String> tags) async {
     final p = pages[pageId]!;
-    if (p.journalDate != null) throw Exception('Journals cannot have tags');
     final next = <String>[];
     for (final raw in tags) {
-      final t = raw.trim().replaceFirst(RegExp(r'^#+'), '').trim();
+      final t = _normTag(raw);
       if (t.isNotEmpty && !next.any((x) => _tagKey(x) == _tagKey(t))) {
         next.add(t);
       }
     }
-    final stored = <String>[];
-    for (final t in next) {
-      var tp = _byTitle(t);
-      if (tp == null) {
-        tp = createPage(t);
-        _put(tp, isTag: true);
-      } else if (tp.journalDate != null || tp.isHub) {
-        throw Exception('"$t" cannot be a tag');
-      } else if (!tp.isTag) {
-        _put(tp, isTag: true);
-      }
-      stored.add(pages[tp.id]!.title);
+    if (p.journalDate != null && next.isNotEmpty) {
+      throw Exception('Journals cannot have tags');
     }
-    _put(p, tags: stored);
+    next.sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
+    _put(p, tags: next);
     return pages[pageId]!;
+  }
+
+  /// Title of the direct hub of a note: an implicit tag (hubs, templates and journals have none).
+  String? _hubTag(PageDto p) {
+    if (p.isHub || p.journalDate != null || templates.containsValue(p.id)) {
+      return null;
+    }
+    for (final h in hubsOfPage[p.id] ?? const <String>{}) {
+      final hub = pages[h];
+      if (hub != null && hub.isHub) return hub.title;
+    }
+    return null;
+  }
+
+  /// Tag names of a page: its tags plus its type and its hub (which imply a tag), once each.
+  List<String> allTags(PageDto p) {
+    final out = [...p.tags];
+    for (final t in [p.pageType, _hubTag(p)]) {
+      if (t != null && !out.any((x) => _tagKey(x) == _tagKey(t))) out.add(t);
+    }
+    return out;
   }
 
   static const suggestedTypes = ['persona', 'lugar', 'empresa'];
 
   @override
-  Future<PageDto> setPageTypes(String pageId, List<String> types) async {
+  Future<PageDto> setPageType(String pageId, String? type) async {
     final p = pages[pageId]!;
-    if (p.journalDate != null) throw Exception('Journals cannot have types');
-    final next = <String>[];
-    for (final raw in types) {
-      final t = raw.trim();
-      if (t.isNotEmpty && !next.any((x) => _tagKey(x) == _tagKey(t))) {
-        next.add(t);
-      }
+    final t = _normTag(type ?? '');
+    if (p.journalDate != null && t.isNotEmpty) {
+      throw Exception('Journals cannot have a type');
     }
-    _put(p, types: next);
+    _put(p, pageType: t, clearType: t.isEmpty);
     return pages[pageId]!;
   }
 
-  @override
-  Future<PageDto> addPageType(String pageId, String ty) =>
-      setPageTypes(pageId, [...pages[pageId]!.types, ty]);
+  /// Type definitions like the core's `type_defs`: key -> (name, icon, removed).
+  final typeDefs = <String, ({String name, String? icon, bool removed})>{};
 
-  @override
-  Future<PageDto> removePageType(String pageId, String ty) =>
-      setPageTypes(pageId, [
-        for (final t in pages[pageId]!.types)
-          if (_tagKey(t) != _tagKey(ty)) t,
-      ]);
+  /// Pages in the core's catalogue order (`created_at`, then id): the first spells a name.
+  List<PageDto> _byCreation() => pages.values.toList()
+    ..sort((a, b) {
+      final c = a.createdAt.compareTo(b.createdAt);
+      return c != 0 ? c : a.id.compareTo(b.id);
+    });
+
+  /// Like the core's `MAX_TAG_CHARS`.
+  static const maxTagChars = 48;
+
+  ({String name, String? icon, bool removed})? _liveDef(String name) {
+    final d = typeDefs[_tagKey(name)];
+    return d == null || d.removed ? null : d;
+  }
 
   @override
   Future<List<TagDto>> typeCatalog() async {
     final used = <String, TagDto>{};
-    for (final p in pages.values) {
-      for (final t in p.types) {
+    for (final p in _byCreation()) {
+      for (final t in [if (p.pageType != null) p.pageType!]) {
         final k = _tagKey(t);
-        used[k] = TagDto(
-          name: used[k]?.name ?? t,
-          count: (used[k]?.count ?? 0) + 1,
+        used[k] = _tag(
+          used[k]?.name ?? t,
+          (used[k]?.count ?? 0) + 1,
           suggested: suggestedTypes.contains(k),
+          icon: _liveDef(k)?.icon,
         );
       }
     }
     final out = used.values.toList()
-      ..sort((a, b) => b.count.compareTo(a.count));
+      ..sort((a, b) {
+        final c = b.count.compareTo(a.count);
+        return c != 0 ? c : _tagKey(a.name).compareTo(_tagKey(b.name));
+      });
+    final unused =
+        typeDefs.entries
+            .where(
+              (e) =>
+                  !e.value.removed &&
+                  !used.containsKey(e.key) &&
+                  !suggestedTypes.contains(e.key),
+            )
+            .map((e) => e.value)
+            .toList()
+          ..sort((a, b) => _tagKey(a.name).compareTo(_tagKey(b.name)));
+    out.addAll(unused.map((d) => _tag(d.name, 0, icon: d.icon)));
     for (final s in suggestedTypes) {
-      if (!used.containsKey(s)) {
-        out.add(TagDto(name: s, count: 0, suggested: true));
+      final d = typeDefs[s];
+      if (!used.containsKey(s) && !(d?.removed ?? false)) {
+        out.add(_tag(d?.name ?? s, 0, suggested: true, icon: d?.icon));
       }
     }
     return out;
+  }
+
+  TagDto _tag(
+    String name,
+    int count, {
+    bool suggested = false,
+    String? icon,
+    int explicit = 0,
+    int typed = 0,
+    int fromHub = 0,
+  }) => TagDto(
+    name: name,
+    count: count,
+    suggested: suggested,
+    icon: icon,
+    explicit: explicit,
+    typed: typed,
+    fromHub: fromHub,
+  );
+
+  String _typeName(String raw) {
+    final n = _normTag(raw);
+    if (n.isEmpty) throw Exception('Empty type name');
+    if (n.runes.length > maxTagChars) {
+      throw Exception('Type is longer than $maxTagChars characters');
+    }
+    return n;
+  }
+
+  /// Spelling of a type: its definition, else a page using it, else [name].
+  String _typeSpelling(String name) {
+    final d = _liveDef(name);
+    if (d != null) return d.name;
+    for (final p in _byCreation()) {
+      if (p.pageType != null && _tagKey(p.pageType!) == _tagKey(name)) {
+        return p.pageType!;
+      }
+    }
+    return name;
+  }
+
+  @override
+  Future<String> createType(String name) async {
+    final n = _typeName(name);
+    final d = _liveDef(n);
+    if (d != null) return d.name;
+    final spelled = _typeSpelling(n);
+    typeDefs[_tagKey(n)] = (name: spelled, icon: null, removed: false);
+    return spelled;
+  }
+
+  @override
+  Future<void> setTypeIcon(String name, String? icon) async {
+    final n = _typeName(name);
+    final i = icon?.trim();
+    if (i != null &&
+        i.isNotEmpty &&
+        (i.runes.length > 16 ||
+            i.contains(RegExp(r'\s')) ||
+            i.runes.every((r) => r < 128))) {
+      throw Exception('Not an emoji icon');
+    }
+    final current = _liveDef(n);
+    final next = (i == null || i.isEmpty) ? null : i;
+    // Like the core: clearing an undefined type's icon defines nothing.
+    if (current == null ? next == null : current.icon == next) return;
+    typeDefs[_tagKey(n)] = (
+      name: _typeSpelling(n),
+      icon: (i == null || i.isEmpty) ? null : i,
+      removed: false,
+    );
+  }
+
+  @override
+  Future<int> renameType(String old, String new_) async {
+    _typeName(new_);
+    await createType(old);
+    return renameTag(old, new_);
+  }
+
+  /// Moves a live type definition to [name] (`renameTag`, like the core).
+  void _renameTypeDef(String old, String name) {
+    final d = _liveDef(old);
+    if (d == null) return;
+    if (_tagKey(old) == _tagKey(name)) {
+      typeDefs[_tagKey(name)] = (name: name, icon: d.icon, removed: false);
+      return;
+    }
+    final target = _liveDef(name);
+    typeDefs[_tagKey(name)] = (
+      name: name,
+      icon: target?.icon ?? d.icon,
+      removed: false,
+    );
+    typeDefs[_tagKey(old)] = (name: d.name, icon: null, removed: true);
+  }
+
+  @override
+  Future<int> removeType(String name) async {
+    final n = _typeName(name);
+    var count = 0;
+    for (final p in pages.values.toList()) {
+      if (p.pageType != null && _tagKey(p.pageType!) == _tagKey(n)) {
+        _put(p, clearType: true);
+        count++;
+      }
+    }
+    typeDefs[_tagKey(n)] = (
+      name: typeDefs[_tagKey(n)]?.name ?? n,
+      icon: null,
+      removed: true,
+    );
+    return count;
   }
 
   @override
@@ -544,25 +695,80 @@ class MemoryBackend implements GraphBackend {
 
   @override
   Future<List<TagDto>> tagCatalog() async {
-    final out = [
-      for (final t in pages.values)
-        if (t.isTag)
-          TagDto(
-            name: t.title,
-            count: pages.values
-                .where((p) => p.tags.any((x) => _tagKey(x) == _tagKey(t.title)))
-                .length,
-            suggested: false,
-          ),
-    ]..sort((a, b) => b.count.compareTo(a.count));
-    return out;
+    final used = <String, TagDto>{};
+    for (final p in pages.values) {
+      final hub = _hubTag(p);
+      for (final t in allTags(p)) {
+        final k = _tagKey(t);
+        final prev = used[k];
+        bool isK(String? x) => x != null && _tagKey(x) == k;
+        used[k] = _tag(
+          prev?.name ?? t,
+          (prev?.count ?? 0) + 1,
+          explicit: (prev?.explicit ?? 0) + (p.tags.any(isK) ? 1 : 0),
+          typed: (prev?.typed ?? 0) + (isK(p.pageType) ? 1 : 0),
+          fromHub: (prev?.fromHub ?? 0) + (isK(hub) ? 1 : 0),
+        );
+      }
+    }
+    return used.values.toList()..sort((a, b) {
+      final c = b.count.compareTo(a.count);
+      return c != 0 ? c : _tagKey(a.name).compareTo(_tagKey(b.name));
+    });
   }
 
   @override
   Future<List<PageBrief>> pagesWithTag(String tag) async => [
     for (final p in pages.values)
-      if (p.tags.any((t) => _tagKey(t) == _tagKey(tag))) _brief(p),
+      if (allTags(p).any((t) => _tagKey(t) == _tagKey(tag))) _brief(p),
   ];
+
+  @override
+  Future<int> renameTag(String old, String new_) async {
+    final name = _normTag(new_);
+    if (name.isEmpty) throw Exception('Empty tag name');
+    if (name.runes.length > maxTagChars) {
+      throw Exception('Tag is longer than $maxTagChars characters');
+    }
+    var n = 0;
+    for (final p in pages.values.toList()) {
+      final hasTag = p.tags.any((t) => _tagKey(t) == _tagKey(old));
+      final hasType =
+          p.pageType != null && _tagKey(p.pageType!) == _tagKey(old);
+      if (!hasTag && !hasType) continue;
+      final seen = <String>{};
+      final tags = [
+        for (final t in p.tags)
+          if (seen.add(_tagKey(_tagKey(t) == _tagKey(old) ? name : t)))
+            _tagKey(t) == _tagKey(old) ? name : t,
+      ]..sort((a, b) => _tagKey(a).compareTo(_tagKey(b)));
+      final changedType = hasType && p.pageType != name;
+      if (tags.join('\u0000') == p.tags.join('\u0000') && !changedType) {
+        continue;
+      }
+      _put(p, tags: tags, pageType: hasType ? name : null);
+      n++;
+    }
+    _renameTypeDef(old, name);
+    return n;
+  }
+
+  @override
+  Future<int> removeTag(String name) async {
+    var n = 0;
+    for (final p in pages.values.toList()) {
+      if (!p.tags.any((t) => _tagKey(t) == _tagKey(name))) continue;
+      _put(
+        p,
+        tags: [
+          for (final t in p.tags)
+            if (_tagKey(t) != _tagKey(name)) t,
+        ],
+      );
+      n++;
+    }
+    return n;
+  }
 
   @override
   Future<String> hubTemplate(String hubId) async {
@@ -889,20 +1095,44 @@ class MemoryBackend implements GraphBackend {
       t.add(index[m]!);
       k.add(EdgeKind.contains.index);
     }
-    // A note points at each of its tag pages.
+    // Tags are virtual nodes after the pages; a page points at each of its tags. A tag
+    // named like a hub uses the hub's node, and its members (already contained) skip it.
+    final hubNodes = {
+      for (final id in ids)
+        if (_isHub(id)) _tagKey(pages[id]!.title): index[id]!,
+    };
+    final tagNames = <String, String>{};
+    for (final p in pages.values) {
+      for (final tg in allTags(p)) {
+        if (hubNodes.containsKey(_tagKey(tg))) continue;
+        tagNames.putIfAbsent(_tagKey(tg), () => tg);
+      }
+    }
+    final tagKeys = tagNames.keys.toList()..sort();
+    final tagIndex = {
+      ...hubNodes,
+      for (var j = 0; j < tagKeys.length; j++) tagKeys[j]: ids.length + j,
+    };
+    final contained = {
+      for (final (h, m) in containsEdges) (index[h]!, index[m]!),
+    };
     for (final p in pages.values) {
       final i = index[p.id];
       if (i == null) continue;
-      for (final tg in p.tags) {
-        final tp = _byTitle(tg);
-        final j = tp == null ? null : index[tp.id];
-        if (j == null) continue;
+      for (final tg in allTags(p)) {
+        final to = tagIndex[_tagKey(tg)]!;
+        if (to == i || contained.contains((to, i))) continue;
         s.add(i);
-        t.add(j);
+        t.add(to);
         k.add(EdgeKind.tagged.index);
       }
     }
-    while (degree.length < ids.length) {
+    final tagPages = List.filled(tagKeys.length, 0);
+    for (final tg in t.skip(0).where((x) => x >= ids.length)) {
+      tagPages[tg - ids.length]++;
+    }
+    final total = ids.length + tagKeys.length;
+    while (degree.length < total) {
       degree.add(0);
     }
     for (var e = 0; e < s.length; e++) {
@@ -922,7 +1152,21 @@ class MemoryBackend implements GraphBackend {
             cluster: 0,
             isHub: _isHub(ids[i]),
             homeHub: home[ids[i]] == null ? null : index[home[ids[i]]!],
-            tags: pages[ids[i]]!.tags,
+            tags: allTags(pages[ids[i]]!),
+            isTag: false,
+            pageType: pages[ids[i]]!.pageType,
+          ),
+        for (var j = 0; j < tagKeys.length; j++)
+          GraphNode(
+            id: 'tag:${tagKeys[j]}',
+            title: tagNames[tagKeys[j]]!,
+            createdAt: 0,
+            degree: degree[ids.length + j],
+            backlinks: tagPages[j],
+            cluster: 0,
+            isHub: false,
+            tags: const [],
+            isTag: true,
           ),
       ],
       sources: Uint32List.fromList(s),

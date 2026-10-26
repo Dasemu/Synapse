@@ -17,8 +17,6 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<PageDto> addPageTag({required String pageId, required String tag});
 
-  Future<PageDto> addPageType({required String pageId, required String ty});
-
   /// Puts a page in a hub (no-op when it already is). Fails for journals, non-hub targets,
   /// the hub itself and memberships that would create a cycle.
   Future<void> addToHub({required String pageId, required String hubId});
@@ -60,6 +58,9 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String title,
   });
 
+  /// Adds a type to the vocabulary even if no page uses it; returns its spelling.
+  Future<String> createType({required String name});
+
   /// Deletes a block and its subtree.
   Future<List<BlockDto>> deleteBlock({required String id});
 
@@ -100,10 +101,11 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// journal); otherwise at the newest journal strictly before `before`.
   Future<List<PageData>> journals({String? before, required int limit});
 
-  /// Pages that are probably leftovers of Logseq: its built-ins and pages with
-  /// `type:: system`. Only the organisational files (`contents`, `card`, `favorites`,
-  /// `hls__*`) and empty pages are preselected, and never a hub: a built-in title such as
-  /// `todo` may hold real content.
+  /// Pages worth cleaning up: leftovers of Logseq (its built-ins and pages with
+  /// `type:: system`) and empty pages (no text in any block, not a hub, no type, tags or
+  /// description), journals included except today's. Of the Logseq ones only the organisational files (`contents`, `card`,
+  /// `favorites`, `hls__*`) and empty pages are preselected, and never a hub: a built-in
+  /// title such as `todo` may hold real content. Empty pages are all preselected.
   Future<List<LegacyCandidate>> legacyCandidates();
 
   /// Pages ordered by last update, most recent first.
@@ -148,7 +150,7 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Hub and namespace context of a page.
   Future<PageStructure> pageStructure({required String pageId});
 
-  /// Pages carrying a tag, most recently updated first.
+  /// Pages carrying a tag (listed or via their type), most recently updated first.
   Future<List<PageBrief>> pagesWithTag({required String tag});
 
   /// Deletes pages and their blocks in one transaction. Returns how many existed.
@@ -180,9 +182,21 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   Future<PageDto> removePageTag({required String pageId, required String tag});
 
-  Future<PageDto> removePageType({required String pageId, required String ty});
+  /// Removes the explicit tag from every page (types of that name stay); returns the number
+  /// of pages changed.
+  Future<int> removeTag({required String name});
+
+  /// Deletes a type: its pages lose it and its icon is dropped; returns the pages changed.
+  Future<int> removeType({required String name});
 
   Future<PageDto> renamePage({required String id, required String newTitle});
+
+  /// Renames a tag in the `tags` and `types` of every page carrying it; returns the number of
+  /// pages changed.
+  Future<int> renameTag({required String old, required String new_});
+
+  /// Renames a type (and same-name tags), keeping its icon; returns the pages changed.
+  Future<int> renameType({required String old, required String new_});
 
   /// Blocks whose text contains `query` (for `((` autocomplete), most recent first.
   Future<List<BlockHit>> searchBlocks({
@@ -204,20 +218,21 @@ abstract class SynapseGraph implements RustOpaqueInterface {
     required String description,
   });
 
-  /// Replaces the tags of a page (each title gets a tag page if it has none). Journals,
-  /// templates and tag pages cannot be tagged.
+  /// Replaces the tags of a page (names only, stored sorted). Journals and templates cannot
+  /// be tagged.
   Future<PageDto> setPageTags({
     required String pageId,
     required List<String> tags,
   });
 
-  /// Replaces the types of a page. Journals and templates cannot be typed.
-  Future<PageDto> setPageTypes({
-    required String pageId,
-    required List<String> types,
-  });
+  /// Sets (or with `None` clears) the single type of a page. Journals and templates cannot be
+  /// typed.
+  Future<PageDto> setPageType({required String pageId, String? pageType});
 
-  /// Every tag page with its number of pages, most used first.
+  /// Sets (or with `None` clears) the emoji of a type, defining the type if needed.
+  Future<void> setTypeIcon({required String name, String? icon});
+
+  /// Every tag in use (listed or implied by a type) with its number of pages, most used first.
   Future<List<TagDto>> tagCatalog();
 
   /// Timeline data for `[from, to]` (oldest first) with titles of every page it mentions.
@@ -226,7 +241,8 @@ abstract class SynapseGraph implements RustOpaqueInterface {
   /// Today's date (graph clock) as `YYYY-MM-DD`.
   String today();
 
-  /// Types in use (most used first) followed by the seeded suggestions not used yet.
+  /// Types in use (most used first), then defined unused types, then the seeded suggestions
+  /// not used yet; each with its icon.
   Future<List<TagDto>> typeCatalog();
 
   /// Replaces a block's Markdown (the debounced save while typing).

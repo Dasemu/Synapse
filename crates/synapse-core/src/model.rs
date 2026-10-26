@@ -17,12 +17,12 @@ pub fn new_id() -> Uuid {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PageKind {
+    /// Also what the retired `tag` kind of schema v5 reads as (tags no longer have pages).
     #[default]
+    #[serde(alias = "tag")]
     Note,
     Hub,
     Template,
-    /// A topic page: notes point at it from their `tags`.
-    Tag,
 }
 
 impl PageKind {
@@ -31,7 +31,6 @@ impl PageKind {
             PageKind::Note => "note",
             PageKind::Hub => "hub",
             PageKind::Template => "template",
-            PageKind::Tag => "tag",
         }
     }
     /// Unknown values read as notes.
@@ -39,7 +38,6 @@ impl PageKind {
         match s {
             "hub" => PageKind::Hub,
             "template" => PageKind::Template,
-            "tag" => PageKind::Tag,
             _ => PageKind::Note,
         }
     }
@@ -66,11 +64,13 @@ pub struct Page {
     /// pages no longer hubs); readers ignore those.
     #[serde(default)]
     pub hubs: Vec<PageId>,
-    /// Titles of the tag pages ([`PageKind::Tag`]) this page is filed under, any number; see
-    /// `tags`. Always in step with the tag pages (created on first use).
+    /// Tag names this page is filed under, any number (names only: tags have no pages); see
+    /// `tags`. Its types count as tags too without being listed here.
     #[serde(default)]
     pub tags: Vec<String>,
-    /// What kind of thing this is ("persona", "lugar"...): plain names, not pages; see `types`.
+    /// What kind of thing this is ("persona", "lugar"...): a name, not a page; see `types`.
+    /// Holds zero or one entry (a list only for compatibility with older replicas: readers
+    /// use the first, see [`Page::page_type`]). The type implies a tag of the same name.
     #[serde(default)]
     pub types: Vec<String>,
 }
@@ -79,14 +79,15 @@ impl Page {
     pub fn is_journal(&self) -> bool {
         self.journal_date.is_some()
     }
+    /// The page's single type, if any.
+    pub fn page_type(&self) -> Option<&str> {
+        self.types.first().map(String::as_str)
+    }
     pub fn is_hub(&self) -> bool {
         self.kind == PageKind::Hub
     }
     pub fn is_template(&self) -> bool {
         self.kind == PageKind::Template
-    }
-    pub fn is_tag(&self) -> bool {
-        self.kind == PageKind::Tag
     }
 }
 
@@ -182,12 +183,43 @@ pub struct OpRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Op {
-    UpsertPage { page: Page },
-    DeletePage { id: PageId },
-    UpsertBlock { block: Block },
-    DeleteBlock { id: BlockId },
-    PutAsset { asset: Asset },
-    SetAlias { alias: String, page: Option<PageId> },
+    UpsertPage {
+        page: Page,
+    },
+    DeletePage {
+        id: PageId,
+    },
+    UpsertBlock {
+        block: Block,
+    },
+    DeleteBlock {
+        id: BlockId,
+    },
+    PutAsset {
+        asset: Asset,
+    },
+    SetAlias {
+        alias: String,
+        page: Option<PageId>,
+    },
+    /// Metadata of a type name (its icon), last writer wins per [`title_key`] of the name.
+    PutTypeDef {
+        def: TypeDef,
+    },
+}
+
+/// Graph-wide metadata of a type name: types are names, not pages, so this is where their
+/// icon lives (`type_defs` table, synced by [`Op::PutTypeDef`]). A definition also keeps a
+/// type in the vocabulary while no page uses it. `removed` is a tombstone: the type was
+/// deleted (it also hides a seeded suggestion of that name).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypeDef {
+    pub name: String,
+    /// An emoji (a short string) shown next to the names of pages of this type.
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub removed: bool,
 }
 
 /// Fields for creating a page; defaults come from the graph clock.

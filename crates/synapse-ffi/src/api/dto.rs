@@ -18,12 +18,11 @@ pub struct PageDto {
     pub is_hub: bool,
     /// Hub description (empty for notes).
     pub description: String,
-    /// Titles of the tag pages this page is filed under, in the order they were added.
+    /// Tag names (no pages) this page lists, sorted by name; its type implies a tag too.
     pub tags: Vec<String>,
-    /// The page is a tag page (a topic that other pages are filed under).
-    pub is_tag: bool,
-    /// Type names ("persona", "lugar"...: plain names, not pages), in the order added.
-    pub types: Vec<String>,
+    /// The page's single type ("persona", "lugar"...: a name, not a page); it implies a tag of
+    /// the same name.
+    pub page_type: Option<String>,
 }
 
 impl From<&Page> for PageDto {
@@ -38,8 +37,7 @@ impl From<&Page> for PageDto {
             is_hub: p.is_hub(),
             description: p.description.clone(),
             tags: p.tags.clone(),
-            is_tag: p.is_tag(),
-            types: p.types.clone(),
+            page_type: p.page_type().map(String::from),
         }
     }
 }
@@ -52,6 +50,28 @@ pub struct TagDto {
     pub count: u32,
     /// One of the seeded suggestions.
     pub suggested: bool,
+    /// Emoji of a type (types only).
+    pub icon: Option<String>,
+    /// Pages listing it as an explicit tag (tags only).
+    pub explicit: u32,
+    /// Pages having it as their type (tags only).
+    pub typed: u32,
+    /// Pages carrying it through their hub (tags only; hub tags cannot be renamed or removed).
+    pub from_hub: u32,
+}
+
+impl From<synapse_core::TagInfo> for TagDto {
+    fn from(t: synapse_core::TagInfo) -> Self {
+        Self {
+            name: t.name,
+            count: t.count,
+            suggested: t.suggested,
+            icon: t.icon,
+            explicit: t.explicit,
+            typed: t.typed,
+            from_hub: t.from_hub,
+        }
+    }
 }
 
 /// One row of the outline, in pre-order.
@@ -112,6 +132,8 @@ pub struct BacklinkGroup {
     pub page_id: String,
     pub page_title: String,
     pub is_journal: bool,
+    /// Type of the referencing page (for its icon).
+    pub page_type: Option<String>,
     pub blocks: Vec<BlockDto>,
 }
 
@@ -121,6 +143,8 @@ pub struct PageBrief {
     pub title: String,
     pub is_journal: bool,
     pub is_hub: bool,
+    /// The page's type (the UI shows its icon next to the title).
+    pub page_type: Option<String>,
 }
 
 impl From<&Page> for PageBrief {
@@ -130,6 +154,7 @@ impl From<&Page> for PageBrief {
             title: p.title.clone(),
             is_journal: p.is_journal(),
             is_hub: p.is_hub(),
+            page_type: p.page_type().map(String::from),
         }
     }
 }
@@ -187,13 +212,16 @@ pub struct TitleHit {
     /// The matched title or alias.
     pub title: String,
     pub is_alias: bool,
+    /// Type of the page (for its icon).
+    pub page_type: Option<String>,
 }
 
-/// `((` autocomplete hit.
+/// A block matching a search (`((` autocomplete, quick switcher content results).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockHit {
     pub id: String,
     pub content: String,
+    pub page_id: String,
     pub page_title: String,
 }
 
@@ -210,8 +238,9 @@ pub mod edge_kind {
     pub const SYNAPSE: u8 = 6;
     /// Hub membership, hub → member (structural, weight 1).
     pub const CONTAINS: u8 = 7;
-    /// A page filed under a tag page (page → tag page, weight 1). Unlike `TAG` (an inline
-    /// `#tag` in the text) it comes from the page's own `tags` list.
+    /// A page carrying a tag (page → virtual tag node, weight 1; the tag is listed in the
+    /// page's `tags` or implied by one of its `types`). Unlike `TAG` (an inline `#tag` in the
+    /// text, a link to a page) it comes from the page's own names.
     pub const TAGGED: u8 = 8;
 }
 
@@ -229,14 +258,19 @@ pub struct GraphNode {
     pub backlinks: u32,
     /// Community (Louvain), numbered by size: 0 is the largest.
     pub cluster: u32,
-    /// Node index of the tag this page uses most, if any.
+    /// Node index of the tag (page or virtual tag node) this page uses most, if any.
     pub primary_tag: Option<u32>,
     /// The page is a hub (`PageKind::Hub`).
     pub is_hub: bool,
     /// Node index of the deepest hub containing this page (a hub: itself).
     pub home_hub: Option<u32>,
-    /// Tag names of the page (see `PageDto::tags`), for grouping by tag.
+    /// Tag names of the page, listed or implied by its types, for grouping by tag.
     pub tags: Vec<String>,
+    /// A virtual tag node (not a page, no outline): `id` is `tag:<title_key>`, `title` the
+    /// display name, `degree` the number of pages carrying the tag.
+    pub is_tag: bool,
+    /// The page's type (tree labels show its icon; the network view does not).
+    pub page_type: Option<String>,
 }
 
 /// The whole page-level graph, edges as parallel arrays (cheap to move across the FFI).

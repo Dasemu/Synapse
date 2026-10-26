@@ -23,6 +23,7 @@ impl SynapseGraph {
                     page_id: p.id.to_string(),
                     title: p.title.clone(),
                     is_alias: false,
+                    page_type: p.page_type().map(String::from),
                 })
                 .collect());
         }
@@ -52,13 +53,15 @@ impl SynapseGraph {
         hits.truncate(limit as usize);
         let mut out = Vec::with_capacity(hits.len());
         for (_, _, title, id) in hits {
-            let is_alias = g
-                .get_page(id)?
+            let page = g.get_page(id)?;
+            let is_alias = page
+                .as_ref()
                 .is_some_and(|p| title_key(&p.title) != title_key(&title));
             out.push(TitleHit {
                 page_id: id.to_string(),
                 title,
                 is_alias,
+                page_type: page.and_then(|p| p.page_type().map(String::from)),
             });
         }
         Ok(out)
@@ -79,14 +82,15 @@ impl SynapseGraph {
         let g = self.lock();
         // Read-only stopgap over the core tables until synapse-search lands.
         let mut st = g.conn().prepare_cached(
-            "SELECT b.id, b.content, p.title FROM blocks b JOIN pages p ON p.id = b.page_id
+            "SELECT b.id, b.content, p.id, p.title FROM blocks b JOIN pages p ON p.id = b.page_id
              WHERE b.content LIKE ?1 ESCAPE '\\' ORDER BY b.updated_at DESC LIMIT ?2",
         )?;
         let rows = st.query_map((pattern, limit), |r| {
             Ok(BlockHit {
                 id: r.get(0)?,
                 content: r.get(1)?,
-                page_title: r.get(2)?,
+                page_id: r.get(2)?,
+                page_title: r.get(3)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)

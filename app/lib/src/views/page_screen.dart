@@ -5,10 +5,12 @@ import '../editor/outline_view.dart';
 import '../state/app_state.dart';
 import '../state/outline_controller.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
 import '../widgets/pickers.dart';
 import '../widgets/tags.dart';
+import 'all_pages_view.dart' show DeletePagesDialog;
 import 'convert_dialog.dart';
 import 'graph_view.dart';
 import 'hub_screen.dart';
@@ -238,6 +240,10 @@ class _Header extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: TypeIcon(page.pageType, size: 26, gap: 10),
+                ),
                 Expanded(child: TitleField(page: page)),
                 IconButton(
                   key: const ValueKey('page-sidebar-toggle'),
@@ -275,7 +281,6 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TagBar(page: page),
-            if (page.isTag) TaggedNotes(tag: page.title),
           ],
         ],
       ),
@@ -471,16 +476,24 @@ class _LinkedReferences extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextLink(
-                    group.isJournal
-                        ? longDate(group.pageTitle)
-                        : group.pageTitle,
-                    onTap: () => app.openId(group.pageId),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: colors.ink,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TypeIcon(group.pageType),
+                      Flexible(
+                        child: TextLink(
+                          group.isJournal
+                              ? longDate(group.pageTitle)
+                              : group.pageTitle,
+                          onTap: () => app.openId(group.pageId),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: colors.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   for (final b in group.blocks)
@@ -544,13 +557,25 @@ class RelatedPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextLink(
-                      x.page.isJournal ? longDate(x.page.title) : x.page.title,
-                      icon: x.page.isJournal
-                          ? Icons.calendar_today_outlined
-                          : Icons.description_outlined,
-                      onTap: () => app.openId(x.page.id),
-                      style: TextStyle(fontSize: 13.5, color: colors.ink),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TypeIcon(x.page.pageType),
+                        Flexible(
+                          child: TextLink(
+                            x.page.isJournal
+                                ? longDate(x.page.title)
+                                : x.page.title,
+                            icon: app.typeIcon(x.page.pageType) != null
+                                ? null
+                                : x.page.isJournal
+                                ? Icons.calendar_today_outlined
+                                : Icons.description_outlined,
+                            onTap: () => app.openId(x.page.id),
+                            style: TextStyle(fontSize: 13.5, color: colors.ink),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     ClipRRect(
@@ -662,7 +687,7 @@ class InHubs extends StatelessWidget {
   }
 }
 
-/// The page's "⋯" menu: hub conversion and hub membership.
+/// The page's "⋯" menu: hub conversion, hub membership and deletion.
 class PageMenu extends StatelessWidget {
   const PageMenu({super.key, required this.page, required this.structure});
   final PageDto page;
@@ -725,6 +750,26 @@ class PageMenu extends StatelessWidget {
     }
   }
 
+  Future<void> _delete(BuildContext context) async {
+    final app = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => DeletePagesDialog(pages: [page]),
+    );
+    if (ok != true) return;
+    try {
+      await app.queue.run(() => app.backend.deletePage(page.id));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
+      app.reload();
+      return;
+    }
+    // Tabs showing the page step back (or fall back to Journals); recents drop it.
+    app.pagesDeleted([page.id], titles: [page.title]);
+    messenger.showSnackBar(SnackBar(content: Text('Deleted "${page.title}"')));
+  }
+
   @override
   Widget build(BuildContext context) => PopupMenuButton<String>(
     key: const ValueKey('page-menu'),
@@ -733,6 +778,7 @@ class PageMenu extends StatelessWidget {
     onSelected: (v) => switch (v) {
       'hub' => _toHub(context),
       'note' => _toNote(context),
+      'delete' => _delete(context),
       _ => _addToHub(context),
     },
     itemBuilder: (_) => [
@@ -741,6 +787,15 @@ class PageMenu extends StatelessWidget {
       if (page.isHub)
         const PopupMenuItem(value: 'note', child: Text('Convert to note')),
       const PopupMenuItem(value: 'add', child: Text('Add to hub…')),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        key: const ValueKey('page-delete'),
+        value: 'delete',
+        child: Text(
+          'Delete page…',
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+      ),
     ],
   );
 }

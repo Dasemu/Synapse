@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../backend/graph_backend.dart';
 import '../graph/graph_model.dart';
 import '../graph/network_canvas.dart';
 import '../graph/tree_canvas.dart';
@@ -68,11 +69,17 @@ class _GraphViewState extends State<GraphView> {
         if (focus != null) break;
         focus = m.indexOf(r.id);
       }
-      if (focus == null && m.nodeCount > 0) {
-        focus = List.generate(
-          m.nodeCount,
-          (i) => i,
-        ).reduce((a, b) => m.node(a).degree >= m.node(b).degree ? a : b);
+      if (focus != null && m.isTag(focus)) focus = null;
+      if (focus == null) {
+        final pages = [
+          for (var i = 0; i < m.nodeCount; i++)
+            if (!m.isTag(i)) i,
+        ];
+        if (pages.isNotEmpty) {
+          focus = pages.reduce(
+            (a, b) => m.node(a).degree >= m.node(b).degree ? a : b,
+          );
+        }
       }
       setState(() {
         _model = m;
@@ -124,7 +131,12 @@ class _GraphViewState extends State<GraphView> {
         final f = _focus;
         if (f == null) return;
         final app = AppScope.read(context);
-        final related = await app.backend.related(m.node(f).id, limit: 40);
+        final List<RelatedDto> related;
+        try {
+          related = await app.backend.related(m.node(f).id, limit: 40);
+        } catch (_) {
+          return;
+        }
         if (!mounted || _focus != f || _mode != GraphMode.brain) return;
         final top = related.isEmpty
             ? 1.0
@@ -176,7 +188,12 @@ class _GraphViewState extends State<GraphView> {
 
   void _open(int global) {
     final m = _model!;
-    AppScope.read(context).openId(m.node(global).id);
+    final app = AppScope.read(context);
+    if (m.isTag(global)) {
+      app.openTag(m.node(global).title);
+    } else {
+      app.openId(m.node(global).id);
+    }
   }
 
   @override
@@ -260,7 +277,7 @@ class _GraphViewState extends State<GraphView> {
         onSubmitted: (q) {
           final lq = q.toLowerCase().trim();
           for (var i = 0; i < m.nodeCount; i++) {
-            if (m.node(i).title.toLowerCase().contains(lq)) {
+            if (!m.isTag(i) && m.node(i).title.toLowerCase().contains(lq)) {
               _setFocus(i);
               return;
             }
@@ -425,6 +442,9 @@ class _GraphViewState extends State<GraphView> {
         model: m,
         onTap: _open,
         name: AppScope.read(context).backend.graphName,
+        typeIcon: AppScope.read(context).typeIcon,
+        // Subscribes: icon edits (or icons loaded after a cold start) reach the labels.
+        iconsVersion: AppScope.of(context).iconsVersion,
       );
     }
     final sub = _sub;
@@ -448,7 +468,9 @@ class _GraphViewState extends State<GraphView> {
             hulls: _mode == GraphMode.clusters,
             focus: explore ? _focus : null,
             brain: _mode == GraphMode.brain ? _brain : null,
-            onTap: explore ? _setFocus : _open,
+            onTap: explore
+                ? (i) => m.isTag(i) ? _open(i) : _setFocus(i)
+                : _open,
           ),
         ),
         Positioned(
@@ -776,7 +798,9 @@ class _LocalGraphPanelState extends State<LocalGraphPanel> {
                   compact: true,
                   focus: m.indexOf(widget.pageId),
                   cache: app.graphPositions,
-                  onTap: (g) => app.openId(m.node(g).id),
+                  onTap: (g) => m.isTag(g)
+                      ? app.openTag(m.node(g).title)
+                      : app.openId(m.node(g).id),
                 ),
         ),
       ],

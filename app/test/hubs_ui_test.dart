@@ -241,6 +241,30 @@ void main() {
     expect(() => b.addToHub(fun.id, tv.id), throwsException);
   });
 
+  testWidgets('a page can be deleted from its menu, after confirming', (
+    tester,
+  ) async {
+    final b = demo();
+    final games = byTitle(b, 'Games');
+    final app = await pump(tester, b, route: PageTarget(id: games.id));
+    await tester.tap(find.byKey(const ValueKey('page-menu')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('page-delete')));
+    await settle(tester);
+    // Cancel keeps it.
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+    expect(b.pages.containsKey(games.id), isTrue);
+    await tester.tap(find.byKey(const ValueKey('page-menu')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('page-delete')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('confirm-delete')));
+    await settle(tester);
+    expect(b.pages.containsKey(games.id), isFalse);
+    expect(app.route, isNot(PageTarget(id: games.id)));
+  });
+
   testWidgets('note page: In chips can be removed, no hub pill', (
     tester,
   ) async {
@@ -491,7 +515,7 @@ void main() {
     await pump(tester, b, home: const Scaffold(body: AllPagesView()));
     await tester.tap(find.text('Clean up'));
     await settle(tester);
-    expect(find.text('Remove legacy Logseq pages'), findsOneWidget);
+    expect(find.text('Clean up pages'), findsOneWidget);
     expect(find.text('Delete (2)'), findsOneWidget);
     // Uncheck "card".
     await tester.tap(
@@ -514,63 +538,118 @@ void main() {
     await pump(tester, demo(), home: const Scaffold(body: AllPagesView()));
     await tester.tap(find.text('Clean up'));
     await settle(tester);
-    expect(find.text('No legacy pages found.'), findsOneWidget);
+    expect(find.text('Nothing to clean up.'), findsOneWidget);
   });
 }
 
 void tagTests() {
-  testWidgets('tags are pages: pick one, create one, remove', (tester) async {
+  testWidgets('tags are names: pick one, create one, remove, sorted', (
+    tester,
+  ) async {
     final b = demo();
     final note = byTitle(b, 'Games');
     await b.setPageTags(note.id, ['tema']);
     await pump(tester, b, route: PageTarget(id: note.id));
     expect(find.byKey(const ValueKey('tag-tema')), findsOneWidget);
-    expect(byTitle(b, 'tema').isTag, isTrue);
 
     await tester.tap(find.byKey(const ValueKey('add-tag')));
     await settle(tester);
-    // Tags already on the page are not offered again; a new name creates a tag page.
+    // Tags already on the page are not offered again; a new name just creates a tag.
     expect(find.byKey(const ValueKey('tag-opt-tema')), findsNothing);
     await tester.enterText(find.byKey(const ValueKey('tag-input')), '#ocio');
     await settle(tester);
     await tester.tap(find.byKey(const ValueKey('tag-create')));
     await settle(tester);
-    expect(byTitle(b, 'Games').tags, ['tema', 'ocio']);
-    expect(byTitle(b, 'ocio').isTag, isTrue);
+    await tester.tap(find.byKey(const ValueKey('tag-done')));
+    await settle(tester);
+    // Stored and shown sorted.
+    expect(byTitle(b, 'Games').tags, ['ocio', 'tema']);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('tag-ocio'))).dx,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('tag-tema'))).dx),
+    );
+    // Tags are names, never pages.
+    expect(b.pages.values.any((p) => p.title == 'ocio'), isFalse);
 
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    await gesture.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('tag-tema'))),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.byKey(const ValueKey('untag-tema')));
     await settle(tester);
     expect(byTitle(b, 'Games').tags, ['ocio']);
-    // The tag page survives losing its last member.
-    expect(byTitle(b, 'tema').isTag, isTrue);
   });
 
-  testWidgets('types: pick a suggestion, create a new one, remove', (
-    tester,
-  ) async {
+  testWidgets('a page has one type: set, change, remove', (tester) async {
     final b = demo();
     final note = byTitle(b, 'Games');
     await pump(tester, b, route: PageTarget(id: note.id));
+    expect(find.byKey(const ValueKey('type-pill')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('add-type')));
     await settle(tester);
     expect(find.byKey(const ValueKey('type-opt-persona')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('type-opt-lugar')));
     await settle(tester);
-    expect(find.byKey(const ValueKey('type-lugar')), findsOneWidget);
+    expect(byTitle(b, 'Games').pageType, 'lugar');
+    expect(find.byKey(const ValueKey('type-pill')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('add-type')));
+    // Change it: the single-select picker replaces the type, with a new name too.
+    await tester.tap(find.byKey(const ValueKey('type-pill')));
     await settle(tester);
-    expect(find.byKey(const ValueKey('type-opt-lugar')), findsNothing);
     await tester.enterText(find.byKey(const ValueKey('type-input')), 'ocio');
     await settle(tester);
     await tester.tap(find.byKey(const ValueKey('type-create')));
     await settle(tester);
-    expect(byTitle(b, 'Games').types, ['lugar', 'ocio']);
-    // Types are names, never pages.
+    expect(byTitle(b, 'Games').pageType, 'ocio');
     expect(b.pages.values.any((p) => p.title == 'ocio'), isFalse);
 
-    await tester.tap(find.byKey(const ValueKey('untype-lugar')));
+    await tester.tap(find.byKey(const ValueKey('type-pill')));
     await settle(tester);
-    expect(byTitle(b, 'Games').types, ['ocio']);
+    await tester.tap(find.byKey(const ValueKey('type-remove')));
+    await settle(tester);
+    expect(byTitle(b, 'Games').pageType, isNull);
+    expect(find.byKey(const ValueKey('add-type')), findsOneWidget);
+  });
+
+  testWidgets('a tag chip opens the tag view with typed and tagged pages', (
+    tester,
+  ) async {
+    final b = demo();
+    final games = byTitle(b, 'Games');
+    final other = b.pages.values.firstWhere((p) => p.id != games.id);
+    await b.setPageTags(games.id, ['ocio']);
+    await b.setPageType(other.id, 'ocio');
+    await pump(tester, b, route: PageTarget(id: games.id));
+    await tester.tap(find.byKey(const ValueKey('tag-ocio')));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('tag-title')), findsOneWidget);
+    expect(find.byKey(ValueKey('tag-page-${games.id}')), findsOneWidget);
+    expect(find.byKey(ValueKey('tag-page-${other.id}')), findsOneWidget);
+  });
+
+  testWidgets('renaming and removing a tag from its view', (tester) async {
+    final b = demo();
+    final games = byTitle(b, 'Games');
+    await b.setPageTags(games.id, ['ocio']);
+    await pump(tester, b, route: const TagRoute('ocio'));
+    await tester.tap(find.byKey(const ValueKey('tag-rename')));
+    await settle(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('tag-rename-input')),
+      'tiempo libre',
+    );
+    await tester.tap(find.byKey(const ValueKey('tag-rename-confirm')));
+    await settle(tester);
+    expect(byTitle(b, 'Games').tags, ['tiempo libre']);
+    expect(find.byKey(ValueKey('tag-page-${games.id}')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('tag-remove')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('tag-remove-confirm')));
+    await settle(tester);
+    expect(byTitle(b, 'Games').tags, isEmpty);
   });
 }

@@ -364,6 +364,14 @@ fn legacy_candidates_and_purge() {
     let (keep, _) = page_with(&g, "Keep", &["x"]);
     page_with(&g, "contents", &["- x"]);
     page_with(&g, "now", &[]);
+    page_with(&g, "Blank", &["", "  "]);
+    let old_day = g.journal("2020-01-02".into()).unwrap().page.id;
+    let full_day = g.journal("2020-01-03".into()).unwrap().page.id;
+    g.insert_block(full_day, place(PlaceKind::LastChildOf, None), "x".into())
+        .unwrap();
+    g.journals(None, 1).unwrap(); // creates today's journal, empty
+    let (typed, _) = page_with(&g, "Typed", &[]);
+    g.set_page_type(typed, Some("persona".into())).unwrap();
     g.create_hub("later".into(), String::new()).unwrap();
     {
         let shared = g.shared();
@@ -389,6 +397,16 @@ fn legacy_candidates_and_purge() {
     assert!(!by("Template").preselected);
     assert_eq!(by("Template").reason, "type:: system");
     assert!(c.iter().all(|x| x.title != "Keep"));
+    assert_eq!(by("Blank").reason, "Empty");
+    assert!(by("Blank").preselected, "only blank blocks");
+    assert!(c.iter().all(|x| x.title != "Typed"), "a type is content");
+    let journals: Vec<_> = c.iter().filter(|x| x.reason == "Empty journal").collect();
+    assert_eq!(
+        journals.len(),
+        1,
+        "only the blank past journal, not today's"
+    );
+    assert!(journals[0].id == old_day && journals[0].preselected);
 
     // A bad id rejects the call before anything is deleted.
     assert!(g.purge_pages(vec![todo.clone(), "nope".into()]).is_err());
@@ -399,7 +417,7 @@ fn legacy_candidates_and_purge() {
 }
 
 #[test]
-fn tags_are_pages_and_their_own_edge_kind() {
+fn tags_are_virtual_graph_nodes_with_their_own_edge_kind() {
     let (_d, g) = open();
     let (a, _) = page_with(&g, "Rust", &["x"]);
     let (b, _) = page_with(&g, "Go", &["y"]);
@@ -407,13 +425,13 @@ fn tags_are_pages_and_their_own_edge_kind() {
     for (p, tags) in [
         (&a, vec!["tecnología", "idea"]),
         (&b, vec!["Tecnología", "idea"]),
-        (&c, vec!["lugar"]),
     ] {
         g.set_page_tags(p.clone(), tags.into_iter().map(String::from).collect())
             .unwrap();
     }
+    g.set_page_type(c.clone(), Some("lugar".into())).unwrap();
+    g.set_page_type(b.clone(), Some("Idea".into())).unwrap();
     let data = g.graph_data().unwrap();
-    let idx = |id: &str| data.nodes.iter().position(|n| n.id == id).unwrap() as u32;
     let title = |i: u32| data.nodes[i as usize].title.clone();
     let mut tagged: Vec<(String, String)> = (0..data.kinds.len())
         .filter(|&e| data.kinds[e] == edge_kind::TAGGED)
@@ -430,35 +448,143 @@ fn tags_are_pages_and_their_own_edge_kind() {
             pair("Rust", "idea"),
             pair("Rust", "tecnología"),
         ],
-        "each page points at its tag pages"
+        "each page points at its tags, including the one its type implies, once"
     );
-    // The tag page is a real node that counts backlinks, and the DTOs flag it.
-    let tp = &data.nodes[data
+    // Tags are virtual: no page behind them, flagged, with the page count as degree.
+    let tag = data
         .nodes
         .iter()
-        .position(|n| n.title == "tecnología")
-        .unwrap()];
-    assert_eq!(tp.backlinks, 2);
-    assert!(g.page(tp.id.clone()).unwrap().unwrap().page.is_tag);
+        .find(|n| n.is_tag && n.title == "tecnología");
+    let tag = tag.expect("tag node");
+    assert_eq!(tag.id, "tag:tecnología");
+    assert_eq!((tag.degree, tag.journal_date.clone()), (2, None));
+    assert!(g.page(tag.id.clone()).is_err() || g.page(tag.id.clone()).unwrap().is_none());
+    assert_eq!(data.nodes.iter().filter(|n| n.is_tag).count(), 3);
+    let go = data.nodes.iter().find(|n| n.title == "Go").unwrap();
     assert_eq!(
-        idx(&a),
-        data.nodes.iter().position(|n| n.id == a).unwrap() as u32
+        go.tags,
+        ["idea", "Tecnología"],
+        "tags, with the type's tag once"
     );
     let cat = g.tag_catalog().unwrap();
     assert_eq!((cat[0].name.as_str(), cat[0].count), ("idea", 2));
+    assert_eq!(g.pages_with_tag("IDEA".into()).unwrap().len(), 2);
 }
 
 #[test]
-fn types_round_trip_through_the_api() {
+fn a_tag_named_like_a_hub_uses_the_hub_node() {
+    let (_d, g) = open();
+    let hub = g.create_hub("Proyectos".into(), String::new()).unwrap().id;
+    let (member, _) = page_with(&g, "Synapse", &["x"]);
+    let (loose, _) = page_with(&g, "Otro", &["x"]);
+    g.add_to_hub(member.clone(), hub.clone()).unwrap();
+    g.add_page_tag(member, "proyectos".into()).unwrap();
+    g.add_page_tag(loose, "Proyectos".into()).unwrap();
+    let data = g.graph_data().unwrap();
+    assert!(
+        data.nodes.iter().all(|n| !n.is_tag),
+        "no tag node beside the hub"
+    );
+    let title = |i: u32| data.nodes[i as usize].title.clone();
+    let tagged: Vec<(String, String)> = (0..data.kinds.len())
+        .filter(|&e| data.kinds[e] == edge_kind::TAGGED)
+        .map(|e| (title(data.sources[e]), title(data.targets[e])))
+        .collect();
+    assert_eq!(
+        tagged,
+        [("Otro".to_string(), "Proyectos".to_string())],
+        "members already hang from the hub; other pages tagged with it point at it"
+    );
+}
+
+#[test]
+fn page_type_and_tag_renaming_round_trip_through_the_api() {
     let (_d, g) = open();
     let (a, _) = page_with(&g, "Ana", &["x"]);
-    let p = g.add_page_type(a.clone(), "persona".into()).unwrap();
-    assert_eq!(p.types, ["persona"]);
+    let p = g.set_page_type(a.clone(), Some("persona".into())).unwrap();
+    assert_eq!(p.page_type.as_deref(), Some("persona"));
+    let p = g.set_page_type(a.clone(), Some("lugar".into())).unwrap();
+    assert_eq!(p.page_type.as_deref(), Some("lugar"));
     assert!(g.type_catalog().unwrap().iter().any(|t| t.name == "lugar"));
+    g.add_page_tag(a.clone(), "web".into()).unwrap();
+    assert_eq!(g.rename_tag("lugar".into(), "sitio".into()).unwrap(), 1);
+    assert_eq!(g.rename_tag("web".into(), "red".into()).unwrap(), 1);
+    let p = g.page(a.clone()).unwrap().unwrap().page;
+    assert_eq!(
+        (p.page_type.as_deref(), p.tags),
+        (Some("sitio"), vec!["red".to_string()])
+    );
+    assert_eq!(g.remove_tag("red".into()).unwrap(), 1);
+    assert!(g.set_page_type(a, None).unwrap().page_type.is_none());
+}
+
+#[test]
+fn type_icons_and_page_types_reach_the_ui_dtos() {
+    let (_d, g) = open();
+    let (a, _) = page_with(&g, "Ana", &["x"]);
+    let (b, _) = page_with(&g, "Notes", &["about [[Ana]]"]);
+    g.set_page_type(a.clone(), Some("persona".into())).unwrap();
+    g.set_page_type(b.clone(), Some("idea".into())).unwrap();
+    g.set_type_icon("persona".into(), Some("🧑".into()))
+        .unwrap();
     assert!(
-        g.remove_page_type(a, "PERSONA".into())
-            .unwrap()
-            .types
-            .is_empty()
+        g.set_type_icon("persona".into(), Some("xy".into()))
+            .is_err()
+    );
+    assert_eq!(g.create_type(" Libro ".into()).unwrap(), "Libro");
+    let cat = g.type_catalog().unwrap();
+    let persona = cat.iter().find(|t| t.name == "persona").unwrap();
+    assert_eq!((persona.count, persona.icon.as_deref()), (1, Some("🧑")));
+    assert!(cat.iter().any(|t| t.name == "Libro" && t.count == 0));
+    assert!(cat.iter().any(|t| t.name == "sueño" && t.count == 0));
+
+    // Lists of pages carry the page type, so the UI can look up its icon.
+    let hits = g.search_titles("Ana".into(), 5).unwrap();
+    assert_eq!(hits[0].page_type.as_deref(), Some("persona"));
+    let bl = g.backlinks(a.clone()).unwrap();
+    assert_eq!(bl[0].page_type.as_deref(), Some("idea"));
+    let briefs = g.pages_with_tag("persona".into()).unwrap();
+    assert_eq!(briefs[0].page_type.as_deref(), Some("persona"));
+    let data = g.graph_data().unwrap();
+    let node = data.nodes.iter().find(|n| n.id == a).unwrap();
+    assert_eq!(node.page_type.as_deref(), Some("persona"));
+
+    // Rename keeps the icon; remove drops the type from its pages.
+    assert_eq!(g.rename_type("persona".into(), "Gente".into()).unwrap(), 1);
+    let cat = g.type_catalog().unwrap();
+    let gente = cat.iter().find(|t| t.name == "Gente").unwrap();
+    assert_eq!(gente.icon.as_deref(), Some("🧑"));
+    assert_eq!(g.remove_type("Gente".into()).unwrap(), 1);
+    assert!(g.page(a).unwrap().unwrap().page.page_type.is_none());
+
+    // The tag catalog says where tags come from.
+    g.add_page_tag(b.clone(), "idea".into()).unwrap();
+    let tags = g.tag_catalog().unwrap();
+    let idea = tags.iter().find(|t| t.name == "idea").unwrap();
+    assert_eq!((idea.explicit, idea.typed, idea.from_hub), (1, 1, 0));
+}
+
+#[test]
+fn a_hub_tag_and_a_same_name_type_need_no_tag_node_beside_the_hub() {
+    let (_d, g) = open();
+    let hub = g.create_hub("Anime".into(), String::new()).unwrap();
+    let (a, _) = page_with(&g, "Naruto", &["x"]);
+    let (b, _) = page_with(&g, "Bleach", &["y"]);
+    g.add_to_hub(a.clone(), hub.id.clone()).unwrap();
+    g.add_to_hub(b.clone(), hub.id.clone()).unwrap();
+    g.set_page_type(b.clone(), Some("anime".into())).unwrap();
+    let data = g.graph_data().unwrap();
+    assert!(
+        data.nodes.iter().all(|n| !n.is_tag),
+        "the hub stands for its tag"
+    );
+    assert!(
+        !data.kinds.contains(&edge_kind::TAGGED),
+        "members already hang from the hub"
+    );
+    let cat = g.tag_catalog().unwrap();
+    assert_eq!(
+        (cat[0].name.to_lowercase().as_str(), cat[0].count),
+        ("anime", 2)
     );
 }

@@ -256,7 +256,7 @@ impl Search {
                     }
                     // The previous owner of an alias is not in the op, so refresh all pages.
                     Op::SetAlias { .. } => all_pages = true,
-                    Op::PutAsset { .. } => {}
+                    Op::PutAsset { .. } | Op::PutTypeDef { .. } => {}
                 }
             }
             stats.ops_processed += ops.len();

@@ -506,7 +506,7 @@ fn old_ops_and_v2_databases_load() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(schema, "5");
+    assert_eq!(schema, "8");
     let p = g.get_page(id).unwrap().unwrap();
     assert_eq!((p.kind, p.title.as_str()), (PageKind::Note, "Legacy"));
     let h = g.create_hub("New hub", "").unwrap();
@@ -626,25 +626,22 @@ fn converting_to_a_hub_creates_a_template_and_back_removes_it() {
 }
 
 #[test]
-fn tags_are_pages_many_per_page() {
+fn tags_are_names_many_per_page_kept_sorted() {
     let (_d, g) = graph();
     let a = page(&g, "Rust", &["x"]);
     let b = page(&g, "Madrid", &["y"]);
+    let pages_before = g.list_pages(true, 100, 0).unwrap().len();
 
     g.add_page_tag(a, "  #Tecnología ").unwrap();
     g.add_page_tag(a, "herramientas").unwrap();
     g.add_page_tag(a, "TECNOLOGÍA").unwrap(); // same tag, other case
+    g.add_page_tag(a, "Álgebra").unwrap();
     g.add_page_tag(b, "Tecnología").unwrap();
-    assert_eq!(
-        g.get_page(a).unwrap().unwrap().tags,
-        ["Tecnología", "herramientas"]
-    );
-    // The first use creates the tag page; it is an ordinary page of kind tag.
-    let tp = g.page_by_title("tecnología").unwrap().unwrap();
-    assert_eq!(tp.kind, PageKind::Tag);
-    assert_eq!(tp.title, "Tecnología");
-    g.insert_block(tp.id, Placement::LastChildOf(None), "About tech")
-        .unwrap();
+    let tags = g.get_page(a).unwrap().unwrap().tags;
+    assert_eq!(tags, ["herramientas", "Tecnología", "Álgebra"]);
+    // Tags never become pages.
+    assert_eq!(g.list_pages(true, 100, 0).unwrap().len(), pages_before);
+    assert!(g.page_by_title("tecnología").unwrap().is_none());
 
     assert_eq!(
         g.pages_with_tag("tecnologia").unwrap().len(),
@@ -659,19 +656,14 @@ fn tags_are_pages_many_per_page() {
 
     let cat = g.tag_catalog().unwrap();
     assert_eq!((cat[0].name.as_str(), cat[0].count), ("Tecnología", 2));
-    assert_eq!((cat[1].name.as_str(), cat[1].count), ("herramientas", 1));
-    assert_eq!(cat.len(), 2, "no seeded tags: tags are pages you create");
+    assert_eq!(cat.len(), 3, "no seeded tags");
 
     g.remove_page_tag(a, "TECNOLOGÍA").unwrap();
     assert_eq!(g.pages_with_tag("Tecnología").unwrap(), [b]);
-    assert!(
-        g.page_by_title("Tecnología").unwrap().is_some(),
-        "the tag page stays"
-    );
     g.set_page_tags(a, vec![]).unwrap();
     assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
 
-    // Rules.
+    // Rules. A page may carry a tag equal to its own title.
     let j = g
         .journal(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap())
         .unwrap();
@@ -680,127 +672,526 @@ fn tags_are_pages_many_per_page() {
     let t = g.hub_template(h).unwrap();
     assert!(invalid(g.add_page_tag(t, "x")));
     assert!(invalid(g.add_page_tag(a, &"x".repeat(49))));
-    assert!(invalid(g.add_page_tag(a, "H")), "a hub cannot be a tag");
-    assert!(invalid(g.add_page_tag(a, "Rust")), "not its own tag");
-    assert!(
-        invalid(g.add_page_tag(tp.id, "x")),
-        "tag pages are not tagged"
-    );
+    g.add_page_tag(a, "Rust").unwrap();
+    g.remove_page_tag(a, "Rust").unwrap();
     g.add_page_tag(a, "   ").unwrap(); // blank: ignored
     assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
 
-    // Deleting a tagged page drops it from the index.
     g.delete_page(b).unwrap();
     assert!(g.pages_with_tag("Tecnología").unwrap().is_empty());
 }
 
 #[test]
-fn a_note_becomes_a_tag_page_when_used_as_a_tag() {
+fn a_page_with_a_tag_title_is_untouched_by_tagging() {
     let (_d, g) = graph();
     let n = page(&g, "Neurociencia", &["brains", "memory"]);
     let other = page(&g, "Plasticidad", &["x"]);
     g.add_page_tag(other, "neurociencia").unwrap();
-    let p = g.get_page(n).unwrap().unwrap();
-    assert_eq!(p.kind, PageKind::Tag);
-    assert_eq!(texts(&g, n).len(), 2, "its content is kept");
-    assert_eq!(g.get_page(other).unwrap().unwrap().tags, ["Neurociencia"]);
+    assert_eq!(g.get_page(n).unwrap().unwrap().kind, PageKind::Note);
+    assert_eq!(texts(&g, n).len(), 2);
+    assert_eq!(g.get_page(other).unwrap().unwrap().tags, ["neurociencia"]);
+    g.rename_page(n, "Cerebro").unwrap();
+    assert_eq!(g.get_page(other).unwrap().unwrap().tags, ["neurociencia"]);
 }
 
 #[test]
-fn renaming_or_deleting_a_tag_page_keeps_members_in_step() {
-    let (_d, g) = graph();
-    let a = page(&g, "A", &["x"]);
-    let b = page(&g, "B", &["y"]);
-    g.add_page_tag(a, "web").unwrap();
-    g.add_page_tag(b, "Web").unwrap();
-    g.add_page_tag(b, "otro").unwrap();
-    let tag = g.page_by_title("web").unwrap().unwrap().id;
-    g.rename_page(tag, "Sitios web").unwrap();
-    assert_eq!(g.get_page(a).unwrap().unwrap().tags, ["Sitios web"]);
-    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["Sitios web", "otro"]);
-    assert_eq!(g.pages_with_tag("Sitios web").unwrap().len(), 2);
-    assert!(g.pages_with_tag("web").unwrap().is_empty());
-
-    g.delete_page(tag).unwrap();
-    assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
-    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["otro"]);
-}
-
-#[test]
-fn tags_without_a_page_get_one_when_the_graph_opens() {
-    let dir = tempfile::tempdir().unwrap();
-    let id = {
-        let g = Graph::open(dir.path()).unwrap();
-        let id = page(&g, "Old", &["x"]);
-        g.add_page_tag(id, "Idea").unwrap();
-        // Simulate a pre-v5 database: the tag exists only on the note.
-        let tag = g.page_by_title("Idea").unwrap().unwrap().id;
-        g.conn()
-            .execute("DELETE FROM pages WHERE id=?1", [tag.to_string()])
-            .unwrap();
-        id
-    };
-    let g = Graph::open(dir.path()).unwrap();
-    let tag = g.page_by_title("idea").unwrap().unwrap();
-    assert_eq!((tag.kind, tag.title.as_str()), (PageKind::Tag, "Idea"));
-    assert_eq!(g.pages_with_tag("Idea").unwrap(), [id]);
-}
-
-#[test]
-fn types_are_names_many_per_page_with_a_seeded_vocabulary() {
+fn a_page_has_one_type_that_implies_a_tag() {
     let (_d, g) = graph();
     let a = page(&g, "Ana", &["x"]);
     let b = page(&g, "Madrid", &["y"]);
     let pages_before = g.list_pages(true, 100, 0).unwrap().len();
 
-    g.add_page_type(a, "  Persona ").unwrap();
-    g.add_page_type(a, "cliente").unwrap();
-    g.add_page_type(a, "PERSONA").unwrap();
-    g.add_page_type(b, "lugar").unwrap();
-    assert_eq!(
-        g.get_page(a).unwrap().unwrap().types,
-        ["Persona", "cliente"]
-    );
-    // Types never become pages.
+    g.set_page_type(a, Some("  Persona ")).unwrap();
+    g.set_page_type(b, Some("lugar")).unwrap();
+    assert_eq!(g.get_page(a).unwrap().unwrap().types, ["Persona"]);
+    assert_eq!(g.get_page(a).unwrap().unwrap().page_type(), Some("Persona"));
+    // Changing replaces; types never become pages.
+    g.set_page_type(a, Some("empresa")).unwrap();
+    assert_eq!(g.get_page(a).unwrap().unwrap().types, ["empresa"]);
     assert_eq!(g.list_pages(true, 100, 0).unwrap().len(), pages_before);
     assert!(g.page_by_title("persona").unwrap().is_none());
 
-    let cat = g.type_catalog().unwrap();
-    assert!(cat.iter().any(|t| t.name == "Persona" && t.count == 1));
-    let names: Vec<&str> = cat.iter().map(|t| t.name.as_str()).collect();
-    assert!(names.contains(&"empresa"), "unused suggestions are listed");
+    // The type counts as a tag of the same name, once even when also listed.
+    assert_eq!(g.pages_with_tag("EMPRESA").unwrap(), [a]);
+    g.add_page_tag(a, "Empresa").unwrap();
+    g.add_page_tag(a, "web").unwrap();
+    let cat = g.tag_catalog().unwrap();
+    let count = |n: &str| {
+        cat.iter()
+            .find(|t| t.name.to_lowercase() == n)
+            .map(|t| t.count)
+    };
     assert_eq!(
-        names
-            .iter()
-            .filter(|n| n.to_lowercase() == "persona")
-            .count(),
-        1
+        count("empresa"),
+        Some(1),
+        "explicit + implicit counted once"
     );
+    assert_eq!(count("lugar"), Some(1));
+    assert_eq!(count("web"), Some(1));
+    assert_eq!(g.all_page_tags().unwrap()[&a].len(), 2);
 
-    g.remove_page_type(a, "persona").unwrap();
-    assert_eq!(g.get_page(a).unwrap().unwrap().types, ["cliente"]);
+    // Removing the type removes the implicit tag; the explicit one stays.
+    g.set_page_type(a, None).unwrap();
+    assert_eq!(g.pages_with_tag("empresa").unwrap(), [a]);
+    g.remove_page_tag(a, "empresa").unwrap();
+    assert!(g.pages_with_tag("empresa").unwrap().is_empty());
+    g.set_page_type(b, None).unwrap();
+    assert!(g.pages_with_tag("lugar").unwrap().is_empty());
+
+    let cat = g.type_catalog().unwrap();
+    assert!(cat.iter().any(|t| t.name == "empresa" && t.suggested));
     let j = g
         .journal(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap())
         .unwrap();
-    assert!(invalid(g.add_page_type(j.id, "x")));
+    assert!(invalid(g.set_page_type(j.id, Some("x"))));
 }
 
 #[test]
-fn tags_sync_with_the_page() {
+fn renaming_and_removing_tags_cover_tags_and_types() {
+    let (_d, g) = graph();
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["y"]);
+    let c = page(&g, "C", &["z"]);
+    g.add_page_tag(a, "web").unwrap();
+    g.add_page_tag(b, "Web").unwrap();
+    g.add_page_tag(b, "otro").unwrap();
+    g.set_page_type(c, Some("WEB")).unwrap();
+
+    assert_eq!(g.rename_tag("web", "Sitios web").unwrap(), 3);
+    assert_eq!(g.get_page(a).unwrap().unwrap().tags, ["Sitios web"]);
+    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["otro", "Sitios web"]);
+    assert_eq!(g.get_page(c).unwrap().unwrap().types, ["Sitios web"]);
+    assert_eq!(g.pages_with_tag("Sitios web").unwrap().len(), 3);
+    assert!(g.pages_with_tag("web").unwrap().is_empty());
+    assert!(invalid(g.rename_tag("otro", "  # ")));
+
+    // Removing drops the explicit tag everywhere and leaves types alone.
+    assert_eq!(g.remove_tag("sitios web").unwrap(), 2);
+    assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
+    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["otro"]);
+    assert_eq!(g.pages_with_tag("Sitios web").unwrap(), [c]);
+}
+
+#[test]
+fn v5_databases_turn_tag_pages_into_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tag, member) = {
+        let g = Graph::open(dir.path()).unwrap();
+        let member = page(&g, "Member", &["see [[Idea]]"]);
+        let tag = page(&g, "Idea", &["about ideas"]);
+        g.add_page_tag(member, "Idea").unwrap();
+        g.set_page_type(member, Some("persona")).unwrap();
+        // Simulate schema v5: the tag page has kind 'tag', the member two types.
+        g.conn()
+            .execute("UPDATE pages SET kind='tag' WHERE id=?1", [tag.to_string()])
+            .unwrap();
+        g.conn()
+            .execute(
+                "UPDATE pages SET types='[\"persona\",\"lugar\"]' WHERE id=?1",
+                [member.to_string()],
+            )
+            .unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='5' WHERE key='schema'", [])
+            .unwrap();
+        g.conn().execute("DELETE FROM page_tags", []).unwrap();
+        (tag, member)
+    };
+    let g = Graph::open(dir.path()).unwrap();
+    let t = g.get_page(tag).unwrap().unwrap();
+    assert_eq!((t.kind, t.title.as_str()), (PageKind::Note, "Idea"));
+    assert_eq!(texts(&g, tag), [(0, "about ideas".to_string())]);
+    assert_eq!(g.get_page(member).unwrap().unwrap().types, ["persona"]);
+    assert_eq!(g.pages_with_tag("idea").unwrap(), [member]);
+    assert_eq!(g.pages_with_tag("persona").unwrap(), [member]);
+    assert!(g.pages_with_tag("lugar").unwrap().is_empty());
+}
+
+#[test]
+fn ops_from_old_replicas_degrade_tag_pages_to_notes() {
+    let id = synapse_core::new_id();
+    let op: Op = serde_json::from_value(json!({
+        "type": "upsert_page",
+        "page": {"id": id, "title": "Idea", "journal_date": null, "origin_journal": null,
+                 "properties": {}, "created_at": 1, "updated_at": 2, "kind": "tag",
+                 "tags": [], "types": ["a", "b"]}
+    }))
+    .unwrap();
+    let (_d, g) = graph();
+    assert!(
+        g.apply_remote("0000000000003-00000-oldactor0001", &op)
+            .unwrap()
+    );
+    let p = g.get_page(id).unwrap().unwrap();
+    assert_eq!(p.kind, PageKind::Note);
+    assert_eq!(g.pages_with_tag("a").unwrap(), [id]);
+    assert!(
+        g.pages_with_tag("b").unwrap().is_empty(),
+        "only the first type counts"
+    );
+}
+
+#[test]
+fn tags_and_type_sync_with_the_page() {
     let (_a, a) = graph();
     let (_b, b) = graph();
     let p = page(&a, "Note", &["x"]);
-    a.add_page_tag(p, "idea").unwrap();
     a.add_page_tag(p, "proyecto").unwrap();
-    a.add_page_type(p, "concepto").unwrap();
+    a.add_page_tag(p, "idea").unwrap();
+    a.set_page_type(p, Some("concepto")).unwrap();
     ship(&a, &b, 0);
     let q = b.get_page(p).unwrap().unwrap();
     assert_eq!(q.tags, ["idea", "proyecto"]);
     assert_eq!(q.types, ["concepto"]);
     assert_eq!(b.pages_with_tag("IDEA").unwrap(), [p]);
-    // The tag pages travel with it.
-    assert_eq!(
-        b.page_by_title("idea").unwrap().unwrap().kind,
-        PageKind::Tag
+    assert_eq!(b.pages_with_tag("concepto").unwrap(), [p]);
+    assert!(
+        b.page_by_title("idea").unwrap().is_none(),
+        "no tag pages travel"
     );
+    b.rename_tag("idea", "ocurrencia").unwrap();
+    ship(&b, &a, 0);
+    assert_eq!(
+        a.get_page(p).unwrap().unwrap().tags,
+        ["ocurrencia", "proyecto"]
+    );
+}
+
+#[test]
+fn v5_migration_sorts_tags_and_survives_malformed_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let (a, bad, bad2) = {
+        let g = Graph::open(dir.path()).unwrap();
+        let a = page(&g, "A", &["x"]);
+        let bad = page(&g, "Bad", &["x"]);
+        let bad2 = page(&g, "Bad2", &["x"]);
+        let set = |id: PageId, tags: &str, types: &str| {
+            g.conn()
+                .execute(
+                    "UPDATE pages SET tags=?2, types=?3 WHERE id=?1",
+                    [id.to_string(), tags.to_string(), types.to_string()],
+                )
+                .unwrap();
+        };
+        set(a, "[\"zeta\",\"Alfa\",\"alfa\"]", "[\"persona\"]");
+        set(bad, "not json", "[]");
+        set(bad2, "[\"ok\"]", "{oops");
+        g.conn()
+            .execute("UPDATE meta SET value='5' WHERE key='schema'", [])
+            .unwrap();
+        (a, bad, bad2)
+    };
+    let g = Graph::open(dir.path()).unwrap();
+    assert_eq!(g.get_page(a).unwrap().unwrap().tags, ["Alfa", "zeta"]);
+    assert_eq!(g.pages_with_tag("alfa").unwrap(), [a]);
+    assert_eq!(g.pages_with_tag("persona").unwrap(), [a]);
+    assert!(g.get_page(bad).unwrap().unwrap().tags.is_empty());
+    let p = g.get_page(bad2).unwrap().unwrap();
+    assert_eq!((p.tags, p.types), (vec!["ok".to_string()], vec![]));
+    assert_eq!(g.pages_with_tag("ok").unwrap(), [bad2]);
+}
+
+#[test]
+fn remote_upserts_store_tags_sorted() {
+    let id = synapse_core::new_id();
+    let op: Op = serde_json::from_value(json!({
+        "type": "upsert_page",
+        "page": {"id": id, "title": "N", "journal_date": null, "origin_journal": null,
+                 "properties": {}, "created_at": 1, "updated_at": 2, "kind": "note",
+                 "tags": ["zeta", "Beta", "beta", "alfa"], "types": []}
+    }))
+    .unwrap();
+    let (_d, g) = graph();
+    assert!(
+        g.apply_remote("0000000000003-00000-oldactor0001", &op)
+            .unwrap()
+    );
+    assert_eq!(
+        g.get_page(id).unwrap().unwrap().tags,
+        ["alfa", "Beta", "zeta"]
+    );
+}
+
+#[test]
+fn a_direct_hub_is_an_implicit_tag_of_its_members() {
+    let (_d, g) = graph();
+    let anime = hub(&g, "Anime");
+    let media = hub(&g, "Media");
+    g.add_to_hub(anime, media).unwrap();
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.add_to_hub(a, anime).unwrap();
+    g.add_to_hub(b, anime).unwrap();
+    // The hub tag is not stored in `tags`, ancestors do not count, hubs and templates get none.
+    assert!(g.get_page(a).unwrap().unwrap().tags.is_empty());
+    let mut got = g.pages_with_tag("anime").unwrap();
+    got.sort();
+    let mut want = vec![a, b];
+    want.sort();
+    assert_eq!(got, want);
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+    let tmpl = g.hub_template(anime).unwrap();
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&tmpl));
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&anime));
+
+    // Merges with a same-name type: one tag, the page counted once.
+    g.set_page_type(a, Some("anime")).unwrap();
+    let cat = g.tag_catalog().unwrap();
+    assert_eq!(
+        cat.iter()
+            .filter(|t| t.name.to_lowercase() == "anime")
+            .count(),
+        1
+    );
+    assert_eq!(
+        cat.iter()
+            .find(|t| t.name.to_lowercase() == "anime")
+            .unwrap()
+            .count,
+        2
+    );
+    assert_eq!(g.all_page_tags().unwrap()[&a], ["anime"]);
+
+    // Renaming the hub re-indexes its members without touching them.
+    g.rename_page(anime, "Series").unwrap();
+    assert!(
+        g.pages_with_tag("Anime").unwrap().contains(&a),
+        "type still implies it"
+    );
+    assert!(!g.pages_with_tag("Anime").unwrap().contains(&b));
+    assert!(g.pages_with_tag("Series").unwrap().contains(&b));
+
+    // Moving a page between hubs moves the implicit tag; leaving the hub drops it.
+    g.add_to_hub(b, media).unwrap();
+    assert!(!g.pages_with_tag("Series").unwrap().contains(&b));
+    assert_eq!(g.pages_with_tag("Media").unwrap(), [b]);
+    g.remove_from_hub(b, media).unwrap();
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+
+    // rename_tag never renames the hub; only explicit tags and types.
+    g.add_to_hub(b, media).unwrap();
+    assert_eq!(g.rename_tag("Media", "Press").unwrap(), 0);
+    assert_eq!(g.get_page(media).unwrap().unwrap().title, "Media");
+    assert_eq!(g.pages_with_tag("Media").unwrap(), [b]);
+
+    // Deleting the hub removes the tag from its members.
+    g.delete_page(media).unwrap();
+    assert!(g.pages_with_tag("Media").unwrap().is_empty());
+}
+
+#[test]
+fn v6_databases_gain_hub_tags() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = {
+        let g = Graph::open(dir.path()).unwrap();
+        let h = hub(&g, "Anime");
+        let a = page(&g, "A", &["x"]);
+        g.add_to_hub(a, h).unwrap();
+        g.conn().execute("DELETE FROM page_tags", []).unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='6' WHERE key='schema'", [])
+            .unwrap();
+        a
+    };
+    let g = Graph::open(dir.path()).unwrap();
+    assert_eq!(g.pages_with_tag("anime").unwrap(), [a]);
+}
+
+fn type_row(g: &Graph, name: &str) -> Option<(String, u32, Option<String>)> {
+    g.type_catalog()
+        .unwrap()
+        .into_iter()
+        .find(|t| synapse_core::title_key(&t.name) == synapse_core::title_key(name))
+        .map(|t| (t.name, t.count, t.icon))
+}
+
+#[test]
+fn types_carry_an_icon_and_can_exist_without_pages() {
+    let (_d, g) = graph();
+    let p = page(&g, "Ada", &["x"]);
+    g.set_page_type(p, Some("persona")).unwrap();
+    g.set_type_icon("Persona", Some(" 🧑 ")).unwrap();
+    assert_eq!(
+        type_row(&g, "persona"),
+        Some(("persona".into(), 1, Some("🧑".into())))
+    );
+    // Unused suggestions keep listing (e.g. "sueño"), and can get an icon.
+    assert_eq!(type_row(&g, "sueño"), Some(("sueño".into(), 0, None)));
+    g.set_type_icon("sueño", Some("💭")).unwrap();
+    assert_eq!(
+        type_row(&g, "sueño"),
+        Some(("sueño".into(), 0, Some("💭".into())))
+    );
+    // A type created explicitly lists with no pages.
+    assert_eq!(g.create_type("  Libro ").unwrap(), "Libro");
+    assert_eq!(type_row(&g, "libro"), Some(("Libro".into(), 0, None)));
+    assert_eq!(g.create_type("LIBRO").unwrap(), "Libro");
+    // Icons are short emoji, not words; clearing works.
+    assert!(invalid(g.set_type_icon("Libro", Some("ab"))));
+    assert!(invalid(g.set_type_icon("Libro", Some("📕 📗"))));
+    assert!(invalid(g.set_type_icon("Libro", Some(&"📕".repeat(17)))));
+    g.set_type_icon("Libro", Some("👨‍👩‍👧‍👦")).unwrap();
+    g.set_type_icon("Libro", None).unwrap();
+    assert_eq!(type_row(&g, "libro"), Some(("Libro".into(), 0, None)));
+    assert!(invalid(g.create_type("   ")));
+}
+
+#[test]
+fn renaming_a_type_keeps_its_icon_and_removing_drops_it() {
+    let (_d, g) = graph();
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.set_page_type(a, Some("persona")).unwrap();
+    g.set_page_type(b, Some("persona")).unwrap();
+    g.add_page_tag(b, "persona").unwrap();
+    g.set_type_icon("persona", Some("🧑")).unwrap();
+    assert_eq!(g.rename_tag("persona", "Gente").unwrap(), 2);
+    assert_eq!(
+        type_row(&g, "gente"),
+        Some(("Gente".into(), 2, Some("🧑".into())))
+    );
+    // The old name is gone; a seeded suggestion of that name is not offered again.
+    assert_eq!(type_row(&g, "persona"), None);
+    // Merging into a type with its own icon keeps that icon.
+    g.set_type_icon("humano", Some("🙂")).unwrap();
+    g.rename_tag("gente", "humano").unwrap();
+    assert_eq!(
+        type_row(&g, "humano"),
+        Some(("humano".into(), 2, Some("🙂".into())))
+    );
+    // Renaming an unused suggestion through rename_type keeps it listed.
+    g.set_type_icon("sueño", Some("💭")).unwrap();
+    assert_eq!(g.rename_type("sueño", "Sueños").unwrap(), 0);
+    assert_eq!(
+        type_row(&g, "sueños"),
+        Some(("Sueños".into(), 0, Some("💭".into())))
+    );
+    assert_eq!(type_row(&g, "sueño"), None);
+    // Case-only renames keep the definition.
+    g.rename_type("Sueños", "sueños").unwrap();
+    assert_eq!(
+        type_row(&g, "sueños"),
+        Some(("sueños".into(), 0, Some("💭".into())))
+    );
+
+    // Removing a type clears it from its pages (explicit tags stay) and drops the icon.
+    assert_eq!(g.remove_type("Humano").unwrap(), 2);
+    assert!(g.get_page(a).unwrap().unwrap().types.is_empty());
+    assert_eq!(g.get_page(b).unwrap().unwrap().tags, ["humano"]);
+    assert_eq!(type_row(&g, "humano"), None);
+    // Defining it again starts without an icon.
+    g.create_type("humano").unwrap();
+    assert_eq!(type_row(&g, "humano"), Some(("humano".into(), 0, None)));
+    // A removed suggestion stays hidden until used again.
+    g.remove_type("lugar").unwrap();
+    assert_eq!(type_row(&g, "lugar"), None);
+    g.set_page_type(a, Some("lugar")).unwrap();
+    assert_eq!(type_row(&g, "lugar"), Some(("lugar".into(), 1, None)));
+}
+
+#[test]
+fn renaming_a_tag_leaves_undefined_types_alone() {
+    let (_d, g) = graph();
+    let a = page(&g, "A", &["x"]);
+    g.add_page_tag(a, "idea").unwrap();
+    let seq = g.last_seq().unwrap();
+    g.rename_tag("idea", "ocurrencia").unwrap();
+    // "idea" is only a suggestion (no definition): it stays offered, nothing is defined.
+    assert_eq!(type_row(&g, "idea"), Some(("idea".into(), 0, None)));
+    assert!(g.type_defs().unwrap().is_empty());
+    assert!(
+        g.ops_since(seq, 100)
+            .unwrap()
+            .iter()
+            .all(|r| !matches!(r.op, Op::PutTypeDef { .. }))
+    );
+    // Clearing the icon of an undefined type is a no-op.
+    g.set_type_icon("idea", None).unwrap();
+    g.set_type_icon("nueva", None).unwrap();
+    assert!(g.type_defs().unwrap().is_empty());
+    assert_eq!(type_row(&g, "nueva"), None);
+}
+
+#[test]
+fn tag_catalog_says_where_each_tag_comes_from() {
+    let (_d, g) = graph();
+    let h = hub(&g, "Anime");
+    let a = page(&g, "A", &["x"]);
+    let b = page(&g, "B", &["x"]);
+    g.add_to_hub(a, h).unwrap();
+    g.add_page_tag(a, "idea").unwrap();
+    g.set_page_type(b, Some("Idea")).unwrap();
+    g.add_page_tag(b, "idea").unwrap();
+    let cat = g.tag_catalog().unwrap();
+    let get = |n: &str| cat.iter().find(|t| t.name.eq_ignore_ascii_case(n)).unwrap();
+    let idea = get("idea");
+    assert_eq!(
+        (idea.count, idea.explicit, idea.typed, idea.from_hub),
+        (2, 2, 1, 0)
+    );
+    let anime = get("anime");
+    assert_eq!(
+        (anime.count, anime.explicit, anime.typed, anime.from_hub),
+        (1, 0, 0, 1)
+    );
+}
+
+#[test]
+fn type_definitions_sync_last_writer_wins() {
+    let (_a, a) = graph();
+    let (_b, b) = graph();
+    a.set_type_icon("persona", Some("🧑")).unwrap();
+    a.create_type("Libro").unwrap();
+    assert_eq!(ship(&a, &a, 0), 0, "own ops are not re-applied");
+    ship(&a, &b, 0);
+    assert_eq!(type_row(&b, "persona").unwrap().2.as_deref(), Some("🧑"));
+    assert_eq!(type_row(&b, "libro"), Some(("Libro".into(), 0, None)));
+    let (seq_a, seq_b) = (a.last_seq().unwrap(), b.last_seq().unwrap());
+    // Concurrent edits: both replicas end with the same icon.
+    a.set_type_icon("persona", Some("👤")).unwrap();
+    b.set_type_icon("persona", Some("🙋")).unwrap();
+    ship(&a, &b, seq_a);
+    ship(&b, &a, seq_b);
+    assert_eq!(
+        type_row(&a, "persona").unwrap().2,
+        type_row(&b, "persona").unwrap().2
+    );
+    // Removal travels as a tombstone.
+    let seq_a = a.last_seq().unwrap();
+    a.remove_type("libro").unwrap();
+    ship(&a, &b, seq_a);
+    assert_eq!(type_row(&b, "libro"), None);
+    // The op round-trips through JSON; missing fields default.
+    for r in a.ops_since(0, 1000).unwrap() {
+        let s = serde_json::to_string(&r.op).unwrap();
+        assert_eq!(serde_json::from_str::<Op>(&s).unwrap(), r.op);
+    }
+    let op: Op =
+        serde_json::from_value(json!({"type": "put_type_def", "def": {"name": "x"}})).unwrap();
+    assert!(matches!(op, Op::PutTypeDef { def } if def.icon.is_none() && !def.removed));
+}
+
+#[test]
+fn v7_databases_gain_type_definitions() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let g = Graph::open(dir.path()).unwrap();
+        let p = page(&g, "A", &["x"]);
+        g.set_page_type(p, Some("persona")).unwrap();
+        g.conn().execute("DROP TABLE type_defs", []).unwrap();
+        g.conn()
+            .execute("UPDATE meta SET value='7' WHERE key='schema'", [])
+            .unwrap();
+    }
+    let g = Graph::open(dir.path()).unwrap();
+    let schema: String = g
+        .conn()
+        .query_row("SELECT value FROM meta WHERE key='schema'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(schema, "8");
+    assert_eq!(type_row(&g, "persona"), Some(("persona".into(), 1, None)));
+    g.set_type_icon("persona", Some("🧑")).unwrap();
+    assert_eq!(type_row(&g, "persona").unwrap().2.as_deref(), Some("🧑"));
 }

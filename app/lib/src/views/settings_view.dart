@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../state/keymap.dart';
 import '../theme/theme.dart';
 import '../widgets/common.dart';
+import 'theme_editor.dart';
 
 /// Theme picker and key bindings.
 class SettingsView extends StatelessWidget {
@@ -53,6 +54,37 @@ class SettingsView extends StatelessWidget {
                   ],
                   selected: app.themeId == t.id,
                 ),
+              for (final t in app.customThemes)
+                _ThemeCard(
+                  id: t.id,
+                  label: t.label,
+                  swatch: [
+                    t.colors.paper,
+                    t.colors.surface,
+                    t.colors.accent,
+                    t.colors.ref,
+                  ],
+                  selected: app.themeId == t.id,
+                  onEdit: () {
+                    // Select it while editing so the whole app previews the edits.
+                    final previous = app.themeId;
+                    app.setTheme(t.id);
+                    showThemeEditor(context, t, previousThemeId: previous);
+                  },
+                  onDelete: () => app.deleteCustomTheme(t.id),
+                ),
+              _NewThemeCard(
+                onTap: () {
+                  final previous = app.themeId;
+                  final t = app.createCustomTheme();
+                  showThemeEditor(
+                    context,
+                    t,
+                    isNew: true,
+                    previousThemeId: previous,
+                  );
+                },
+              ),
             ],
           ),
           const SizedBox(height: 36),
@@ -111,8 +143,12 @@ class _ThemeCard extends StatelessWidget {
     required this.label,
     required this.swatch,
     required this.selected,
+    this.onEdit,
+    this.onDelete,
   });
 
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final String id;
   final String label;
   final List<Color> swatch;
@@ -148,13 +184,92 @@ class _ThemeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                      color: colors.ink,
+                    ),
+                  ),
+                ),
+                if (onEdit != null)
+                  _CardAction(
+                    key: ValueKey('theme-edit-$id'),
+                    icon: Icons.edit_outlined,
+                    tooltip: 'Edit theme',
+                    onTap: onEdit!,
+                  ),
+                if (onDelete != null)
+                  _CardAction(
+                    key: ValueKey('theme-delete-$id'),
+                    icon: Icons.delete_outline_rounded,
+                    tooltip: 'Delete theme',
+                    onTap: onDelete!,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CardAction extends StatelessWidget {
+  const _CardAction({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkResponse(
+    onTap: onTap,
+    radius: 14,
+    child: Tooltip(
+      message: tooltip,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Icon(icon, size: 16, color: context.colors.faint),
+      ),
+    ),
+  );
+}
+
+class _NewThemeCard extends StatelessWidget {
+  const _NewThemeCard({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return InkWell(
+      key: const ValueKey('theme-new'),
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        width: 132,
+        height: 70,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: colors.line),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_rounded, color: colors.accent),
             Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: colors.ink,
-              ),
+              'New theme',
+              style: TextStyle(fontSize: 13, color: colors.muted),
             ),
           ],
         ),

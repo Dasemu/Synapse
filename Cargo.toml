@@ -16,3 +16,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 uuid = { version = "1", features = ["v5", "v7", "serde"] }
+
+# Debug builds (`flutter run`, tests) with optimised code: dependencies (SQLite, serde...)
+# at full speed, our crates lightly optimised. Unoptimised, the graph is ~8x slower.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

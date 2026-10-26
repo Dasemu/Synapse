@@ -82,7 +82,6 @@ impl Graph {
             dir,
             now_override: Cell::new(None),
         };
-        graph.repair_tag_pages()?;
         Ok(graph)
     }
 
@@ -358,12 +357,9 @@ impl Graph {
             st.query_map([&old_key], |r| r.get(0))?
                 .collect::<std::result::Result<_, _>>()?
         };
-        let old_title = std::mem::replace(&mut page.title, new_title.to_string());
+        page.title = new_title.to_string();
         page.updated_at = self.now_ms();
         self.write_page(&page, &self.tick())?;
-        if page.is_tag() {
-            self.retitle_tag(&old_title, new_title)?;
-        }
         for bid in referencing {
             if let Some(mut b) = self.get_block(parse_id(&bid)?)? {
                 let rewritten = parse::rewrite_refs(&b.content, &old_key, new_title);
@@ -411,11 +407,6 @@ impl Graph {
     pub(crate) fn delete_page_rows(&self, id: PageId) -> Result<()> {
         // Members of a deleted hub leave it (each member page is rewritten and logged).
         self.drop_hub_from_members(id)?;
-        if let Some(p) = self.get_page(id)?
-            && p.is_tag()
-        {
-            self.drop_tag_from_members(&p.title)?;
-        }
         let ids: Vec<String> = {
             let mut st = self
                 .conn
@@ -1170,6 +1161,19 @@ impl Graph {
                     true
                 }
             }
+            Op::PutTypeDef { def } => {
+                let local: Option<String> = self
+                    .row(
+                        "SELECT hlc FROM type_defs WHERE type_key=?1",
+                        [title_key(&def.name)],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                local.is_none_or(|l| hlc > l.as_str()) && {
+                    self.write_type_def_row(def, hlc)?;
+                    true
+                }
+            }
         };
         if applied {
             self.log(hlc, op)?;
@@ -1198,6 +1202,8 @@ impl Graph {
     }
 
     fn write_page_row(&self, p: &Page, hlc: &str) -> Result<()> {
+        // Remote ops may carry tags in insertion order: store them sorted and deduplicated.
+        let tags = crate::tags::sorted_tags(&p.tags);
         self.exec(
             "INSERT INTO pages(id, title, title_key, journal_date, origin_journal, properties, created_at, updated_at, hlc, kind, description, hubs, tags, types)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
@@ -1216,18 +1222,11 @@ impl Graph {
                 p.kind.as_str(),
                 p.description,
                 serde_json::to_string(&p.hubs)?,
-                serde_json::to_string(&p.tags)?,
+                serde_json::to_string(&tags)?,
                 serde_json::to_string(&p.types)?
             ],
         )?;
         let id = p.id.to_string();
-        self.exec("DELETE FROM page_tags WHERE page_id=?1", [&id])?;
-        for t in &p.tags {
-            self.exec(
-                "INSERT OR IGNORE INTO page_tags(page_id, tag_key) VALUES (?1, ?2)",
-                params![id, title_key(t)],
-            )?;
-        }
         self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&id])?;
         // A page belongs to one hub: only the first entry counts (older replicas may sync more).
         for h in p.hubs.iter().take(1) {
@@ -1235,6 +1234,25 @@ impl Graph {
                 "INSERT OR IGNORE INTO page_hubs(page_id, hub_id) VALUES (?1, ?2)",
                 params![id, h.to_string()],
             )?;
+        }
+        // Tag index: tags, type and direct hub. The hub's title is an implicit tag of its
+        // members, so they are re-indexed too (this page may be a hub, renamed or converted).
+        schema::reindex_page_tags(&self.conn, &id)?;
+        self.reindex_hub_members(&id)?;
+        Ok(())
+    }
+
+    /// Re-indexes the tags of every page whose direct hub is `hub`.
+    pub(crate) fn reindex_hub_members(&self, hub: &str) -> Result<()> {
+        let ids: Vec<String> = {
+            let mut st = self
+                .conn
+                .prepare_cached("SELECT page_id FROM page_hubs WHERE hub_id=?1")?;
+            st.query_map([hub], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?
+        };
+        for m in ids {
+            schema::reindex_page_tags(&self.conn, &m)?;
         }
         Ok(())
     }
@@ -1272,6 +1290,8 @@ impl Graph {
         // `hubs` and dangle until those pages are rewritten.
         self.exec("DELETE FROM page_hubs WHERE page_id=?1", [&s])?;
         self.exec("DELETE FROM page_tags WHERE page_id=?1", [&s])?;
+        // Members of a deleted hub lose its implicit tag.
+        self.reindex_hub_members(&s)?;
         self.exec(
             "INSERT OR REPLACE INTO tombstones(id, hlc) VALUES (?1, ?2)",
             params![s, hlc],
@@ -1394,6 +1414,22 @@ impl Graph {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    /// Stores a type definition row (no op logged), keyed by the name's [`title_key`].
+    pub(crate) fn write_type_def_row(&self, def: &TypeDef, hlc: &str) -> Result<()> {
+        self.exec(
+            "INSERT OR REPLACE INTO type_defs(type_key, name, icon, removed, hlc)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                title_key(&def.name),
+                def.name.trim(),
+                def.icon,
+                def.removed,
+                hlc
+            ],
+        )?;
         Ok(())
     }
 

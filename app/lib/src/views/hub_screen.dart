@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../backend/graph_backend.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import '../widgets/type_icon.dart';
 import '../widgets/common.dart';
 import '../widgets/dates.dart';
 import '../widgets/pickers.dart';
@@ -296,6 +297,7 @@ class _MemberRowState extends State<_MemberRow> {
                   color: colors.accent.withAlpha(0xCC),
                 ),
                 const SizedBox(width: 10),
+                TypeIcon(m.pageType, size: 14, gap: 6),
                 Expanded(
                   child: Text(
                     m.title,

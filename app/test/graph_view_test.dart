@@ -123,24 +123,29 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
-  test('tree groups a/b titles and tags', () async {
+  test('tree groups a/b titles; tags stay out', () async {
     final model = GraphModel(await demo().graphData());
     final root = buildNamespaceTree(model);
     TreeItem branch(String l) => root.children.firstWhere((c) => c.label == l);
-    // Hubs are covered by the hubs group below; notes in no hub hang off the centre.
-    // Namespaces have no node of their own: `proj` hangs off the centre.
+    // Namespaces have no node of their own: `proj` hangs off the centre, next to the
+    // notes in no hub. Tags are not part of the tree.
     expect(root.children.map((c) => c.label), [
       'Alpha',
       'Beta',
       'Lonely',
       'proj',
-      'Tags',
       'topic',
     ]);
     expect(branch('proj').children.single.label, 'one');
-    final topic = branch('Tags').children.single;
-    expect(topic.label, '#topic');
-    expect(topic.children.map((c) => c.label).toSet(), {'Alpha', 'Beta'});
+  });
+
+  test('every page appears once in the tree', () async {
+    final model = GraphModel(await demo().graphData());
+    final globals = [
+      for (final t in _treeItems(buildNamespaceTree(model)))
+        if (t.global != null) t.global!,
+    ];
+    expect(globals.toSet().length, globals.length);
   });
 
   test(
@@ -175,6 +180,7 @@ void main() {
       id: t,
       title: t,
       createdAt: 0,
+      isTag: false,
       degree: 1,
       backlinks: 0,
       cluster: 0,
@@ -258,6 +264,51 @@ void main() {
     expect(hull.contains(const Offset(5, 5)), isFalse);
   });
 
+  group('virtual tag nodes', () {
+    // Two pages tagged "ocio" through TAGGED edges (kind 8) to one tag node.
+    GraphData tagData() {
+      GraphNode n(String id, String title, {bool tag = false}) => GraphNode(
+        id: id,
+        title: title,
+        createdAt: 0,
+        isTag: tag,
+        degree: 1,
+        backlinks: 0,
+        cluster: 0,
+        isHub: false,
+        tags: const [],
+      );
+      final nodes = [
+        n('0', 'Games'),
+        n('1', 'Chess'),
+        n('tag:ocio', 'ocio', tag: true),
+        n('tag:a/b', 'a/b', tag: true),
+      ];
+      final edges = [(0, 2, 8), (1, 2, 8)];
+      return GraphData(
+        nodes: nodes,
+        sources: Uint32List.fromList([for (final e in edges) e.$1]),
+        targets: Uint32List.fromList([for (final e in edges) e.$2]),
+        kinds: Uint8List.fromList([for (final e in edges) e.$3]),
+        weights: Float32List.fromList([for (final _ in edges) 1.0]),
+        seq: 1,
+      );
+    }
+
+    test('tag nodes stay out of the tree', () {
+      final m = GraphModel(tagData());
+      expect(m.isTag(2), isTrue);
+      final root = buildNamespaceTree(m);
+      expect(_treeItems(root).where((t) => t.global == 2), isEmpty);
+      expect(root.children.where((c) => c.label == 'Tags'), isEmpty);
+    });
+
+    test('filtering by a tag node keeps the tagged pages', () {
+      final m = GraphModel(tagData());
+      expect(const GraphFilter().copyWith(tag: () => 2).apply(m), [0, 1, 2]);
+    });
+  });
+
   group('hubs', () {
     // Media (hub) -> TV (hub) -> Anime (page); Media -> Books; Notes (page) in Media;
     // a TV -> Media CONTAINS edge (a cycle the tree must survive); a journal (never a member).
@@ -273,6 +324,7 @@ void main() {
         title: title,
         journalDate: journal,
         createdAt: 0,
+        isTag: false,
         degree: 1,
         backlinks: 0,
         cluster: 0,
@@ -347,12 +399,8 @@ void main() {
       });
       final tv = media.children.firstWhere((c) => c.label == 'TV');
       expect(tv.isHub, isTrue);
-      // Media already on the path: a leaf, not an endless loop.
-      expect(tv.children.map((c) => c.label).toSet(), {'Anime', 'Media'});
-      expect(
-        tv.children.firstWhere((c) => c.label == 'Media').children,
-        isEmpty,
-      );
+      // Media is already placed: it does not show again under TV (no loop, no repeat).
+      expect(tv.children.map((c) => c.label).toSet(), {'Anime'});
     });
 
     testWidgets('clusters mode groups by hub by default', (tester) async {
@@ -360,6 +408,78 @@ void main() {
       await mode(tester, 'Clusters');
       expect(find.byKey(const ValueKey('cluster-group')), findsOneWidget);
       expect(find.text('Group: hubs'), findsOneWidget);
+    });
+  });
+
+  group('interactive tree', () {
+    // One hub with 200 pages: far more than the tree used to show ("… N more").
+    GraphData bigHub() {
+      GraphNode n(int i, {bool hub = false}) => GraphNode(
+        id: '$i',
+        title: hub ? 'Library' : 'Page $i',
+        createdAt: 0,
+        isTag: false,
+        degree: 1,
+        backlinks: 0,
+        cluster: 0,
+        isHub: hub,
+        homeHub: 0,
+        tags: const [],
+      );
+      const count = 200;
+      return GraphData(
+        nodes: [n(0, hub: true), for (var i = 1; i <= count; i++) n(i)],
+        sources: Uint32List.fromList([for (var i = 1; i <= count; i++) 0]),
+        targets: Uint32List.fromList([for (var i = 1; i <= count; i++) i]),
+        kinds: Uint8List.fromList([for (var i = 1; i <= count; i++) 7]),
+        weights: Float32List.fromList([for (var i = 1; i <= count; i++) 1]),
+        seq: 1,
+      );
+    }
+
+    test('nothing is capped; a tree that fits opens whole', () {
+      final root = buildNamespaceTree(GraphModel(bigHub()));
+      final hub = root.children.single;
+      expect(hub.children, hasLength(200));
+      expect(hub.children.every((c) => c.global != null), isTrue);
+      expandInitial(root);
+      expect(root.expanded && hub.expanded, isTrue);
+    });
+
+    test('a huge tree opens only within the budget', () {
+      final root = buildNamespaceTree(GraphModel(bigHub()));
+      expandInitial(root, all: 100, budget: 50);
+      expect(root.children.single.expanded, isFalse);
+    });
+
+    test('small branches open even when the centre is crowded', () {
+      final root = TreeItem('Graph');
+      for (var i = 0; i < 300; i++) {
+        root.children.add(TreeItem('Note $i', global: i));
+      }
+      final ns = TreeItem('Anthropic')..children.add(TreeItem('Claude'));
+      root.children.add(ns);
+      expandInitial(root);
+      expect(ns.expanded, isTrue);
+    });
+
+    testWidgets('branches expand and collapse in the canvas', (tester) async {
+      await pumpGraph(tester, _HubBackend(bigHub()));
+      await mode(tester, 'Tree');
+      final state = tester.state<TreeCanvasState>(find.byType(TreeCanvas));
+      expect(state.visibleCount, 202);
+      state.toggle(state.root.children.single);
+      await settle(tester);
+      expect(find.text('2 of 202'), findsOneWidget);
+      state.toggle(state.root.children.single);
+      await settle(tester);
+      expect(state.visibleCount, 202);
+      await tester.tap(find.byKey(const ValueKey('tree-collapse-all')));
+      await settle(tester);
+      expect(state.visibleCount, 2);
+      await tester.tap(find.byKey(const ValueKey('tree-expand-all')));
+      await settle(tester);
+      expect(find.text('202 of 202'), findsOneWidget);
     });
   });
 }
@@ -371,4 +491,12 @@ class _HubBackend extends MemoryBackend {
 
   @override
   Future<GraphData> graphData() async => _data;
+}
+
+/// Every item of a tree, depth first.
+Iterable<TreeItem> _treeItems(TreeItem t) sync* {
+  yield t;
+  for (final c in t.children) {
+    yield* _treeItems(c);
+  }
 }

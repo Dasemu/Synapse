@@ -20,6 +20,30 @@ pub struct RestoreReport {
     pub safety_snapshot: Option<SnapshotInfo>,
 }
 
+/// Brings type definitions back to the snapshot's `types.json` (missing file: none). Types
+/// defined now but not in the snapshot lose their icon and stay defined (a tombstone would
+/// also hide a seeded suggestion of that name). Bad entries are skipped.
+fn restore_types(graph: &Graph, history: &History, files: &crate::repo::Files) -> Result<()> {
+    let wanted: Vec<export::TypeEntry> = match files.get(export::TYPES_FILE) {
+        Some(oid) => serde_json::from_str(&history.read_blob(*oid)?).unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let mut keep: HashSet<String> = HashSet::new();
+    for t in &wanted {
+        if skip_invalid(graph.create_type(&t.name))?.is_some()
+            && skip_invalid(graph.set_type_icon(&t.name, t.icon.as_deref()))?.is_some()
+        {
+            keep.insert(synapse_core::title_key(&t.name));
+        }
+    }
+    for (key, def) in graph.type_defs()? {
+        if !def.removed && def.icon.is_some() && !keep.contains(&key) {
+            graph.set_type_icon(&def.name, None)?;
+        }
+    }
+    Ok(())
+}
+
 /// Test hook: fail after this many block writes/deletes.
 type Fault<'a> = &'a Cell<Option<usize>>;
 
@@ -53,7 +77,6 @@ fn atomic<T>(graph: &Graph, f: impl FnOnce() -> Result<T>) -> Result<T> {
 struct Plan {
     page: PageId,
     is_hub: bool,
-    is_tag: bool,
     description: String,
     /// Titles of the hubs the page belongs to.
     hubs: Vec<String>,
@@ -172,7 +195,6 @@ fn plan(graph: &Graph, title: &str, parsed: &ParsedPage, steal: bool) -> Result<
     Ok(Plan {
         page: page.id,
         is_hub: parsed.is_hub,
-        is_tag: parsed.is_tag,
         description: parsed.description.clone(),
         hubs: parsed.hubs.clone(),
         tags: parsed.tags.clone(),
@@ -223,8 +245,6 @@ fn apply_kind(graph: &Graph, plan: &Plan) -> Result<bool> {
     };
     let kind = if plan.is_hub {
         PageKind::Hub
-    } else if plan.is_tag {
-        PageKind::Tag
     } else {
         PageKind::Note
     };
@@ -440,6 +460,7 @@ impl History {
                     report.removed += 1;
                 }
             }
+            restore_types(graph, this, &files)?;
             Ok(())
         })?;
         Ok(report)

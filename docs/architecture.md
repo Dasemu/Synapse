@@ -28,19 +28,42 @@ crates may add their own tables to the same database (prefix them: `search_*`, `
 - **Assets**: metadata rows; bytes in the blob store.
 
 ## Tags and types (`synapse-core::{tags, types}`)
-- **Tags are pages** of kind `tag` (topics such as "tecnología"). A page carries
-  `Page.tags: Vec<String>` (tag page titles; `pages.tags`, schema v5, synced with the page, LWW
-  per page); the derived `page_tags(page_id, tag_key)` index is rewritten on every page write.
-  Setting a tag creates the tag page or converts a note to one; hubs, journals and templates
-  cannot be tags, and tag pages cannot be tagged. Renaming/deleting a tag page rewrites/removes
-  it in its members; opening the graph creates tag pages for tag names that lack one.
-  API: `set_page_tags`, `add_page_tag`, `remove_page_tag`, `pages_with_tag`, `tag_catalog`.
-  The graph has a `TAGGED` edge from each tagged page to its tag pages.
-- **Types** are plain names saying what a page is: `Page.types` (`pages.types`, no page, no
-  index). API: `set_page_types`, `add_page_type`, `remove_page_type`, `type_catalog` (types in
-  use by count, then the seeded `SUGGESTED_TYPES`).
-- Both are exported as `synapse-tags::` / `synapse-types::`, and tag pages as
-  `synapse-kind:: tag` (see `history.md`).
+- **Tags are plain names**, never pages. A page carries `Page.tags: Vec<String>` (`pages.tags`,
+  synced with the page, LWW per page), stored sorted case-insensitively by `title_key`. The
+  derived `page_tags(page_id, tag_key)` index covers the page's tags plus its type and is
+  rewritten on every page write. Journals and templates cannot be tagged.
+  API: `set_page_tags`, `add_page_tag`, `remove_page_tag`, `pages_with_tag`, `tag_catalog`,
+  `rename_tag` (tags and types, merging duplicates) and `remove_tag` (explicit tags only).
+- **A page has at most one type** (`Page.types`, 0 or 1 entries; `Page::page_type()`), a name
+  saying what the page is. It implies a tag of the same name. API: `set_page_type(page,
+  Option<&str>)`, `type_catalog` (types in use by count, then the seeded `SUGGESTED_TYPES`).
+- **Type definitions** (schema v8): graph-wide metadata of a type name lives in
+  `type_defs(type_key, name, icon, removed, hlc)` (`TypeDef`), synced with its own op
+  `Op::PutTypeDef { def }`, last writer wins per name key (like `SetAlias`). It carries the
+  type's emoji (`icon`, a short non-ASCII string, `normalize_icon`) and keeps a type in the
+  vocabulary while no page uses it; `removed` is a tombstone (it also hides a seeded
+  suggestion of that name). API: `create_type`, `set_type_icon(name, Option<&str>)`,
+  `rename_type` (`rename_tag` plus keeping an unused type), `remove_type` (clears the type
+  from its pages, tombstones the definition), `type_defs`, `all_page_types`. `rename_tag`
+  moves the definition to the new name (a target with its own icon keeps it). `type_catalog`
+  lists used types, then defined unused ones, then remaining suggestions, each with its icon;
+  `tag_catalog` counts per tag the pages listing it (`explicit`), typed with it (`typed`)
+  and carrying it through their hub (`from_hub`).
+- **A page's direct hub is an implicit tag**, like its type: members of hub "Anime" are filed
+  under "Anime" (`page_tags`, `pages_with_tag`, `tag_catalog`, the graph's tag node). It is
+  not stored in `Page.tags` and merges with a same-name type or tag. Only the direct hub
+  counts (not ancestors); hubs, templates and journals get none. The index is derived, so
+  renaming or deleting a hub, or moving a member, just re-indexes `page_tags` (no ops).
+  `rename_tag` never renames a hub: it only changes explicit tags and types.
+- Schema v6 turned former tag pages (kind `tag`) into plain notes and trimmed multiple types to
+  the first; `PageKind` has no `Tag` any more and "tag" parses as a note.
+- In the graph (`synapse-ffi`) every tag in use is a virtual node (`GraphNode.is_tag`, id
+  `tag:<title_key>`, no page), with a `TAGGED` edge from each tagged page (type included).
+  A tag named like a hub in the graph uses the hub's node instead; its members, already
+  linked by `CONTAINS`, get no `TAGGED` edge.
+- Known limitations: replicas still on the old schema may overwrite tags with stale values (LWW per page), and `rename_tag` is a bulk page edit, so concurrent edits on another replica can undo part of it.
+- Exports use `synapse-tags::` and `synapse-type::` (see `history.md`); type definitions go
+  to `types.json`.
 
 ## Hubs and namespaces (`synapse-core::structure`)
 Two orthogonal ways to organise pages.
@@ -82,8 +105,8 @@ Two orthogonal ways to organise pages.
     a hub; `convert_to_note` keeps such blocks. Clients older than schema v3 drop `kind`,
     `description` and `hubs` when they upsert a page, so every client must be on v3.
 - Logseq built-ins (`contents`, `TODO`, `hls__*`, ...) are recognised by `is_legacy_page`; the
-  app offers to purge them (`legacy_candidates` / `purge_pages` in `synapse-ffi`). The importer
-  only skips a narrower set (see `import.md`).
+  app offers to purge them, together with empty pages (`legacy_candidates` / `purge_pages` in
+  `synapse-ffi`). The importer only skips a narrower set (see `import.md`).
 
 ## Temporal model
 - `journal_neighbors(date)` gives the previous/next existing journal (episodic chain).

@@ -55,6 +55,9 @@ class GraphModel {
 
   bool isHub(int i) => node(i).isHub;
 
+  /// Whether node `i` is a virtual tag node (a name, not a page).
+  bool isTag(int i) => node(i).isTag;
+
   /// Whether the graph has any hub (folder-like page).
   late final bool hasHubs = data.nodes.any((n) => n.isHub);
 
@@ -170,11 +173,12 @@ class GraphModel {
     ];
   }
 
-  /// Tag pages actually used as tags, most used first.
+  /// Virtual tag nodes in use (targets of `TAGGED` edges), most used first. Pages targeted
+  /// by inline `#x` references are ordinary notes and are not listed.
   late final List<int> tags = () {
     final count = <int, int>{};
     for (var e = 0; e < edgeCount; e++) {
-      if (kind(e) == EdgeKind.tag) {
+      if (kind(e) == EdgeKind.tagged && isTag(target(e))) {
         count[target(e)] = (count[target(e)] ?? 0) + 1;
       }
     }
@@ -292,7 +296,9 @@ class GraphFilter {
         : {
             tag!,
             for (final e in g.adjacency[tag!])
-              if (g.kind(e) == EdgeKind.tag && g.target(e) == tag) g.source(e),
+              if ((g.kind(e) == EdgeKind.tag || g.kind(e) == EdgeKind.tagged) &&
+                  g.target(e) == tag)
+                g.source(e),
           };
     String day(int i) {
       final ms = g.node(i).createdAt.toInt();
@@ -301,13 +307,28 @@ class GraphFilter {
           '-${d.day.toString().padLeft(2, '0')}';
     }
 
+    bool inRange(int i) =>
+        (from == null || day(i).compareTo(from!) >= 0) &&
+        (to == null || day(i).compareTo(to!) <= 0);
+    // A tag node has no creation date: it stays when one of its tagged pages is in range.
+    bool tagInRange(int i) {
+      if (from == null && to == null) return true;
+      for (final e in g.adjacency[i]) {
+        if (g.kind(e) != EdgeKind.tagged || g.target(e) != i) continue;
+        final p = g.source(e);
+        if (!g.isTag(p) && (journals || !g.isJournal(p)) && inRange(p)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     final base = <int>[
       for (var i = 0; i < g.nodeCount; i++)
         if ((journals || !g.isJournal(i)) &&
             (tagged == null || tagged.contains(i)) &&
             (q.isEmpty || g.node(i).title.toLowerCase().contains(q)) &&
-            (from == null || day(i).compareTo(from!) >= 0) &&
-            (to == null || day(i).compareTo(to!) <= 0))
+            (g.isTag(i) ? tagInRange(i) : inRange(i)))
           i,
     ];
     if (orphans && minDegree == 0) return base;

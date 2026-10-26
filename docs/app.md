@@ -79,10 +79,28 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   structure wins if they ever disagree.
 - App shortcuts (defaults, all rebindable in Settings): Ctrl+K quick switcher, Ctrl+Shift+J
   journals, Ctrl+Shift+G graph, Ctrl+Shift+T timeline, Ctrl+\ sidebar, Ctrl+Shift+\ graph
-  sidebar, Ctrl+, settings, Alt+←/→ back/forward.
+  sidebar, Ctrl+, settings, Alt+←/→ back/forward, Ctrl+T new tab, Ctrl+W close tab,
+  Ctrl+Tab / Ctrl+Shift+Tab next/previous tab.
+- Quick switcher (Ctrl+K): page titles and aliases first, then "In notes": pages whose blocks
+  contain the text (from two characters; one row per page with the first matching block as
+  a highlighted snippet), then "Create page". Content search is the FFI's `search_blocks`
+  (SQL `LIKE`, case-insensitive for ASCII only) until synapse-search's full-text index is wired.
+
+## Tabs
+- `AppState` holds a list of `AppTab`s; each has its own route and back/forward history, and
+  `go`/`back`/`forward`/`canGoBack` act on the active one. The strip (`views/tab_strip.dart`)
+  sits under the top bar: × on hover or on the active tab, middle-click closes, drag reorders,
+  "+" opens a Journals tab; closing the last tab leaves one Journals tab. Below 760 px the strip
+  is replaced by a tab-count button in the top bar that opens a bottom sheet.
+- Ctrl/Cmd+click (or middle-click) on a page link or block ref in the editor, on sidebar
+  entries, All pages rows and quick switcher results opens in a new tab
+  (`AppState.navigate` / `openInNewTab`).
+- Open tabs (route type and page id/title, graph mode) and the active index are saved under
+  `tabs` in the settings JSON and restored on start; history is not persisted. Deleting a page
+  (`AppState.pagesDeleted`) sends tabs showing it back (or to Journals) and drops it from recents.
 
 ## Settings, themes and key bindings
-- Sidebar "Settings" (Ctrl+,): theme cards and the shortcut list. Click a shortcut, press the new
+- Top-bar gear icon, next to the theme toggle (Ctrl+,): theme cards and the shortcut list. Click a shortcut, press the new
   combination (Esc cancels); a combo already in use is refused and names its owner; each row
   and "Reset all" restore defaults.
 - Themes (`appThemes` in `theme/theme.dart`): System (Paper light/dark by OS), Paper, Paper dark,
@@ -90,17 +108,65 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
 - Preferences live in `app-settings.json` inside the graph directory (`FileSettings`);
   `Keymap` (`state/keymap.dart`) stores only the overrides, encoded as `ctrl+shift+<keyId>`.
 
+### Custom themes
+Settings > Theme > "New theme" duplicates the selected theme (System uses Paper light or dark)
+as a custom theme and opens the editor; the pencil and bin icons on a custom card edit or
+delete it. Custom themes are stored in the settings JSON under `customThemes`
+(`{id: custom-<millis>, label, brightness, colors: {token: '#rrggbbaa'}}`); missing tokens
+fall back to Paper light/dark and corrupt entries are skipped. Deleting the selected theme
+selects System. Edits apply live; Cancel restores the previous values (or discards a new theme).
+
+The editor has a "Colors" tab (a swatch per token opening a built-in picker: hue, saturation,
+lightness, alpha for `accent-soft` and `highlight`, hex field, presets) and a "CSS" tab to paste
+or copy a theme (Apply parses it and lists bad lines):
+
+```css
+/* Synapse theme: My theme */
+:root {
+  color-scheme: dark;            /* optional: light | dark */
+  --paper: #16181b;
+  --accent: #63c2b8;
+  --accent-soft: #63c2b822;      /* #rrggbbaa only when translucent */
+}
+```
+Tokens: `paper surface ink muted faint line accent accent-soft ref done code-bg highlight`
+(camelCase such as `--accentSoft` also works). Colours may be `#rgb`, `#rgba`, `#rrggbb`,
+`#rrggbbaa`, `rgb()/rgba()` or `hsl()/hsla()`. Tokens not listed keep their current value;
+comments, selectors and unknown properties are ignored (unknown `--vars` are reported).
+
 ## Types and tags
-- **Type** (what a note is): plain names, no page (persona, lugar, empresa, cliente, herramienta,
-  concepto, idea, ...). "Type" under the header opens a picker with the types in use (with count)
-  and seeded suggestions, or type a new name. Stored in `Page.types`.
-- **Tag** (a topic): a real page of kind `tag`. "Tag" opens a picker over the existing tag pages
-  or creates one by typing a new name (a note used as a tag becomes a tag page; hubs, journals
-  and templates cannot be tags). Tag chips open the tag page, which lists its tagged notes.
-  An inline `#tema` or `[[tema]]` in the text also links to the page. Renaming or deleting a tag
-  page updates its members. Tag pages cannot be tagged themselves.
-- In the graph a tagged note points at its tag pages with a separate edge kind (TAGGED), apart
-  from page links and inline references.
+Both are plain names with no page, shown as one row of pills under the title.
+- **Type** (what a note is): at most one per page (persona, lugar, empresa, software, sueño,
+  concepto, idea, ...). The filled pill (or the ghost "Add type") opens a single-select picker
+  with the types in use (with count), seeded suggestions, a new name, or "Remove type". Stored
+  in `Page.types`; a type also counts as a tag of the same name.
+- **Tags** (topics): many per page, always sorted alphabetically. "+ tag" opens a picker where
+  several can be added in a row; hovering a chip shows its ×. A chip opens the tag view: pages
+  with that tag or type, "Rename" (also renames types, merging duplicates) and "Remove from all
+  pages". An inline `#tema` in the text still links to a page of that name.
+- **Hub as tag**: a note's direct hub also counts as a tag of the same name (not shown as a
+  chip, not stored in the tags). It lists in that tag's view and graph node and merges with a
+  same-name type or tag; "Rename" there never renames the hub itself.
+- **Type emoji**: each type can have an emoji, stored in the graph (synced, in history). It is
+  shown before the names of pages of that type: page title, All pages, quick switcher,
+  recents, tabs, hub members, tag view (also its title when the tag is a type), linked
+  references, related pages, the type pill and picker, and the tree view labels. Never in the
+  network graph. `AppState.typeIcons` caches type → emoji (`loadTypeIcons`: at start, after
+  edits and on every view reload, so synced or restored changes show; `iconsVersion` makes
+  the tree view redraw its labels without a new layout); list DTOs carry `pageType` and
+  `TypeIcon` (`widgets/type_icon.dart`) looks it up.
+- **Tags & types view** (sidebar, under All pages; also a tab route): "Types" lists every type
+  with its emoji, page count and seeded suggestions; the emoji button opens a picker (curated
+  grid by category, a field to paste any single emoji, "Remove emoji"); "New type" creates a
+  type with no pages; the `⋯` menu renames (keeps the emoji) or deletes (confirms how many
+  pages lose it). "Tags" lists every tag with its count and sources (listed, type, hub);
+  explicit tags can be renamed or deleted, tags that only come from a type or a hub show a
+  lock explaining where to change them. Tapping a name opens its tag view.
+- In the graph every tag is a virtual node drawn as a hollow accent ring and linked to its
+  pages with a separate edge kind (TAGGED); tapping one opens its tag view.
+  A hub's implicit tag (or a tag named like a hub) has no ring of its own: the hub node
+  stands for it.
+- The mouse's back/forward side buttons move through the tab's history, like the arrows.
 
 ## Hubs, namespaces and cleanup
 - **Hub** (folder icon): a page kind, not a note: no outline, a title, a short description
@@ -120,9 +186,12 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
 - Notes: namespace breadcrumb, "In: ..." chips with a × to leave a hub, and a `⋯` menu
   with "Convert to hub…" (dialog: shortened title, description, member checklist, optional
   note that keeps the original outline; title clashes are shown inline) and "Add to hub…".
-- All pages ▸ "Clean up": dialog listing legacy Logseq pages (`contents`, `hls__...`, pages
-  with `type:: system`, ...) with checkboxes; "Delete (n)" removes only the checked ones
-  and their blocks.
+- Every page's `⋯` menu (notes and hubs) ends with "Delete page…": the same confirmation as
+  All pages; tabs showing it step back (or fall back to Journals) and recents drop it.
+- All pages ▸ "Clean up": dialog listing empty pages (no text in any block, not a hub, no
+  type, tags or description; journals too, except today's; all preselected) and legacy Logseq pages (`contents`,
+  `hls__...`, pages with `type:: system`, ...) with checkboxes and "Select all/none";
+  "Delete (n)" removes only the checked ones and their blocks.
 
 ## Page sidebar and All pages
 - The sidebar icon next to a note's `⋯` menu toggles a right sidebar (collapsed by default,
@@ -130,6 +199,10 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   related pages; on narrow windows they appear below the content.
 - All pages lists notes only (hubs are folders, not pages) and can be sorted by edited,
   created or title, ascending or descending.
+- "New page" asks for a title (empty or duplicate titles are refused inline, with "Open it"
+  for an existing page). Each row has a `⋯` menu (also on right-click or long-press) with
+  "Open in new tab" and "Delete…"; "Select" switches to checkboxes with a bulk "Delete (N)".
+  Deletion always asks for confirmation and runs `deletePage` per page.
 
 ## Graph view
 One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
@@ -146,18 +219,22 @@ One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
   activation, edge thickness = Hebbian synapse weight, a pulse travels outward by hops.
 - **Clusters**: soft hulls grouped by "Hubs" (home hub, default when the graph has hubs; hull
   labelled with the hub title once it is wide enough on screen; layout-only springs pull
-  members to their hub), by "Tags" (each page goes to its most widely used tag page, ties
+  members to their hub), by "Tags" (each page goes to its most widely used tag, ties
   alphabetical; hull labelled with the tag name; springs pull pages to the best connected page
   of the tag; journals and untagged pages stay out) or by "Communities" (Louvain: groups found
   automatically from link density, no names). Colours follow group size.
-- **Tree** (no "Hubs" node: root hubs and the notes that sit in no hub, orphans included,
-  hang straight off the centre): the centre is labelled with the store name (graph directory name); every arm and
-  sub-branch has its own colour (arms evenly spread over the hue circle, children split their
-  parent's sector evenly); drag a node to move it with its branch, drag empty space to pan.
-  Radial tree: hubs (root hubs, then members recursively, cycle-safe,
-  each hub expanded once, folder glyph; membership = CONTAINS edges from the graph data),
-  namespaces (`a/b/c` titles, attached straight to the centre, no "Namespaces" node)
-  and Tags (with their pages).
+- **Tree**: every page appears exactly once. Hubs first (root hubs, then members
+  recursively, cycle-safe, folder glyph; membership = CONTAINS edges; a page is in one hub),
+  then namespaces (`a/b/c` titles, straight off the centre) for pages in no hub, then the
+  remaining notes (orphans included) off the centre. Journals and tags are not in the tree.
+  Nothing is capped. Laid out by the same `ForceLayout` as the network (stiff parent/child
+  edges, seeded from a radial layout whose rings widen with the nodes on them, no reheat).
+  The centre carries the store name; every arm and sub-branch has its own colour (arms
+  evenly spread over the hue circle, children split their parent's sector). Trees of up to
+  1,500 items open whole; larger ones open breadth-first up to ~400 (small branches always
+  open) and the rest start collapsed (ring + `+N` badge). Click a branch to expand/collapse
+  it, a page (or any name) to open it; hover highlights the path to the centre; drag nodes,
+  wheel/pinch to zoom. Bottom bar: shown/total count, expand all, collapse all, fit.
 - **Timeline**: the journal timeline.
 
 Data and layout live in Rust: `SynapseGraph::graph_data()` returns the whole page-level
@@ -174,7 +251,16 @@ cargo run --release -p synapse-ffi --example graph_stats -- /path/to/graph
 cd app && flutter drive --profile -d linux --driver=test_driver/integration_test.dart \
   --target=integration_test/graph_smoke_test.dart \
   --dart-define=GRAPH=/path/to/copy [--dart-define=SHOTS=/dir/for/pngs]
+# Frame timings and RSS of common interactions (journals, pages, typing, tabs, Ctrl+K,
+# tree, network); results land in build/integration_response_data.json:
+cd app && flutter drive --profile -d linux --driver=test_driver/integration_test.dart \
+  --target=integration_test/perf_test.dart --dart-define=GRAPH=/path/to/copy
 ```
+Debug builds compile the Rust core optimised (`[profile.dev]` in the root `Cargo.toml`):
+unoptimised, the graph build took ~400 ms instead of ~50 ms, which made `flutter run` feel
+slow. Judge UI speed in profile mode; debug Dart is several times slower by design. On a
+240-page graph (profile), every interaction stays under 16 ms per frame except the first
+hub opened (~75 ms, once), with RSS steady around 230–260 MB.
 Measured (profile, Linux, Impeller GL): 5 000 pages / 19 000 links settle in ~7 s and pan at
 build p50 6 ms / raster p50 4 ms per frame; a 360-page graph settles in ~1 s at ~2 ms/frame.
 Edges are drawn as one triangle mesh (`drawVertices`): stroking 10k+ lines made Impeller

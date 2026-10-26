@@ -83,6 +83,11 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         .into_iter()
         .map(|(id, t)| (id.to_string(), t))
         .collect();
+    let mut page_types: HashMap<String, String> = g
+        .all_page_types()?
+        .into_iter()
+        .map(|(id, t)| (id.to_string(), t))
+        .collect();
     {
         let mut st = conn.prepare(
             "SELECT id, title, journal_date, origin_journal, created_at FROM pages
@@ -100,6 +105,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         })?;
         for row in rows {
             let (id, title, journal_date, origin_journal, created_at) = row?;
+            let page_type = page_types.remove(&id);
             let tags = page_tags.get(&id).cloned().unwrap_or_default();
             index.insert(id.clone(), nodes.len() as u32);
             nodes.push(GraphNode {
@@ -115,6 +121,8 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
                 is_hub: false,
                 home_hub: None,
                 tags,
+                is_tag: false,
+                page_type,
             });
         }
     }
@@ -227,7 +235,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         }
     }
 
-    tagged(g, &index, &by_key, &mut b)?;
+    tagged(g, &index, &mut nodes, &mut b)?;
 
     // Stable edge order (sources, then targets, then kind).
     let mut edges: Vec<((u32, u32, u8), f32)> = b.edges.into_iter().collect();
@@ -245,7 +253,7 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
         neigh[s as usize].insert(t);
         neigh[t as usize].insert(s);
         referrers[t as usize].insert(s);
-        if k == edge_kind::TAG {
+        if k == edge_kind::TAG || k == edge_kind::TAGGED {
             *tag_use[s as usize].entry(t).or_default() += w;
         }
     }
@@ -283,18 +291,56 @@ pub(crate) fn build(g: &Graph, seq: i64) -> Result<GraphData> {
     Ok(out)
 }
 
-/// A page filed under a tag page gets one `TAGGED` edge to it.
+/// Tags are virtual nodes (`tag:<key>`, appended after the pages): every page carrying a tag,
+/// listed or implied by a type, gets one `TAGGED` edge to it. A tag named like a hub already
+/// in the graph (a hub's implicit tag) uses the hub's node instead of a second one.
 fn tagged(
     g: &Graph,
     index: &HashMap<String, u32>,
-    by_key: &HashMap<String, u32>,
+    nodes: &mut Vec<GraphNode>,
     b: &mut Builder,
 ) -> Result<()> {
-    let mut st = g.conn().prepare("SELECT tag_key, page_id FROM page_tags")?;
+    let display: HashMap<String, String> = g
+        .tag_catalog()?
+        .into_iter()
+        .map(|t| (title_key(&t.name), t.name))
+        .collect();
+    let mut st = g
+        .conn()
+        .prepare("SELECT tag_key, page_id FROM page_tags ORDER BY tag_key, page_id")?;
     let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut tag_index: HashMap<String, u32> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.is_hub)
+        .map(|(i, n)| (title_key(&n.title), i as u32))
+        .collect();
     for row in rows {
-        let (tag, page) = row?;
-        if let (Some(&s), Some(&t)) = (index.get(&page), by_key.get(&tag)) {
+        let (key, page) = row?;
+        let Some(&s) = index.get(&page) else {
+            continue;
+        };
+        let t = *tag_index.entry(key.clone()).or_insert_with(|| {
+            nodes.push(GraphNode {
+                id: format!("tag:{key}"),
+                title: display.get(&key).cloned().unwrap_or_else(|| key.clone()),
+                journal_date: None,
+                origin_journal: None,
+                created_at: 0,
+                degree: 0,
+                backlinks: 0,
+                cluster: 0,
+                primary_tag: None,
+                is_hub: false,
+                home_hub: None,
+                tags: Vec::new(),
+                is_tag: true,
+                page_type: None,
+            });
+            nodes.len() as u32 - 1
+        });
+        // A hub's members already hang from it by a CONTAINS edge.
+        if !b.edges.contains_key(&(t, s, edge_kind::CONTAINS)) {
             b.add(s, t, edge_kind::TAGGED, 1.0);
         }
     }
