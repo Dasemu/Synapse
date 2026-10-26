@@ -82,13 +82,39 @@ Commit the regenerated `crates/synapse-ffi/src/frb_generated.rs` and `app/lib/sr
   sidebar, Ctrl+, settings, Alt+←/→ back/forward.
 
 ## Settings, themes and key bindings
-- Sidebar "Settings" (Ctrl+,): theme cards and the shortcut list. Click a shortcut, press the new
+- Top-bar gear icon, next to the theme toggle (Ctrl+,): theme cards and the shortcut list. Click a shortcut, press the new
   combination (Esc cancels); a combo already in use is refused and names its owner; each row
   and "Reset all" restore defaults.
 - Themes (`appThemes` in `theme/theme.dart`): System (Paper light/dark by OS), Paper, Paper dark,
   Sweet (KDE-style indigo and magenta), Sweet light, Nord. A theme is a `SynapseColors` palette.
 - Preferences live in `app-settings.json` inside the graph directory (`FileSettings`);
   `Keymap` (`state/keymap.dart`) stores only the overrides, encoded as `ctrl+shift+<keyId>`.
+
+### Custom themes
+Settings > Theme > "New theme" duplicates the selected theme (System uses Paper light or dark)
+as a custom theme and opens the editor; the pencil and bin icons on a custom card edit or
+delete it. Custom themes are stored in the settings JSON under `customThemes`
+(`{id: custom-<millis>, label, brightness, colors: {token: '#rrggbbaa'}}`); missing tokens
+fall back to Paper light/dark and corrupt entries are skipped. Deleting the selected theme
+selects System. Edits apply live; Cancel restores the previous values (or discards a new theme).
+
+The editor has a "Colors" tab (a swatch per token opening a built-in picker: hue, saturation,
+lightness, alpha for `accent-soft` and `highlight`, hex field, presets) and a "CSS" tab to paste
+or copy a theme (Apply parses it and lists bad lines):
+
+```css
+/* Synapse theme: My theme */
+:root {
+  color-scheme: dark;            /* optional: light | dark */
+  --paper: #16181b;
+  --accent: #63c2b8;
+  --accent-soft: #63c2b822;      /* #rrggbbaa only when translucent */
+}
+```
+Tokens: `paper surface ink muted faint line accent accent-soft ref done code-bg highlight`
+(camelCase such as `--accentSoft` also works). Colours may be `#rgb`, `#rgba`, `#rrggbb`,
+`#rrggbbaa`, `rgb()/rgba()` or `hsl()/hsla()`. Tokens not listed keep their current value;
+comments, selectors and unknown properties are ignored (unknown `--vars` are reported).
 
 ## Types and tags
 - **Type** (what a note is): plain names, no page (persona, lugar, empresa, cliente, herramienta,
@@ -150,14 +176,16 @@ One view (sidebar "Graph", Ctrl+Shift+G) with a mode selector:
   alphabetical; hull labelled with the tag name; springs pull pages to the best connected page
   of the tag; journals and untagged pages stay out) or by "Communities" (Louvain: groups found
   automatically from link density, no names). Colours follow group size.
-- **Tree** (no "Hubs" node: root hubs and the notes that sit in no hub, orphans included,
-  hang straight off the centre): the centre is labelled with the store name (graph directory name); every arm and
-  sub-branch has its own colour (arms evenly spread over the hue circle, children split their
-  parent's sector evenly); drag a node to move it with its branch, drag empty space to pan.
-  Radial tree: hubs (root hubs, then members recursively, cycle-safe,
-  each hub expanded once, folder glyph; membership = CONTAINS edges from the graph data),
-  namespaces (`a/b/c` titles, attached straight to the centre, no "Namespaces" node)
-  and Tags (with their pages).
+- **Tree**: hubs (root hubs, then members recursively, cycle-safe, each hub expanded once,
+  folder glyph; membership = CONTAINS edges), namespaces (`a/b/c` titles, straight off the
+  centre), the notes in no hub (orphans included) and Tags (with their pages). Nothing is
+  capped. Laid out by the same `ForceLayout` as the network (edges = parent/child, seeded
+  from a radial layout). The centre carries the store name; every arm and sub-branch has its
+  own colour (arms evenly spread over the hue circle, children split their parent's sector).
+  Levels open breadth-first up to ~150 nodes; the rest start collapsed (ring + `+N` badge).
+  Click a branch to expand/collapse it, a page (or any name) to open it; hover highlights the
+  path to the centre; drag nodes, wheel/pinch to zoom. Bottom bar: shown/total count, expand
+  all, collapse all, fit.
 - **Timeline**: the journal timeline.
 
 Data and layout live in Rust: `SynapseGraph::graph_data()` returns the whole page-level
