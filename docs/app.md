@@ -174,7 +174,7 @@ Both are plain names with no page, shown as one row of pills under the title.
 - Every page's `⋯` menu (notes and hubs) ends with "Delete page…": the same confirmation as
   All pages; tabs showing it step back (or fall back to Journals) and recents drop it.
 - All pages ▸ "Clean up": dialog listing empty pages (no text in any block, not a hub, no
-  type, tags or description; all preselected) and legacy Logseq pages (`contents`,
+  type, tags or description; journals too, except today's; all preselected) and legacy Logseq pages (`contents`,
   `hls__...`, pages with `type:: system`, ...) with checkboxes and "Select all/none";
   "Delete (n)" removes only the checked ones and their blocks.
 

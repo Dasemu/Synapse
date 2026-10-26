@@ -365,6 +365,11 @@ fn legacy_candidates_and_purge() {
     page_with(&g, "contents", &["- x"]);
     page_with(&g, "now", &[]);
     page_with(&g, "Blank", &["", "  "]);
+    let old_day = g.journal("2020-01-02".into()).unwrap().page.id;
+    let full_day = g.journal("2020-01-03".into()).unwrap().page.id;
+    g.insert_block(full_day, place(PlaceKind::LastChildOf, None), "x".into())
+        .unwrap();
+    g.journals(None, 1).unwrap(); // creates today's journal, empty
     let (typed, _) = page_with(&g, "Typed", &[]);
     g.set_page_type(typed, Some("persona".into())).unwrap();
     g.create_hub("later".into(), String::new()).unwrap();
@@ -395,6 +400,13 @@ fn legacy_candidates_and_purge() {
     assert_eq!(by("Blank").reason, "Empty");
     assert!(by("Blank").preselected, "only blank blocks");
     assert!(c.iter().all(|x| x.title != "Typed"), "a type is content");
+    let journals: Vec<_> = c.iter().filter(|x| x.reason == "Empty journal").collect();
+    assert_eq!(
+        journals.len(),
+        1,
+        "only the blank past journal, not today's"
+    );
+    assert!(journals[0].id == old_day && journals[0].preselected);
 
     // A bad id rejects the call before anything is deleted.
     assert!(g.purge_pages(vec![todo.clone(), "nope".into()]).is_err());

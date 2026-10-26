@@ -76,7 +76,13 @@ class _AllPagesViewState extends State<AllPagesView> {
     );
     if (removed == null || removed.isEmpty) return;
     await app.queue.run(() => app.backend.purgePages(removed));
-    app.recent.removeWhere((p) => removed.contains(p.id));
+    app.pagesDeleted(
+      removed,
+      titles: [
+        for (final c in candidates)
+          if (removed.contains(c.id)) c.title,
+      ],
+    );
     app.reload();
   }
 

@@ -100,7 +100,7 @@ abstract class SynapseGraph implements RustOpaqueInterface {
 
   /// Pages worth cleaning up: leftovers of Logseq (its built-ins and pages with
   /// `type:: system`) and empty pages (no text in any block, not a hub, no type, tags or
-  /// description). Of the Logseq ones only the organisational files (`contents`, `card`,
+  /// description), journals included except today's. Of the Logseq ones only the organisational files (`contents`, `card`,
   /// `favorites`, `hls__*`) and empty pages are preselected, and never a hub: a built-in
   /// title such as `todo` may hold real content. Empty pages are all preselected.
   Future<List<LegacyCandidate>> legacyCandidates();

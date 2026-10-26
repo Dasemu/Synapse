@@ -206,13 +206,18 @@ impl SynapseGraph {
 
     /// Pages worth cleaning up: leftovers of Logseq (its built-ins and pages with
     /// `type:: system`) and empty pages (no text in any block, not a hub, no type, tags or
-    /// description). Of the Logseq ones only the organisational files (`contents`, `card`,
+    /// description), journals included except today's. Of the Logseq ones only the organisational files (`contents`, `card`,
     /// `favorites`, `hls__*`) and empty pages are preselected, and never a hub: a built-in
     /// title such as `todo` may hold real content. Empty pages are all preselected.
     pub fn legacy_candidates(&self) -> Result<Vec<LegacyCandidate>> {
         let g = self.lock();
         let mut out = Vec::new();
-        for p in g.list_pages(false, u32::MAX, 0)? {
+        let today = g.today();
+        for p in g.list_pages(true, u32::MAX, 0)? {
+            // Today's journal is where new notes land: never offered, even when blank.
+            if p.journal_date == Some(today) {
+                continue;
+            }
             let key = title_key(&p.title);
             let tree = g.page_tree(p.id)?;
             let blocks = tree.len() as u32;
@@ -222,7 +227,12 @@ impl SynapseGraph {
                 && p.page_type().is_none()
                 && p.tags.is_empty()
                 && p.description.trim().is_empty();
-            let reason = if is_legacy_page(&p.title) {
+            let reason = if p.is_journal() {
+                if !empty {
+                    continue;
+                }
+                "Empty journal"
+            } else if is_legacy_page(&p.title) {
                 if key.starts_with("hls__") {
                     "Logseq PDF highlights"
                 } else {
