@@ -22,6 +22,7 @@ pub mod types;
 pub use error::{Error, Result};
 pub use model::*;
 pub use module_data::{MAX_MODULE_KEY, MAX_MODULE_VALUE, is_valid_module_id};
+pub use schema::VERSION as SCHEMA_VERSION;
 pub use store::Graph;
 pub use structure::{
     HubConversion, HubInfo, HubPreview, Structure, is_legacy_page, namespace_parent,

@@ -7,6 +7,7 @@ mod blobs;
 pub mod config;
 mod error;
 mod graphs;
+mod mcp;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, head, post};
@@ -29,6 +30,9 @@ pub struct AppState {
     pub(crate) updater: Arc<admin::Updater>,
     pub(crate) shutdown: Arc<Notify>,
     pub(crate) max_clock_skew: std::time::Duration,
+    /// MCP endpoint state; `None` when `SYNAPSE_MCP_TOKEN` is unset.
+    pub(crate) mcp: Option<Arc<mcp::McpState>>,
+    pub(crate) mcp_config: Option<config::McpConfig>,
 }
 
 impl AppState {
@@ -46,6 +50,8 @@ impl AppState {
             updater: Arc::new(admin::Updater::default()),
             shutdown: Arc::new(Notify::new()),
             max_clock_skew: cfg.max_clock_skew,
+            mcp: cfg.mcp.as_ref().map(|m| Arc::new(mcp::McpState::new(m))),
+            mcp_config: cfg.mcp.clone(),
         })
     }
 }
@@ -91,10 +97,13 @@ pub fn router(state: AppState) -> Router {
             admin::admin_guard,
         ));
 
-    Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(healthz))
-        .nest("/v1", graph_routes)
-        .nest("/admin", admin_routes)
+        .nest("/v1", graph_routes);
+    if let Some(cfg) = &state.mcp_config {
+        app = app.merge(mcp::routes(state.clone(), cfg));
+    }
+    app.nest("/admin", admin_routes)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

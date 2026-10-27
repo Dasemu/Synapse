@@ -7,7 +7,7 @@
 
 mod config;
 mod names;
-mod outline;
+pub mod outline;
 mod rewrite;
 mod track;
 

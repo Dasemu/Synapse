@@ -15,6 +15,9 @@ See `.env.example`.
 | `SYNAPSE_MAX_CLOCK_SKEW_MINUTES` | no | Reject pushed ops whose HLC is further ahead of the server clock (default 10) |
 | `SYNAPSE_UPDATE_TOKEN` | no | Enables `/admin/update`; separate from the sync tokens |
 | `SYNAPSE_UPDATE_SCRIPT` | no | Default `/opt/synapse/scripts/update.sh` |
+| `SYNAPSE_MCP_TOKEN` | no | Enables MCP at `/v1/graphs/{id}/mcp` (`docs/mcp.md`). Own token(s), comma separated, ≥ 16 chars |
+| `SYNAPSE_MCP_ALLOW_WRITE` | no | `1` exposes the MCP write tools (page curation; journals stay read-only) |
+| `SYNAPSE_MCP_ALLOWED_HOSTS` | no | `Host` headers MCP accepts; default loopback only. Set the public hostname behind a proxy (`*` = any) |
 | `SYNAPSE_LOG_FORMAT` | no | `text` (default) or `json` |
 | `RUST_LOG` | no | Log filter, default `info` |
 

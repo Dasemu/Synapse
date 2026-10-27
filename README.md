@@ -13,4 +13,5 @@ cargo test --workspace
 cd app && flutter run -d linux
 ```
 
-See [docs/](docs/README.md) for the plan and architecture.
+See [docs/](docs/README.md) for the plan and architecture, and [docs/mcp.md](docs/mcp.md) to
+connect AI assistants (MCP).
