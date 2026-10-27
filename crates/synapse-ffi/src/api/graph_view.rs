@@ -19,8 +19,8 @@ pub struct CacheKey {
     seq: i64,
     synapses: i64,
     synapse_last: i64,
-    /// Total weight (micro-units): a visit can strengthen an existing synapse within the same
-    /// millisecond as its last firing, which leaves count and `last_fired` unchanged.
+    /// Sum of raw weights (micro-units): a re-fire within the same millisecond keeps count
+    /// and `last_fired` but changes the weight.
     synapse_weight: i64,
     /// Synapse weights decay with time: rebuild at least hourly.
     hour: i64,
@@ -50,15 +50,14 @@ impl SynapseGraph {
 }
 
 fn cache_key(g: &Graph) -> Result<CacheKey> {
-    let (synapses, synapse_last, synapse_weight) = g.conn().query_row(
-        "SELECT count(*), coalesce(max(last_fired), 0),
-                coalesce(CAST(sum(weight) * 1000000 AS INTEGER), 0) FROM synapses",
+    let (synapses, synapse_last, weight) = g.conn().query_row(
+        "SELECT count(*), coalesce(max(last_fired), 0), total(weight) FROM synapses",
         [],
         |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, i64>(1)?,
-                r.get::<_, i64>(2)?,
+                r.get::<_, f64>(2)?,
             ))
         },
     )?;
@@ -66,7 +65,7 @@ fn cache_key(g: &Graph) -> Result<CacheKey> {
         seq: g.last_seq()?,
         synapses,
         synapse_last,
-        synapse_weight,
+        synapse_weight: (weight * 1e6).round() as i64,
         hour: g.now_ms() / 3_600_000,
     })
 }
