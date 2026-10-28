@@ -9,3 +9,4 @@
 - [history.md](history.md): automatic git snapshots and restore.
 - [caldav.md](caldav.md): CalDAV calendars and tasks.
 - [server.md](server.md): running and deploying the sync server.
+- [mcp.md](mcp.md): MCP server for AI assistants (stdio and HTTP), tools, security.

@@ -16,6 +16,8 @@ path = "src/main.rs"
 synapse-core.workspace = true
 # Shared wire types (single source of truth for the protocol).
 synapse-sync = { path = "../synapse-sync" }
+# MCP tools and Streamable HTTP service mounted at /v1/graphs/{id}/mcp.
+synapse-mcp = { path = "../synapse-mcp" }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
