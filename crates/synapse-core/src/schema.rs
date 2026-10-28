@@ -1,6 +1,6 @@
 use rusqlite::OptionalExtension;
 
-pub const VERSION: i64 = 8;
+pub const VERSION: i64 = 9;
 
 pub const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -114,6 +114,15 @@ CREATE TABLE IF NOT EXISTS type_defs (
     icon TEXT,
     removed INTEGER NOT NULL DEFAULT 0,
     hlc TEXT NOT NULL
+);
+
+-- v9: per-module key-value data; a NULL value is a tombstone.
+CREATE TABLE IF NOT EXISTS module_data (
+    module TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    hlc TEXT NOT NULL,
+    PRIMARY KEY (module, key)
 );
 
 CREATE TABLE IF NOT EXISTS tombstones (id TEXT PRIMARY KEY, hlc TEXT NOT NULL);
@@ -281,7 +290,8 @@ pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
             // v7: a page's hub title is an implicit tag, so the index changes.
             rebuild_page_tags(conn)?;
         }
-        // v8: `type_defs` (type icons) is created empty by `SCHEMA`; nothing to convert.
+        // v8: `type_defs` (type icons) and v9: `module_data` are created empty by `SCHEMA`;
+        // nothing to convert.
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema', ?1)",
             [VERSION.to_string()],

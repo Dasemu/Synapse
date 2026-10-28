@@ -367,3 +367,61 @@ pub struct LegacyCandidate {
     pub blocks: u32,
     pub preselected: bool,
 }
+
+/// A view a module adds to the sidebar.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleViewDto {
+    pub id: String,
+    pub title: String,
+    pub icon: Option<String>,
+}
+
+/// An installed (or inspected) module.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleDto {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub author: String,
+    /// `storage`, `crypto`, `clipboard`, `pages:read`, `pages:write`.
+    pub permissions: Vec<String>,
+    pub views: Vec<ModuleViewDto>,
+    /// Block macros (`{{name args}}`) it renders.
+    pub macros: Vec<String>,
+    /// How often the app sends it a `tick` request, if at all.
+    pub tick_seconds: Option<u32>,
+    pub enabled: bool,
+    /// Size of the module file in bytes.
+    pub size: u64,
+}
+
+impl ModuleDto {
+    pub(crate) fn new(m: &synapse_modules::Manifest, enabled: bool, size: u64) -> Self {
+        Self {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            version: m.version.clone(),
+            description: m.description.clone(),
+            author: m.author.clone(),
+            permissions: m
+                .permissions
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect(),
+            views: m
+                .views
+                .iter()
+                .map(|v| ModuleViewDto {
+                    id: v.id.clone(),
+                    title: v.title.clone(),
+                    icon: v.icon.clone(),
+                })
+                .collect(),
+            macros: m.macros.clone(),
+            tick_seconds: m.tick_seconds,
+            enabled,
+            size,
+        }
+    }
+}

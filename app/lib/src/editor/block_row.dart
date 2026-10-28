@@ -12,6 +12,7 @@ import '../state/outline_ops.dart';
 import '../theme/theme.dart';
 import 'completion.dart';
 import 'markdown.dart';
+import '../widgets/module_ui.dart';
 
 const indentWidth = 24.0;
 const _gutter = 18.0;
@@ -323,6 +324,12 @@ class _BlockViewState extends State<BlockView> {
       onBlockRefNewTab: (r) => app.openIdInNewTab(r.pageId),
       onUrl: openUrl,
       onToggleTodo: () => widget.controller.cycleTodo(widget.node),
+      macro: (name, args) {
+        final id = app.modules.macroOwner(name);
+        return id == null
+            ? null
+            : ModuleMacro(moduleId: id, name: name.toLowerCase(), args: args);
+      },
       maxWidth: width,
     );
     _renderedFor = content;
@@ -347,6 +354,8 @@ class _BlockViewState extends State<BlockView> {
   Widget build(BuildContext context) {
     final app = AppScope.read(context);
     final hasRef = widget.node.content.contains('((');
+    // Module macros appear (or go) as modules are installed, enabled or disabled.
+    final hasMacro = widget.node.content.contains('{{');
     Widget build(double width) {
       final r = _render(context, width);
       return Text.rich(r.span, key: _key);
@@ -362,9 +371,12 @@ class _BlockViewState extends State<BlockView> {
             constraints: const BoxConstraints(
               minHeight: blockFontSize * blockLineHeight,
             ),
-            child: hasRef
+            child: hasRef || hasMacro
                 ? ListenableBuilder(
-                    listenable: app.refs,
+                    listenable: Listenable.merge([
+                      app.refs,
+                      if (hasMacro) app.modules,
+                    ]),
                     builder: (context, _) {
                       _renderedFor = null;
                       return build(box.maxWidth);

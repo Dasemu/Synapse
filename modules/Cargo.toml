@@ -1,0 +1,16 @@
+# Synapse modules, built for wasm32-unknown-unknown (`scripts/build-modules.sh`).
+# A separate workspace: these crates never build for the host.
+[workspace]
+resolver = "3"
+members = ["sdk", "secrets"]
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

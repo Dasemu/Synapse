@@ -19,10 +19,25 @@ class _SynapseAppState extends State<SynapseApp> {
   late final AppState _state =
       AppState(widget.backend, settings: widget.settings)
         ..loadRecent()
-        ..loadTypeIcons();
+        ..loadTypeIcons()
+        ..modules.load();
+
+  /// Modules lock what they hold (the secrets vault) when the app is hidden (minimised,
+  /// another app in front) or paused.
+  late final _lifecycle = AppLifecycleListener(
+    onHide: () => _state.modules.suspend(),
+    onPause: () => _state.modules.suspend(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle;
+  }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _state.dispose();
     super.dispose();
   }

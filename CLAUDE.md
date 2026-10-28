@@ -16,6 +16,8 @@ and an optional self-hosted sync server. Local-only (standalone graph) or client
 - Run MCP (stdio): `cargo run -p synapse-mcp -- --graph <copy of a graph> [--allow-write]`
 - Run app: `cd app && flutter run -d linux` (or `-d windows`, an Android device); Flutter SDK
   in `~/development/flutter/bin`. Graph dir override: `SYNAPSE_GRAPH=/path`. See `docs/app.md`.
+- Build bundled modules (WASM, needs `rustup target add wasm32-unknown-unknown`):
+  `scripts/build-modules.sh` (commit the `.wasm` it writes to `app/assets/modules/`)
 - Regenerate FFI bindings: `cd app && flutter_rust_bridge_codegen generate` (frb 2.13.0; commit
   the generated Rust and Dart files)
 
@@ -29,6 +31,8 @@ roadmap in `docs/plan.md`.
 - `synapse-history`: automatic git-like snapshots of the graph.
 - `synapse-caldav`: CalDAV calendar + VTODO tasks.
 - `synapse-sync` / `synapse-server`: client-server protocol and axum server (`docs/sync.md`).
+- `synapse-modules`: sandboxed WebAssembly modules (wasmi), permissions, host crypto
+  (`docs/modules.md`); module sources and SDK in `modules/` (own workspace, wasm32 only).
 - `synapse-mcp`: MCP tools for AI assistants; stdio binary + HTTP service (`docs/mcp.md`).
 - `synapse-ffi`: the only API surface exposed to Flutter.
 

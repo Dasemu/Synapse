@@ -20,16 +20,21 @@ pub struct SynapseGraph {
     pub(crate) graph_cache: Mutex<Option<(super::graph_view::CacheKey, Arc<GraphData>)>>,
     /// Hubs and home hubs, keyed by op-log sequence.
     pub(crate) structure_cache: Mutex<Option<(i64, Arc<synapse_core::Structure>)>>,
+    /// Installed modules (`<dir>/modules/`), started on first use.
+    pub(crate) modules: synapse_modules::Registry,
 }
 
 impl SynapseGraph {
     /// Opens (or creates) the graph stored in `dir`.
     pub fn open(dir: String) -> Result<SynapseGraph> {
         let graph = Graph::open(&dir).with_context(|| format!("opening graph at {dir}"))?;
+        let graph = Arc::new(Mutex::new(graph));
+        let modules = synapse_modules::Registry::open(std::path::Path::new(&dir), graph.clone());
         Ok(SynapseGraph {
-            graph: Arc::new(Mutex::new(graph)),
+            graph,
             graph_cache: Mutex::new(None),
             structure_cache: Mutex::new(None),
+            modules,
         })
     }
 
