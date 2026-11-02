@@ -9,6 +9,7 @@ import '../theme/theme.dart';
 import '../widgets/dates.dart';
 import 'all_pages_view.dart';
 import 'journals_view.dart';
+import 'module_view.dart';
 import 'page_screen.dart';
 import 'hubs_tree.dart';
 import 'quick_switcher.dart';
@@ -135,6 +136,10 @@ class _ShellState extends State<Shell> {
                                 AllPagesRoute() => const AllPagesView(),
                                 SettingsRoute() => const SettingsView(),
                                 TagsTypesRoute() => const TagsTypesView(),
+                                ModuleRoute() => ModuleView(
+                                  moduleId: route.moduleId,
+                                  viewId: route.viewId,
+                                ),
                                 TagRoute() => TagView(name: route.name),
                                 PageTarget() => PageScreen(target: route),
                               },
@@ -332,6 +337,37 @@ class _Sidebar extends StatelessWidget {
               selected: route is TagsTypesRoute,
               onTap: () => go(const TagsTypesRoute()),
               onMiddle: () => newTab(const TagsTypesRoute()),
+            ),
+            // Views of enabled modules.
+            ListenableBuilder(
+              listenable: app.modules,
+              builder: (context, _) => Column(
+                children: [
+                  for (final m in app.modules.enabled)
+                    for (final v in m.views)
+                      _NavItem(
+                        icon: v.icon == null ? Icons.extension_outlined : null,
+                        leading: v.icon == null
+                            ? null
+                            : Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Text(
+                                  v.icon!,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                        label: v.title,
+                        selected:
+                            route is ModuleRoute &&
+                            route.moduleId == m.id &&
+                            route.viewId == v.id,
+                        onTap: () =>
+                            go(ModuleRoute(m.id, v.id, title: v.title)),
+                        onMiddle: () =>
+                            newTab(ModuleRoute(m.id, v.id, title: v.title)),
+                      ),
+                ],
+              ),
             ),
             const SizedBox(height: 22),
             Expanded(

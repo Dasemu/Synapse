@@ -6,6 +6,7 @@ import '../editor/block_row.dart';
 import '../editor/markdown.dart';
 import '../state/app_state.dart';
 import '../theme/theme.dart';
+import 'module_ui.dart';
 
 /// Max width of the reading column.
 const contentWidth = 780.0;
@@ -120,7 +121,7 @@ class _StaticBlockState extends State<StaticBlock> {
     final app = AppScope.read(context);
     return LayoutBuilder(
       builder: (context, box) => ListenableBuilder(
-        listenable: app.refs,
+        listenable: Listenable.merge([app.refs, app.modules]),
         builder: (context, _) {
           _r?.dispose();
           _r = BlockRenderer(
@@ -134,6 +135,16 @@ class _StaticBlockState extends State<StaticBlock> {
               onPageNewTab: app.openTitleInNewTab,
               onBlockRefNewTab: (r) => app.openIdInNewTab(r.pageId),
               onUrl: openUrl,
+              macro: (name, args) {
+                final id = app.modules.macroOwner(name);
+                return id == null
+                    ? null
+                    : ModuleMacro(
+                        moduleId: id,
+                        name: name.toLowerCase(),
+                        args: args,
+                      );
+              },
               maxWidth: box.maxWidth,
             ),
           ).render(widget.content);

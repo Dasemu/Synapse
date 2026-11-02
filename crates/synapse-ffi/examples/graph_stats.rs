@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
     let t = std::time::Instant::now();
     g.graph_data()?;
     let cached = t.elapsed();
-    let mut by_kind = [0usize; 7];
+    let mut by_kind = [0usize; 9];
     for &k in &d.kinds {
         by_kind[k as usize] += 1;
     }
@@ -34,6 +34,8 @@ fn main() -> anyhow::Result<()> {
         "embed",
         "mention",
         "synapse",
+        "contains",
+        "tagged",
     ];
     for (n, c) in names.iter().zip(by_kind) {
         println!("  {n:<10} {c}");

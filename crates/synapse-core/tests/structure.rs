@@ -506,7 +506,7 @@ fn old_ops_and_v2_databases_load() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(schema, "8");
+    assert_eq!(schema, "9");
     let p = g.get_page(id).unwrap().unwrap();
     assert_eq!((p.kind, p.title.as_str()), (PageKind::Note, "Legacy"));
     let h = g.create_hub("New hub", "").unwrap();
@@ -1190,7 +1190,7 @@ fn v7_databases_gain_type_definitions() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(schema, "8");
+    assert_eq!(schema, "9");
     assert_eq!(type_row(&g, "persona"), Some(("persona".into(), 1, None)));
     g.set_type_icon("persona", Some("🧑")).unwrap();
     assert_eq!(type_row(&g, "persona").unwrap().2.as_deref(), Some("🧑"));

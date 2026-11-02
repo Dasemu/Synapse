@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use synapse_core::{Backlink, Block, Op, OpRecord, Page};
 
 /// Bumped on incompatible changes. Sent as `X-Synapse-Protocol` by clients.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const HEADER_PROTOCOL: &str = "x-synapse-protocol";
 /// Bytes already stored of a partially uploaded blob (response header).
 pub const HEADER_UPLOAD_OFFSET: &str = "upload-offset";

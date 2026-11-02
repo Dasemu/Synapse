@@ -9,6 +9,7 @@ import '../graph/network_canvas.dart';
 import '../theme/theme.dart';
 import '../widgets/dates.dart';
 import 'keymap.dart';
+import 'modules.dart';
 import 'settings.dart';
 import 'write_queue.dart';
 
@@ -35,6 +36,25 @@ class SettingsRoute extends AppRoute {
 /// Manage the vocabulary: types (with their emoji) and tags.
 class TagsTypesRoute extends AppRoute {
   const TagsTypesRoute();
+}
+
+/// A view contributed by a module (rendered from the UI tree the module returns).
+class ModuleRoute extends AppRoute {
+  const ModuleRoute(this.moduleId, this.viewId, {this.title = 'Module'});
+  final String moduleId;
+  final String viewId;
+
+  /// The view's title when it was opened (shown in the tab).
+  final String title;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ModuleRoute &&
+      other.moduleId == moduleId &&
+      other.viewId == viewId;
+
+  @override
+  int get hashCode => Object.hash(moduleId, viewId);
 }
 
 enum GraphMode {
@@ -100,6 +120,7 @@ class AppTab {
     AllPagesRoute() => 'All pages',
     SettingsRoute() => 'Settings',
     TagsTypesRoute() => 'Tags & types',
+    ModuleRoute(:final title) => title,
     TagRoute(:final name) => '#$name',
     GraphRoute() => 'Graph',
     PageTarget(:final title) => label ?? title ?? 'Page',
@@ -111,6 +132,7 @@ class AppTab {
     AllPagesRoute() => Icons.description_outlined,
     SettingsRoute() => Icons.settings_outlined,
     TagsTypesRoute() => Icons.style_outlined,
+    ModuleRoute() => Icons.extension_outlined,
     TagRoute() => Icons.sell_outlined,
     GraphRoute() => Icons.hub_outlined,
     PageTarget() => Icons.article_outlined,
@@ -128,6 +150,12 @@ Map<String, dynamic>? routeToJson(AppRoute r, {String? label}) => switch (r) {
   AllPagesRoute() => {'t': 'all'},
   SettingsRoute() => {'t': 'settings'},
   TagsTypesRoute() => {'t': 'tags-types'},
+  ModuleRoute() => {
+    't': 'module',
+    'id': r.moduleId,
+    'view': r.viewId,
+    'title': r.title,
+  },
   TagRoute() => {'t': 'tag', 'name': r.name},
   GraphRoute() => {
     't': 'graph',
@@ -156,6 +184,12 @@ AppRoute? routeFromJson(Object? j) {
       return const SettingsRoute();
     case 'tags-types':
       return const TagsTypesRoute();
+    case 'module':
+      final id = j['id'];
+      final view = j['view'];
+      final title = j['title'];
+      if (id is! String || view is! String) return null;
+      return ModuleRoute(id, view, title: title is String ? title : 'Module');
     case 'tag':
       final name = j['name'];
       return name is String && name.isNotEmpty ? TagRoute(name) : null;
@@ -212,6 +246,9 @@ class AppState extends ChangeNotifier {
   }
 
   final SettingsStore _settings;
+
+  /// Installed modules, their views, macros and effects.
+  late final ModulesController modules = ModulesController(backend);
 
   /// Key bindings (defaults plus the user's overrides).
   late final Keymap keymap;
@@ -665,6 +702,12 @@ class AppState extends ChangeNotifier {
   /// Top-bar shortcut: flips between the light and dark Paper themes.
   void toggleTheme(Brightness current) {
     setTheme(current == Brightness.dark ? 'paper' : 'paper-dark');
+  }
+
+  @override
+  void dispose() {
+    modules.dispose();
+    super.dispose();
   }
 }
 

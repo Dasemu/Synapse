@@ -1,4 +1,4 @@
-# Sync protocol (v1)
+# Sync protocol (v2)
 
 Replication of a graph between devices through a self-hosted server. The unit of sync is the
 **op log** of `synapse-core` (`Graph::ops_since` / `Graph::apply_remote`): each op carries a
@@ -6,7 +6,7 @@ hybrid logical clock (HLC) `{millis}-{counter}-{actor}`; replicas merge with las
 per entity plus tombstones, so pushes and pulls are idempotent and order-insensitive.
 
 Crates: `synapse-sync` (wire types in `protocol`, HTTP transport `Remote`, replicating
-`SyncClient`) and `synapse-server` (axum). Clients send `X-Synapse-Protocol: 1`; `PUT
+`SyncClient`) and `synapse-server` (axum). Clients send `X-Synapse-Protocol: 2`; `PUT
 /v1/graphs/{id}` returns the server's `protocol` and the client refuses a mismatch.
 
 ## Auth
@@ -107,10 +107,11 @@ runtime (`start()` spawns onto the current one). After local edits call `trigger
 
 ## Op kinds
 `upsert_page`, `delete_page`, `upsert_block`, `delete_block`, `put_asset`, `set_alias` and
-`put_type_def` (type metadata: name, emoji, tombstone; LWW per type name key, schema v8).
-A client too old to know an op kind cannot parse a pull batch containing it: its sync stops
-with an error (local edits stay pending) until it is updated. The protocol version was not
-bumped for `put_type_def`, so update every client together with the server.
+`put_type_def` (type metadata: name, emoji, tombstone; LWW per type name key, schema v8) and
+`put_module_data` (a module's key-value entry, `value: null` deletes it; LWW per (module, key),
+schema v9; see `modules.md`). A client too old to know an op kind cannot parse a pull batch
+containing it, so new op kinds bump the protocol: v2 added `put_type_def` and
+`put_module_data`, and v1 clients get a clear version error instead of a stalled sync.
 
 ## Limits / not in v1
 - Per-user tokens and per-graph ACLs: `auth::Principal` already carries a graph allow-list;

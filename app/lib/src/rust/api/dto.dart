@@ -7,8 +7,8 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `new`, `new`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 class AssetDto {
   final String hash;
@@ -503,6 +503,95 @@ class LegacyCandidate {
           reason == other.reason &&
           blocks == other.blocks &&
           preselected == other.preselected;
+}
+
+/// An installed (or inspected) module.
+class ModuleDto {
+  final String id;
+  final String name;
+  final String version;
+  final String description;
+  final String author;
+
+  /// `storage`, `crypto`, `clipboard`, `pages:read`, `pages:write`.
+  final List<String> permissions;
+  final List<ModuleViewDto> views;
+
+  /// Block macros (`{{name args}}`) it renders.
+  final List<String> macros;
+
+  /// How often the app sends it a `tick` request, if at all.
+  final int? tickSeconds;
+  final bool enabled;
+
+  /// Size of the module file in bytes.
+  final BigInt size;
+
+  const ModuleDto({
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.description,
+    required this.author,
+    required this.permissions,
+    required this.views,
+    required this.macros,
+    this.tickSeconds,
+    required this.enabled,
+    required this.size,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      version.hashCode ^
+      description.hashCode ^
+      author.hashCode ^
+      permissions.hashCode ^
+      views.hashCode ^
+      macros.hashCode ^
+      tickSeconds.hashCode ^
+      enabled.hashCode ^
+      size.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ModuleDto &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          version == other.version &&
+          description == other.description &&
+          author == other.author &&
+          permissions == other.permissions &&
+          views == other.views &&
+          macros == other.macros &&
+          tickSeconds == other.tickSeconds &&
+          enabled == other.enabled &&
+          size == other.size;
+}
+
+/// A view a module adds to the sidebar.
+class ModuleViewDto {
+  final String id;
+  final String title;
+  final String? icon;
+
+  const ModuleViewDto({required this.id, required this.title, this.icon});
+
+  @override
+  int get hashCode => id.hashCode ^ title.hashCode ^ icon.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ModuleViewDto &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          title == other.title &&
+          icon == other.icon;
 }
 
 /// A level of a namespace (`A/B` under `A`); `id` is `None` when only deeper pages exist.

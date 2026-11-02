@@ -5,9 +5,10 @@ import '../state/app_state.dart';
 import '../state/keymap.dart';
 import '../theme/theme.dart';
 import '../widgets/common.dart';
+import 'modules_settings.dart';
 import 'theme_editor.dart';
 
-/// Theme picker and key bindings.
+/// Theme picker, modules and key bindings.
 class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
 
@@ -87,6 +88,8 @@ class SettingsView extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 36),
+          const ModulesSettings(),
           const SizedBox(height: 36),
           Row(
             children: [

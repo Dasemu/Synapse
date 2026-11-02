@@ -67,6 +67,7 @@ class RenderContext {
     this.onToggleTodo,
     this.onPageNewTab,
     this.onBlockRefNewTab,
+    this.macro,
     this.maxWidth = 600,
   });
 
@@ -82,6 +83,9 @@ class RenderContext {
   /// Middle-click on a page link or block ref.
   final void Function(String title)? onPageNewTab;
   final void Function(BlockRefDtoLike ref)? onBlockRefNewTab;
+
+  /// Widget for a `{{name args}}` macro a module renders; null leaves it as text.
+  final Widget? Function(String name, String args)? macro;
   final double maxWidth;
 }
 
@@ -100,6 +104,7 @@ final _heading = RegExp(r'^(#{1,6}) ');
 final _uuid = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
 );
+final _macro = RegExp(r'^\s*([a-z0-9_-]+)(?:\s+([^{}]*))?$');
 final _property = RegExp(r'^([A-Za-z0-9_\-]+):: ?(.*)$');
 
 /// Renders Synapse outline Markdown of one block into a single [InlineSpan] tree.
@@ -309,6 +314,23 @@ class BlockRenderer {
                 : () => ctx.onPageNewTab!(title),
           );
           i = plain = close + 2;
+          continue;
+        }
+      }
+      // {{name args}}: a macro rendered by a module
+      if (ctx.macro != null && s.startsWith('{{', i)) {
+        final j = s.indexOf('}}', i + 2);
+        final m = j < 0 ? null : _macro.firstMatch(s.substring(i + 2, j));
+        final w = m == null ? null : ctx.macro!(m[1]!, (m[2] ?? '').trim());
+        if (w != null) {
+          flush(i);
+          _atomic(
+            WidgetSpan(alignment: PlaceholderAlignment.middle, child: w),
+            1,
+            off + i,
+            j + 2 - i,
+          );
+          i = plain = j + 2;
           continue;
         }
       }

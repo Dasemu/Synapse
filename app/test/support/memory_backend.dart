@@ -18,6 +18,79 @@ class MemoryBackend implements GraphBackend {
   final outlines = <String, List<OutlineNode>>{};
   final aliases = <String, String>{};
   final calls = <String>[];
+
+  // ---------------------------------------------------------------- modules
+  // Fakes: [moduleHandlers] answer requests the way a module would.
+  final installedModules = <String, ModuleDto>{};
+  final moduleHandlers =
+      <String, Map<String, dynamic> Function(Map<String, dynamic>)>{};
+  final moduleRequests = <(String, Map<String, dynamic>)>[];
+  final stoppedModules = <String>[];
+
+  /// What [inspectModule] reads from any file; null means "not a module".
+  ModuleDto? inspectResult;
+
+  @override
+  Future<List<ModuleDto>> modules() async =>
+      installedModules.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+
+  @override
+  Future<ModuleDto> inspectModule(Uint8List wasm) async =>
+      inspectResult ?? (throw Exception('not a Synapse module'));
+
+  @override
+  Future<ModuleDto> installModule(Uint8List wasm, List<String> granted) async {
+    final m = await inspectModule(wasm);
+    if (m.permissions.any((p) => !granted.contains(p))) {
+      throw Exception('permission not granted');
+    }
+    final enabled = installedModules[m.id]?.enabled ?? true;
+    return installedModules[m.id] = withEnabled(m, enabled);
+  }
+
+  @override
+  Future<void> setModuleEnabled(String id, bool enabled) async {
+    installedModules[id] = withEnabled(installedModules[id]!, enabled);
+  }
+
+  @override
+  Future<void> uninstallModule(String id, {bool deleteData = false}) async {
+    installedModules.remove(id);
+  }
+
+  @override
+  Future<Map<String, dynamic>> moduleCall(
+    String id,
+    Map<String, dynamic> request,
+  ) async {
+    final m = installedModules[id];
+    if (m == null || !m.enabled) throw Exception('module $id is not enabled');
+    moduleRequests.add((id, request));
+    return moduleHandlers[id]?.call(request) ?? {};
+  }
+
+  @override
+  Future<void> stopModule(String id) async => stoppedModules.add(id);
+
+  /// Module ids with data in the graph.
+  final moduleData = <String>{};
+  @override
+  Future<bool> moduleHasData(String id) async => moduleData.contains(id);
+
+  static ModuleDto withEnabled(ModuleDto m, bool enabled) => ModuleDto(
+    id: m.id,
+    name: m.name,
+    version: m.version,
+    description: m.description,
+    author: m.author,
+    permissions: m.permissions,
+    views: m.views,
+    macros: m.macros,
+    tickSeconds: m.tickSeconds,
+    enabled: enabled,
+    size: m.size,
+  );
   int _seq = 0;
 
   String _id() => 'id-${_seq++}';

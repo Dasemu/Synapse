@@ -20,6 +20,12 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Modules (wasm)
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cd modules
+          cargo fmt --all -- --check
+          cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
   flutter:
     runs-on: ubuntu-latest

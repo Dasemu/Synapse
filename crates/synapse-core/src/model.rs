@@ -206,6 +206,14 @@ pub enum Op {
     PutTypeDef {
         def: TypeDef,
     },
+    /// An entry of a module's key-value store (`value: None` deletes it), last writer wins
+    /// per (module, key).
+    PutModuleData {
+        module: String,
+        key: String,
+        #[serde(default)]
+        value: Option<String>,
+    },
 }
 
 /// Graph-wide metadata of a type name: types are names, not pages, so this is where their

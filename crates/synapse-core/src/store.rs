@@ -1174,6 +1174,16 @@ impl Graph {
                     true
                 }
             }
+            Op::PutModuleData { module, key, value } => {
+                crate::module_data::check_remote(module, key, value.as_deref())
+                    && self
+                        .module_data_hlc(module, key)?
+                        .is_none_or(|l| hlc > l.as_str())
+                    && {
+                        self.write_module_data_row(module, key, value.as_deref(), hlc)?;
+                        true
+                    }
+            }
         };
         if applied {
             self.log(hlc, op)?;
